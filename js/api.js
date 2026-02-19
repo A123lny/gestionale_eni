@@ -235,6 +235,21 @@ ENI.API = (function() {
         return result.data;
     }
 
+    async function getLavaggiMese(anno, mese) {
+        var primoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-01';
+        var ultimoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-' + new Date(anno, mese, 0).getDate();
+
+        var result = await getClient()
+            .from('lavaggi')
+            .select('data, stato')
+            .gte('data', primoGiorno)
+            .lte('data', ultimoGiorno)
+            .neq('stato', 'Annullato');
+
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
     async function salvaLavaggio(dati) {
         var codice = await generaCodice('lavaggi', ENI.Config.PREFISSI.LAVAGGIO);
         dati.codice = codice;
@@ -271,6 +286,28 @@ ENI.API = (function() {
         );
 
         return record;
+    }
+
+    async function modificaLavaggio(id, dati, lavaggio) {
+        var record = await update('lavaggi', id, dati);
+
+        await scriviLog(
+            'Modificato_Lavaggio', 'Lavaggi',
+            lavaggio.codice + ' - ' + (lavaggio.veicolo || lavaggio.nome_cliente) + ' - ' + ENI.UI.formatValuta(dati.prezzo || lavaggio.prezzo)
+        );
+
+        return record;
+    }
+
+    async function eliminaLavaggio(id, lavaggio) {
+        await remove('lavaggi', id);
+
+        await scriviLog(
+            'Eliminato_Lavaggio', 'Lavaggi',
+            lavaggio.codice + ' - ' + (lavaggio.veicolo || lavaggio.nome_cliente) + ' - ' + ENI.UI.formatValuta(lavaggio.prezzo)
+        );
+
+        return true;
     }
 
     // --- Crediti ---
@@ -503,9 +540,12 @@ ENI.API = (function() {
         eliminaListino: eliminaListino,
         riordinaListino: riordinaListino,
         getLavaggiPerData: getLavaggiPerData,
+        getLavaggiMese: getLavaggiMese,
         salvaLavaggio: salvaLavaggio,
         completaLavaggio: completaLavaggio,
         annullaLavaggio: annullaLavaggio,
+        modificaLavaggio: modificaLavaggio,
+        eliminaLavaggio: eliminaLavaggio,
         getCrediti: getCrediti,
         creaCredito: creaCredito,
         incassaCredito: incassaCredito,

@@ -330,6 +330,115 @@
     font-weight: var(--font-weight-semibold);
 }
 
+/* --- LAVAGGI: Vista Calendario --- */
+.cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+
+.cal-header-cell {
+    text-align: center;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-muted);
+    padding: var(--space-1) 0;
+    margin-bottom: var(--space-1);
+}
+
+.cal-cell {
+    min-height: 60px;
+    padding: 6px;
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: background var(--transition-fast);
+}
+
+.cal-cell:hover {
+    background-color: var(--color-gray-50);
+}
+
+.cal-cell-other {
+    border-color: transparent;
+    background: transparent;
+    cursor: default;
+    pointer-events: none;
+}
+
+.cal-oggi {
+    border-color: var(--primary);
+    background-color: rgba(27, 45, 78, 0.04);
+}
+
+.cal-day-num {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-secondary);
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.cal-day-oggi {
+    background-color: var(--primary);
+    color: var(--text-inverse);
+}
+
+.cal-badge {
+    font-size: 0.65rem;
+    font-weight: var(--font-weight-bold);
+    padding: 1px 6px;
+    border-radius: 10px;
+    color: white;
+    width: fit-content;
+}
+
+.cal-badge-blue   { background-color: #3b82f6; }
+.cal-badge-orange { background-color: #f59e0b; }
+.cal-badge-red    { background-color: #ef4444; }
+
+.cal-add-btn {
+    display: none;
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: none;
+    background-color: var(--primary);
+    color: white;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.cal-cell:hover .cal-add-btn {
+    display: flex;
+}
+
+@media (max-width: 480px) {
+    .cal-cell {
+        min-height: 44px;
+        padding: 4px;
+    }
+    .cal-header-cell {
+        font-size: 0.6rem;
+    }
+}
+
 /* --- Responsive cassa --- */
 @media (min-width: 480px) {
     .cassa-grid {

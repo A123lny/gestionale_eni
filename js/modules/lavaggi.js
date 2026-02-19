@@ -12,6 +12,8 @@ ENI.Modules.Lavaggi = (function() {
     var _lavaggi = [];
     var _dataSelezionata = ENI.UI.oggiISO();
     var _vistaCorrente = 'tabella';
+    var _meseCorrente = parseInt(ENI.UI.oggiISO().split('-')[1], 10);
+    var _annoCorrente = parseInt(ENI.UI.oggiISO().split('-')[0], 10);
 
     function _canEditListino() {
         var ruolo = ENI.State.getUserRole();
@@ -38,6 +40,7 @@ ENI.Modules.Lavaggi = (function() {
                 '<div class="filter-chips">' +
                     '<button class="chip ' + (_vistaCorrente === 'tabella' ? 'active' : '') + '" data-vista="tabella">\u{1F4CB} Tabella</button>' +
                     '<button class="chip ' + (_vistaCorrente === 'timeline' ? 'active' : '') + '" data-vista="timeline">\u{1F3A8} Timeline</button>' +
+                    '<button class="chip ' + (_vistaCorrente === 'calendario' ? 'active' : '') + '" data-vista="calendario">\u{1F4C5} Calendario</button>' +
                     listinoChip +
                 '</div>' +
             '</div>' +
@@ -57,6 +60,9 @@ ENI.Modules.Lavaggi = (function() {
         if (dateInput) {
             dateInput.addEventListener('change', function(e) {
                 _dataSelezionata = e.target.value;
+                var parts = _dataSelezionata.split('-');
+                _annoCorrente = parseInt(parts[0], 10);
+                _meseCorrente = parseInt(parts[1], 10);
                 _loadLavaggi();
             });
         }
@@ -73,6 +79,10 @@ ENI.Modules.Lavaggi = (function() {
                 if (dateInput) dateInput.style.display = 'none';
                 if (actionsEl) actionsEl.style.display = 'none';
                 _renderListino();
+            } else if (_vistaCorrente === 'calendario') {
+                if (dateInput) dateInput.style.display = 'none';
+                if (actionsEl) actionsEl.style.display = 'none';
+                _renderCalendario();
             } else {
                 if (dateInput) dateInput.style.display = '';
                 if (actionsEl) actionsEl.style.display = '';
@@ -96,6 +106,16 @@ ENI.Modules.Lavaggi = (function() {
         ENI.UI.delegate(container, 'click', '[data-annulla-id]', function(e, el) {
             e.stopPropagation();
             _annullaLavaggio(el.dataset.annullaId);
+        });
+
+        ENI.UI.delegate(container, 'click', '[data-modifica-id]', function(e, el) {
+            e.stopPropagation();
+            _showModificaLavaggio(el.dataset.modificaId);
+        });
+
+        ENI.UI.delegate(container, 'click', '[data-elimina-id]', function(e, el) {
+            e.stopPropagation();
+            _eliminaLavaggio(el.dataset.eliminaId);
         });
 
         // Listino actions
@@ -139,6 +159,8 @@ ENI.Modules.Lavaggi = (function() {
             _renderTimeline();
         } else if (_vistaCorrente === 'listino') {
             _renderListino();
+        } else if (_vistaCorrente === 'calendario') {
+            _renderCalendario();
         } else {
             _renderTabella();
         }
@@ -191,8 +213,10 @@ ENI.Modules.Lavaggi = (function() {
                     '<td class="table-actions">' +
                         (isPrenotato
                             ? '<button class="btn btn-sm btn-success" data-completa-id="' + l.id + '" title="Completa">\u2713</button>' +
+                              '<button class="btn btn-sm btn-outline" data-modifica-id="' + l.id + '" title="Modifica">\u270F\uFE0F</button>' +
                               '<button class="btn btn-sm btn-ghost" data-annulla-id="' + l.id + '" title="Annulla">\u274C</button>'
                             : '') +
+                        '<button class="btn btn-sm btn-ghost" data-elimina-id="' + l.id + '" title="Elimina definitivamente">\u{1F5D1}</button>' +
                     '</td>' +
                 '</tr>';
         });
@@ -819,6 +843,293 @@ ENI.Modules.Lavaggi = (function() {
         } catch(e) {
             ENI.UI.error('Errore: ' + e.message);
         }
+    }
+
+    // --- Modifica Prenotazione ---
+
+    async function _showModificaLavaggio(id) {
+        var lavaggio = _lavaggi.find(function(l) { return l.id === id; });
+        if (!lavaggio) return;
+
+        var clienti = await ENI.API.getClienti();
+        var listino = await ENI.API.getListino();
+
+        var clientiOptions = '<option value="">-- Nessun cliente (anonimo) --</option>';
+        clienti.forEach(function(c) {
+            var icon = c.tipo === 'Corporate' ? '\u{1F3E2}' : '\u{1F464}';
+            clientiOptions += '<option value="' + c.id + '"' +
+                (c.id === lavaggio.cliente_id ? ' selected' : '') +
+                ' data-tipo="' + c.tipo + '"' +
+                ' data-pagamento="' + c.modalita_pagamento + '"' +
+                ' data-telefono="' + ENI.UI.escapeHtml(c.telefono || '') + '"' +
+                ' data-listino=\'' + (c.listino_personalizzato ? JSON.stringify(c.listino_personalizzato) : '') + '\'>' +
+                icon + ' ' + ENI.UI.escapeHtml(c.nome_ragione_sociale) +
+            '</option>';
+        });
+
+        var listinoOptions = listino.map(function(l) {
+            return '<option value="' + ENI.UI.escapeHtml(l.tipo_lavaggio) + '"' +
+                (l.tipo_lavaggio === lavaggio.tipo_lavaggio ? ' selected' : '') +
+                ' data-prezzo="' + l.prezzo_standard + '" data-durata="' + (l.durata_minuti || 30) + '">' +
+                l.tipo_lavaggio + ' - ' + ENI.UI.formatValuta(l.prezzo_standard) +
+            '</option>';
+        }).join('');
+
+        var prioritaLascia = lavaggio.priorita === 'LASCIA' || !lavaggio.priorita;
+        var orarioInizio = lavaggio.orario_inizio ? lavaggio.orario_inizio.substring(0, 5) : '';
+        var orarioFine = lavaggio.orario_fine ? lavaggio.orario_fine.substring(0, 5) : '';
+
+        var body =
+            '<form id="form-modifica-lavaggio">' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label form-label-required">Veicolo</label>' +
+                        '<input type="text" class="form-input" id="mod-veicolo" value="' + ENI.UI.escapeHtml(lavaggio.veicolo || '') + '">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label form-label-required">Cellulare</label>' +
+                        '<input type="tel" class="form-input" id="mod-cellulare" value="' + ENI.UI.escapeHtml(lavaggio.cellulare || '') + '">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Cliente registrato</label>' +
+                    '<select class="form-select" id="mod-cliente">' + clientiOptions + '</select>' +
+                '</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label form-label-required">Tipo Lavaggio</label>' +
+                        '<select class="form-select" id="mod-tipo">' +
+                            '<option value="">Seleziona...</option>' + listinoOptions +
+                        '</select>' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label form-label-required">Prezzo \u20AC</label>' +
+                        '<input type="number" step="0.01" min="0" class="form-input" id="mod-prezzo" value="' + (lavaggio.prezzo || '') + '">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Orario Inizio</label>' +
+                        '<input type="time" class="form-input" id="mod-inizio" value="' + orarioInizio + '">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Orario Fine</label>' +
+                        '<input type="time" class="form-input" id="mod-fine" value="' + orarioFine + '">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Priorit\u00E0</label>' +
+                    '<div class="form-row">' +
+                        '<label class="form-check"><input type="radio" name="mod-priorita" value="LASCIA"' + (prioritaLascia ? ' checked' : '') + '> \u{1F534} LASCIA</label>' +
+                        '<label class="form-check"><input type="radio" name="mod-priorita" value="ASPETTA"' + (!prioritaLascia ? ' checked' : '') + '> \u{1F7E2} ASPETTA</label>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Note</label>' +
+                    '<textarea class="form-textarea" id="mod-note" rows="2">' + ENI.UI.escapeHtml(lavaggio.note || '') + '</textarea>' +
+                '</div>' +
+            '</form>';
+
+        var modal = ENI.UI.showModal({
+            title: '\u270F\uFE0F Modifica Prenotazione ' + lavaggio.codice,
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-primary" id="btn-salva-modifica">\u{1F4BE} Salva Modifiche</button>'
+        });
+
+        modal.querySelector('#btn-salva-modifica').addEventListener('click', async function() {
+            var veicolo = modal.querySelector('#mod-veicolo').value.trim();
+            var cellulare = modal.querySelector('#mod-cellulare').value.trim();
+            var tipo = modal.querySelector('#mod-tipo').value;
+            var prezzo = parseFloat(modal.querySelector('#mod-prezzo').value);
+
+            if (!veicolo) { ENI.UI.warning('Inserisci il veicolo'); return; }
+            if (!cellulare) { ENI.UI.warning('Inserisci il cellulare'); return; }
+            if (!tipo || isNaN(prezzo) || prezzo <= 0) { ENI.UI.warning('Seleziona tipo lavaggio e verifica il prezzo'); return; }
+
+            var clienteSelect = modal.querySelector('#mod-cliente');
+            var clienteOpt = clienteSelect.options[clienteSelect.selectedIndex];
+            var clienteId = clienteOpt ? clienteOpt.value || null : null;
+            var nomeCliente = clienteId
+                ? clienteOpt.textContent.replace(/^[\u{1F3E2}\u{1F464}]\s*/u, '').trim()
+                : 'Walk-in';
+
+            var dati = {
+                veicolo: veicolo,
+                cellulare: cellulare,
+                cliente_id: clienteId || null,
+                nome_cliente: nomeCliente,
+                tipo_lavaggio: tipo,
+                prezzo: prezzo,
+                orario_inizio: modal.querySelector('#mod-inizio').value || null,
+                orario_fine: modal.querySelector('#mod-fine').value || null,
+                priorita: modal.querySelector('input[name="mod-priorita"]:checked').value,
+                note: modal.querySelector('#mod-note').value.trim() || null
+            };
+
+            try {
+                await ENI.API.modificaLavaggio(id, dati, lavaggio);
+                ENI.UI.closeModal(modal);
+                ENI.UI.success('Prenotazione ' + lavaggio.codice + ' aggiornata');
+                await _loadLavaggi();
+            } catch(e) {
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
+    }
+
+    // --- Elimina Definitiva Prenotazione ---
+
+    async function _eliminaLavaggio(id) {
+        var lavaggio = _lavaggi.find(function(l) { return l.id === id; });
+        if (!lavaggio) return;
+
+        var msg = 'Il lavaggio ' + lavaggio.codice + ' verrà eliminato definitivamente dal database.\n\n' +
+                  (lavaggio.veicolo || lavaggio.nome_cliente) + ' - ' +
+                  lavaggio.tipo_lavaggio + ' - ' + ENI.UI.formatValuta(lavaggio.prezzo) +
+                  '\n\nQuesta azione non può essere annullata.';
+
+        var ok = await ENI.UI.confirm({
+            title: '\u{1F5D1} Elimina Definitivamente',
+            message: msg,
+            confirmText: 'Elimina',
+            cancelText: 'Annulla',
+            danger: true
+        });
+
+        if (!ok) return;
+
+        try {
+            await ENI.API.eliminaLavaggio(id, lavaggio);
+            ENI.UI.success('Lavaggio ' + lavaggio.codice + ' eliminato');
+            await _loadLavaggi();
+        } catch(e) {
+            ENI.UI.error('Errore: ' + e.message);
+        }
+    }
+
+    // --- Vista Calendario ---
+
+    async function _renderCalendario() {
+        var contentEl = document.getElementById('lavaggi-content');
+        if (!contentEl) return;
+
+        contentEl.innerHTML = '<div class="flex justify-center items-center" style="padding: 4rem 0;"><div class="spinner"></div></div>';
+
+        var lavaggiMese = [];
+        try {
+            lavaggiMese = await ENI.API.getLavaggiMese(_annoCorrente, _meseCorrente);
+        } catch(e) {
+            ENI.UI.error('Errore caricamento calendario');
+            return;
+        }
+
+        // Raggruppa per data
+        var contatori = {};
+        lavaggiMese.forEach(function(l) {
+            contatori[l.data] = (contatori[l.data] || 0) + 1;
+        });
+
+        var mesiNomi = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+                        'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+        var giorniNomi = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+        var oggi = ENI.UI.oggiISO();
+
+        var primoDelMese = new Date(_annoCorrente, _meseCorrente - 1, 1);
+        var totalDays = new Date(_annoCorrente, _meseCorrente, 0).getDate();
+        var startDow = (primoDelMese.getDay() + 6) % 7; // 0=Lun, 6=Dom
+
+        var html =
+            '<div class="card">' +
+                '<div class="flex justify-between items-center mb-4">' +
+                    '<button class="btn btn-outline btn-sm" id="cal-prev">\u2039 Prec</button>' +
+                    '<h3 style="margin:0;">' + mesiNomi[_meseCorrente - 1] + ' ' + _annoCorrente + '</h3>' +
+                    '<button class="btn btn-outline btn-sm" id="cal-next">Succ \u203A</button>' +
+                '</div>' +
+                '<div class="cal-grid">';
+
+        // Header giorni
+        giorniNomi.forEach(function(g) {
+            html += '<div class="cal-header-cell">' + g + '</div>';
+        });
+
+        // Celle vuote iniziali
+        for (var i = 0; i < startDow; i++) {
+            html += '<div class="cal-cell cal-cell-other"></div>';
+        }
+
+        // Celle dei giorni del mese
+        for (var d = 1; d <= totalDays; d++) {
+            var dataStr = _annoCorrente + '-' + String(_meseCorrente).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+            var count = contatori[dataStr] || 0;
+            var isOggi = dataStr === oggi;
+
+            var badgeHtml = '';
+            if (count > 0) {
+                var cls = count >= 5 ? 'cal-badge-red' : count >= 3 ? 'cal-badge-orange' : 'cal-badge-blue';
+                badgeHtml = '<span class="cal-badge ' + cls + '">' + count + '</span>';
+            }
+
+            html +=
+                '<div class="cal-cell' + (isOggi ? ' cal-oggi' : '') + '" data-cal-data="' + dataStr + '">' +
+                    '<span class="cal-day-num' + (isOggi ? ' cal-day-oggi' : '') + '">' + d + '</span>' +
+                    badgeHtml +
+                    '<button class="cal-add-btn" data-prenota-data="' + dataStr + '" title="Nuova prenotazione">+</button>' +
+                '</div>';
+        }
+
+        // Celle vuote finali per completare la griglia
+        var totalCells = startDow + totalDays;
+        var remainingCells = (7 - (totalCells % 7)) % 7;
+        for (var j = 0; j < remainingCells; j++) {
+            html += '<div class="cal-cell cal-cell-other"></div>';
+        }
+
+        html += '</div></div>';
+        contentEl.innerHTML = html;
+
+        // Navigazione mese precedente
+        contentEl.querySelector('#cal-prev').addEventListener('click', function() {
+            _meseCorrente--;
+            if (_meseCorrente < 1) { _meseCorrente = 12; _annoCorrente--; }
+            _renderCalendario();
+        });
+
+        // Navigazione mese successivo
+        contentEl.querySelector('#cal-next').addEventListener('click', function() {
+            _meseCorrente++;
+            if (_meseCorrente > 12) { _meseCorrente = 1; _annoCorrente++; }
+            _renderCalendario();
+        });
+
+        // Click su un giorno → vai alla tabella per quella data
+        ENI.UI.delegate(contentEl, 'click', '[data-cal-data]', function(e, el) {
+            if (e.target.closest('[data-prenota-data]')) return;
+            _dataSelezionata = el.dataset.calData;
+            var parts = _dataSelezionata.split('-');
+            _annoCorrente = parseInt(parts[0], 10);
+            _meseCorrente = parseInt(parts[1], 10);
+            var dateInput = document.getElementById('lavaggi-data');
+            if (dateInput) dateInput.value = _dataSelezionata;
+            _vistaCorrente = 'tabella';
+            document.querySelectorAll('.chip[data-vista]').forEach(function(c) {
+                c.classList.toggle('active', c.dataset.vista === _vistaCorrente);
+            });
+            if (dateInput) dateInput.style.display = '';
+            var actionsEl = document.getElementById('lavaggi-actions');
+            if (actionsEl) actionsEl.style.display = '';
+            _loadLavaggi();
+        });
+
+        // Click bottone "+" → nuova prenotazione per quel giorno
+        ENI.UI.delegate(contentEl, 'click', '[data-prenota-data]', function(e, el) {
+            e.stopPropagation();
+            _dataSelezionata = el.dataset.prenotaData;
+            var dateInput = document.getElementById('lavaggi-data');
+            if (dateInput) dateInput.value = _dataSelezionata;
+            _showFormLavaggio(false);
+        });
     }
 
     return { render: render };
