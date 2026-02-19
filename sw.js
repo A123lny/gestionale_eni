@@ -3,34 +3,35 @@
 // Cache-first per assets statici, network-first per API
 // ============================================================
 
-const CACHE_NAME = 'titanwash-v10';
+const CACHE_NAME = 'titanwash-v11';
+const BASE = self.registration.scope;
 const STATIC_ASSETS = [
-    '/',
-    '/index.html',
-    '/assets/Titan.png',
-    '/assets/logo_ritagliato.png',
-    '/css/variables.css',
-    '/css/base.css',
-    '/css/components.css',
-    '/css/layout.css',
-    '/css/modules.css',
-    '/js/config.js',
-    '/js/state.js',
-    '/js/ui.js',
-    '/js/api.js',
-    '/js/auth.js',
-    '/js/router.js',
-    '/js/app.js',
-    '/js/modules/dashboard.js',
-    '/js/modules/clienti.js',
-    '/js/modules/lavaggi.js',
-    '/js/modules/crediti.js',
-    '/js/modules/cassa.js',
-    '/js/modules/magazzino.js',
-    '/js/modules/personale.js',
-    '/js/modules/manutenzioni.js',
-    '/js/modules/log.js',
-    '/manifest.json'
+    BASE,
+    BASE + 'index.html',
+    BASE + 'assets/Titan.png',
+    BASE + 'assets/logo_ritagliato.png',
+    BASE + 'css/variables.css',
+    BASE + 'css/base.css',
+    BASE + 'css/components.css',
+    BASE + 'css/layout.css',
+    BASE + 'css/modules.css',
+    BASE + 'js/config.js',
+    BASE + 'js/state.js',
+    BASE + 'js/ui.js',
+    BASE + 'js/api.js',
+    BASE + 'js/auth.js',
+    BASE + 'js/router.js',
+    BASE + 'js/app.js',
+    BASE + 'js/modules/dashboard.js',
+    BASE + 'js/modules/clienti.js',
+    BASE + 'js/modules/lavaggi.js',
+    BASE + 'js/modules/crediti.js',
+    BASE + 'js/modules/cassa.js',
+    BASE + 'js/modules/magazzino.js',
+    BASE + 'js/modules/personale.js',
+    BASE + 'js/modules/manutenzioni.js',
+    BASE + 'js/modules/log.js',
+    BASE + 'manifest.json'
 ];
 
 // Install: cache static assets

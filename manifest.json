@@ -2,7 +2,7 @@
     "name": "Titanwash Gestionale",
     "short_name": "Titanwash",
     "description": "Gestionale Autolavaggio Titanwash - Borgo Maggiore, San Marino",
-    "start_url": "/",
+    "start_url": "/gestionale_eni/",
     "display": "standalone",
     "orientation": "portrait-primary",
     "background_color": "#F5F5F5",
