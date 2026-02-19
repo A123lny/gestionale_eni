@@ -244,9 +244,12 @@ ENI.Modules.Lavaggi = (function() {
         var endHour = 21;
         var totalHours = endHour - startHour;
 
+        // Header con etichette posizionate assolutamente: stesse % delle barre → allineamento perfetto
         var headerHtml = '<div class="timeline-header">';
         for (var h = startHour; h <= endHour; h++) {
-            headerHtml += '<span class="timeline-hour">' + String(h).padStart(2, '0') + '</span>';
+            var labelLeft = ((h - startHour) / totalHours) * 100;
+            headerHtml += '<span class="timeline-hour" style="left:' + labelLeft.toFixed(2) + '%">' +
+                String(h).padStart(2, '0') + '</span>';
         }
         headerHtml += '</div>';
 
@@ -267,15 +270,18 @@ ENI.Modules.Lavaggi = (function() {
             var barClass = l.stato === 'Completato' ? 'completato' :
                            l.priorita === 'LASCIA' ? 'lascia' : 'aspetta';
 
-            // Mostra veicolo + tipo lavaggio nella barra
             var barLabel = (l.veicolo || l.nome_cliente) + ' - ' + l.tipo_lavaggio;
+
+            // Barre più corte di ~1 ora: nascondi testo, accessibile solo via click
+            var isShort = width < 8;
 
             rowsHtml +=
                 '<div class="timeline-row">' +
-                    '<div class="timeline-bar ' + barClass + '" ' +
+                    '<div class="timeline-bar ' + barClass + (isShort ? ' timeline-bar-short' : '') + '" ' +
+                        'data-bar-id="' + l.id + '" ' +
                         'style="left:' + left + '%;width:' + width + '%;" ' +
                         'title="' + ENI.UI.escapeHtml(barLabel) + ' ' + ENI.UI.formatValuta(l.prezzo) + '">' +
-                        ENI.UI.escapeHtml(barLabel) +
+                        (isShort ? '' : ENI.UI.escapeHtml(barLabel)) +
                     '</div>' +
                 '</div>';
         });
@@ -294,6 +300,27 @@ ENI.Modules.Lavaggi = (function() {
                 '</div>' +
                 legendaHtml +
             '</div>';
+
+        // Click su qualsiasi barra → mostra dettagli (utile per barre corte e su mobile)
+        ENI.UI.delegate(contentEl, 'click', '[data-bar-id]', function(e, el) {
+            var lav = _lavaggi.find(function(l) { return l.id === el.dataset.barId; });
+            if (!lav) return;
+            ENI.UI.showModal({
+                title: ENI.UI.escapeHtml(lav.veicolo || lav.nome_cliente),
+                body:
+                    '<div class="credito-dettaglio-body">' +
+                        '<div class="credito-info-row"><span class="credito-info-label">Tipo</span><span class="credito-info-value">' + ENI.UI.escapeHtml(lav.tipo_lavaggio) + '</span></div>' +
+                        '<div class="credito-info-row"><span class="credito-info-label">Orario</span><span class="credito-info-value">' + ENI.UI.formatOra(lav.orario_inizio) + ' \u2013 ' + ENI.UI.formatOra(lav.orario_fine) + '</span></div>' +
+                        '<div class="credito-info-row"><span class="credito-info-label">Cliente</span><span class="credito-info-value">' + ENI.UI.escapeHtml(lav.nome_cliente) + '</span></div>' +
+                        '<div class="credito-info-row"><span class="credito-info-label">Prezzo</span><span class="credito-info-value"><strong>' + ENI.UI.formatValuta(lav.prezzo) + '</strong></span></div>' +
+                        '<div class="credito-info-row"><span class="credito-info-label">Stato</span><span class="credito-info-value">' + ENI.UI.badgeStato(lav.stato) + '</span></div>' +
+                        (lav.priorita ? '<div class="credito-info-row"><span class="credito-info-label">Priorit\u00E0</span><span class="credito-info-value">' + ENI.UI.badgeStato(lav.priorita) + '</span></div>' : '') +
+                        (lav.cellulare ? '<div class="credito-info-row"><span class="credito-info-label">Cellulare</span><span class="credito-info-value"><a href="tel:' + ENI.UI.escapeHtml(lav.cellulare) + '">' + ENI.UI.escapeHtml(lav.cellulare) + '</a></span></div>' : '') +
+                        (lav.note ? '<div class="credito-info-row"><span class="credito-info-label">Note</span><span class="credito-info-value">' + ENI.UI.escapeHtml(lav.note) + '</span></div>' : '') +
+                    '</div>',
+                footer: '<button class="btn btn-outline" data-modal-close>Chiudi</button>'
+            });
+        });
     }
 
     function _timeToHours(timeStr) {
