@@ -1,0 +1,419 @@
+/* ============================================================
+   TITANWASH - Layout App Shell
+   Header, navigazione, contenuto principale
+   Mobile: bottom nav | Desktop: sidebar
+   ============================================================ */
+
+/* --- App Shell --- */
+.app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+}
+
+/* --- Header --- */
+.app-header {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-nav);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: var(--header-height);
+    padding: 0 var(--space-4);
+    background-color: var(--bg-header);
+    color: var(--text-inverse);
+    box-shadow: var(--shadow-md);
+}
+
+.app-header-logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+}
+
+.header-logo-img {
+    height: 38px;
+    width: auto;
+    object-fit: contain;
+}
+
+.app-header-user {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--font-size-sm);
+}
+
+.app-header-user-name {
+    font-weight: var(--font-weight-medium);
+}
+
+.app-header-user-role {
+    font-size: var(--font-size-xs);
+    color: var(--color-gray-400);
+}
+
+.btn-logout {
+    background: none;
+    border: 1px solid var(--color-gray-600);
+    color: var(--color-gray-300);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
+    cursor: pointer;
+    min-height: 32px;
+}
+
+.btn-logout:hover {
+    background-color: var(--color-gray-700);
+    color: var(--text-inverse);
+}
+
+/* --- Main Layout --- */
+.app-layout {
+    display: flex;
+    flex: 1;
+}
+
+/* --- Sidebar (Desktop) --- */
+.app-sidebar {
+    display: none;
+    width: var(--sidebar-width);
+    background-color: var(--bg-card);
+    border-right: 1px solid var(--color-gray-200);
+    padding: var(--space-4) 0;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-5);
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-decoration: none;
+    border-left: 3px solid transparent;
+}
+
+.nav-item:hover {
+    background-color: var(--color-gray-50);
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.nav-item.active {
+    background-color: var(--color-primary-light);
+    color: var(--color-secondary);
+    border-left-color: var(--color-primary);
+    font-weight: var(--font-weight-semibold);
+}
+
+.nav-item-icon {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.nav-item-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.nav-divider {
+    height: 1px;
+    background-color: var(--color-gray-200);
+    margin: var(--space-3) var(--space-4);
+}
+
+/* --- Main Content --- */
+.app-main {
+    flex: 1;
+    padding: var(--space-4);
+    padding-bottom: calc(var(--nav-bottom-height) + var(--space-4));
+    max-width: var(--max-content-width);
+    width: 100%;
+    margin: 0 auto;
+    overflow-y: auto;
+}
+
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-6);
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+.page-title {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+}
+
+/* --- KPI Grid --- */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+}
+
+/* --- Bottom Navigation (Mobile) --- */
+.app-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: var(--z-nav);
+    display: flex;
+    align-items: stretch;
+    height: var(--nav-bottom-height);
+    background-color: var(--bg-card);
+    border-top: 1px solid var(--color-gray-200);
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.bottom-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: color var(--transition-fast);
+    padding: var(--space-1) 0;
+    text-decoration: none;
+    min-width: 0;
+}
+
+.bottom-nav-item:hover {
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.bottom-nav-item.active {
+    color: var(--color-secondary);
+}
+
+.bottom-nav-item.active .bottom-nav-icon {
+    background-color: var(--color-primary-light);
+    border-radius: var(--radius-full);
+}
+
+.bottom-nav-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    padding: 4px 12px;
+    transition: all var(--transition-fast);
+}
+
+.bottom-nav-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.bottom-nav-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* --- Hamburger per "Altro" su mobile --- */
+.bottom-nav-more-menu {
+    position: fixed;
+    bottom: var(--nav-bottom-height);
+    right: 0;
+    background-color: var(--bg-card);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: var(--shadow-xl);
+    border: 1px solid var(--color-gray-200);
+    padding: var(--space-2) 0;
+    min-width: 200px;
+    z-index: var(--z-dropdown);
+    display: none;
+}
+
+.bottom-nav-more-menu.active {
+    display: block;
+}
+
+.more-menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    cursor: pointer;
+    background: none;
+    border: none;
+    width: 100%;
+    text-align: left;
+}
+
+.more-menu-item:hover {
+    background-color: var(--color-gray-50);
+}
+
+/* --- Login Screen --- */
+.login-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: var(--space-6);
+    background: linear-gradient(135deg, #1B2D4E 0%, #2A4A72 40%, #5BADD6 100%);
+}
+
+.login-card {
+    background-color: var(--bg-card);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-8);
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+}
+
+.login-logo {
+    width: 220px;
+    height: auto;
+    margin: 0 auto var(--space-6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.login-logo-img {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+}
+
+.login-title {
+    font-size: var(--font-size-xl);
+    margin-bottom: var(--space-1);
+}
+
+.login-subtitle {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-6);
+}
+
+.pin-input-group {
+    display: flex;
+    gap: var(--space-3);
+    justify-content: center;
+    margin-bottom: var(--space-6);
+}
+
+.pin-digit {
+    width: 52px;
+    height: 60px;
+    text-align: center;
+    font-size: var(--font-size-2xl);
+    font-weight: var(--font-weight-bold);
+    border: 2px solid var(--color-gray-300);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-card);
+    transition: border-color var(--transition-fast);
+}
+
+.pin-digit:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-light);
+    outline: none;
+}
+
+.login-error {
+    color: var(--color-danger);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-4);
+    min-height: 20px;
+}
+
+/* --- Sidebar Brand --- */
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4) var(--space-5);
+}
+
+.sidebar-brand-img {
+    height: 36px;
+    width: auto;
+    object-fit: contain;
+}
+
+/* ============================================================
+   RESPONSIVE BREAKPOINTS
+   ============================================================ */
+
+/* Small (>= 480px) */
+@media (min-width: 480px) {
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Medium - Tablet (>= 768px) */
+@media (min-width: 768px) {
+    .kpi-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .app-main {
+        padding: var(--space-6);
+        padding-bottom: calc(var(--nav-bottom-height) + var(--space-6));
+    }
+}
+
+/* Large - Desktop (>= 1024px) */
+@media (min-width: 1024px) {
+    .app-sidebar {
+        display: block;
+    }
+
+    .app-bottom-nav {
+        display: none;
+    }
+
+    .bottom-nav-more-menu {
+        display: none !important;
+    }
+
+    .app-main {
+        padding: var(--space-8);
+        padding-bottom: var(--space-8);
+    }
+
+    .kpi-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}

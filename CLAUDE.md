@@ -1,0 +1,1 @@
+dobbiamo creare un gestionale per la mia stazione di servizio, sei il mio sviluppatore full stack

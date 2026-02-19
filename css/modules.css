@@ -1,0 +1,348 @@
+/* ============================================================
+   TITANWASH - Stili Specifici per Modulo
+   Timeline lavaggi, form cassa, crediti, ecc.
+   ============================================================ */
+
+/* --- CASSA: Sezioni form --- */
+.cassa-section {
+    background-color: var(--bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-gray-200);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.cassa-section-title {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: var(--space-4);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.cassa-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+}
+
+.cassa-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.cassa-row-label {
+    flex: 1;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    min-width: 120px;
+}
+
+.cassa-row-input {
+    flex: 1;
+    max-width: 140px;
+}
+
+.cassa-totale {
+    background-color: var(--color-secondary);
+    color: var(--text-inverse);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    text-align: center;
+    margin-bottom: var(--space-4);
+}
+
+.cassa-totale-label {
+    font-size: var(--font-size-sm);
+    opacity: 0.8;
+    margin-bottom: var(--space-2);
+}
+
+.cassa-totale-value {
+    font-size: var(--font-size-3xl);
+    font-weight: var(--font-weight-bold);
+}
+
+.cassa-differenza {
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    text-align: center;
+    margin-bottom: var(--space-4);
+}
+
+.cassa-differenza.ok {
+    background-color: var(--color-success-bg);
+    border: 2px solid var(--color-success);
+    color: #166534;
+}
+
+.cassa-differenza.warning {
+    background-color: var(--color-warning-bg);
+    border: 2px solid var(--color-warning);
+    color: #92400E;
+}
+
+.cassa-differenza.danger {
+    background-color: var(--color-danger-bg);
+    border: 2px solid var(--color-danger);
+    color: #991B1B;
+}
+
+/* --- LAVAGGI: Timeline --- */
+.timeline-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--space-2) 0;
+}
+
+.timeline {
+    position: relative;
+    min-width: 600px;
+    min-height: 120px;
+}
+
+.timeline-header {
+    display: flex;
+    border-bottom: 1px solid var(--color-gray-200);
+    margin-bottom: var(--space-2);
+}
+
+.timeline-hour {
+    flex: 1;
+    text-align: center;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    padding: var(--space-1) 0;
+    min-width: 50px;
+}
+
+.timeline-row {
+    position: relative;
+    height: 48px;
+    margin-bottom: var(--space-2);
+    border-bottom: 1px solid var(--color-gray-100);
+}
+
+.timeline-row-label {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-secondary);
+    width: 60px;
+}
+
+.timeline-bar {
+    position: absolute;
+    top: 4px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-2);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-inverse);
+    cursor: pointer;
+    transition: opacity var(--transition-fast);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 30px;
+}
+
+.timeline-bar:hover {
+    opacity: 0.85;
+}
+
+.timeline-bar.aspetta {
+    background-color: var(--color-aspetta);
+}
+
+.timeline-bar.lascia {
+    background-color: var(--color-lascia);
+}
+
+.timeline-bar.completato {
+    background-color: var(--color-gray-400);
+    opacity: 0.6;
+}
+
+/* --- LAVAGGI: Vista tabella compatta mobile --- */
+.lavaggio-card-mobile {
+    background-color: var(--bg-card);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-gray-200);
+    padding: var(--space-3);
+    margin-bottom: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.lavaggio-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.lavaggio-card-cliente {
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-sm);
+}
+
+.lavaggio-card-details {
+    display: flex;
+    gap: var(--space-4);
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+}
+
+.lavaggio-card-actions {
+    display: flex;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-gray-100);
+}
+
+/* --- CREDITI: Dettaglio --- */
+.credito-dettaglio {
+    background-color: var(--bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-gray-200);
+    overflow: hidden;
+}
+
+.credito-dettaglio-header {
+    background-color: var(--color-gray-50);
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--color-gray-200);
+}
+
+.credito-dettaglio-body {
+    padding: var(--space-4);
+}
+
+.credito-info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-gray-100);
+    font-size: var(--font-size-sm);
+}
+
+.credito-info-row:last-child {
+    border-bottom: none;
+}
+
+.credito-info-label {
+    color: var(--text-secondary);
+}
+
+.credito-info-value {
+    font-weight: var(--font-weight-medium);
+}
+
+/* --- CLIENTI: Scheda dettaglio --- */
+.cliente-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+}
+
+.cliente-stat-item {
+    background-color: var(--color-gray-50);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    text-align: center;
+}
+
+.cliente-stat-value {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+}
+
+.cliente-stat-label {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+}
+
+/* --- LISTINO PERSONALIZZATO --- */
+.listino-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+}
+
+.listino-table th,
+.listino-table td {
+    padding: var(--space-2) var(--space-3);
+    text-align: left;
+    border-bottom: 1px solid var(--color-gray-100);
+}
+
+.listino-table th {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-semibold);
+}
+
+.listino-sconto {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+}
+
+.listino-sconto.discount {
+    color: var(--color-success);
+}
+
+.listino-sconto.surcharge {
+    color: var(--color-danger);
+}
+
+/* --- MAGAZZINO: Alert sotto scorta --- */
+.stock-alert {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background-color: var(--color-warning-bg);
+    border-radius: var(--radius-md);
+    border-left: 4px solid var(--color-warning);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-4);
+}
+
+/* --- MANUTENZIONI: Scadenzario --- */
+.scadenza-prossima {
+    color: var(--color-warning);
+    font-weight: var(--font-weight-semibold);
+}
+
+.scadenza-superata {
+    color: var(--color-danger);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* --- Responsive cassa --- */
+@media (min-width: 480px) {
+    .cassa-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 768px) {
+    .cassa-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .cliente-stats {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
