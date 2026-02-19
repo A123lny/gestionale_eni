@@ -1,0 +1,10 @@
+{
+  // Estensioni consigliate per questo progetto
+  // VS Code chiederà di installarle automaticamente quando apri il progetto
+  "recommendations": [
+    // Git avanzato: cronologia commit, blame inline, confronto branch
+    "eamodio.gitlens",
+    // Evidenzia visivamente le righe modificate rispetto all'ultimo commit
+    "ryu1kn.partial-diff"
+  ]
+}

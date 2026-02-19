@@ -1,0 +1,32 @@
+{
+  // --- GIT: Source Control sidebar ---
+
+  // Mostra i file modificati raggruppati per cartella nel pannello Source Control
+  "scm.defaultViewMode": "tree",
+
+  // Fa il fetch automatico dal remote ogni minuto (vedi se ci sono aggiornamenti remoti)
+  "git.autofetch": true,
+  "git.autofetchPeriod": 60,
+
+  // Quando premi Commit senza aver fatto manualmente lo stage, fa lo stage di TUTTI i file modificati automaticamente
+  "git.enableSmartCommit": true,
+  "git.smartCommitChanges": "all",
+
+  // Non chiede conferma ogni volta che fai Sync (push/pull)
+  "git.confirmSync": false,
+
+  // Mostra il numero di modifiche pendenti sull'icona Source Control nella barra laterale
+  "git.countBadge": "all",
+
+  // Decorazioni colori sui file nell'explorer (verde = nuovo, giallo = modificato, rosso = eliminato)
+  "git.decorations.enabled": true,
+
+  // Apre automaticamente il diff del file quando lo clicchi nel pannello Source Control
+  "scm.alwaysShowRepositories": true,
+
+  // Suggerisce messaggi di commit basati sui file modificati
+  "git.suggestSmartCommit": true,
+
+  // Abilita la timeline dei file (tasto destro su un file > Timeline per vedere la cronologia)
+  "timeline.excludeSources": []
+}
