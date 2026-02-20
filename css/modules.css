@@ -446,6 +446,262 @@
     }
 }
 
+/* --- CASSA: subtotale riga (più leggero del totale principale) --- */
+.cassa-subtotal {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-secondary);
+    padding: var(--space-1) 0;
+}
+
+/* --- CASSA: Tab navigazione Chiusura / Storico --- */
+.cassa-tabs {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    border-bottom: 2px solid var(--color-gray-200);
+}
+
+.cassa-tab {
+    background: none;
+    border: none;
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-gray-500);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.cassa-tab.active {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+}
+
+/* --- CASSA: header section (data + stato) --- */
+.cassa-header-section {
+    display: flex;
+    align-items: center;
+}
+
+.cassa-data-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+
+/* --- CASSA: Tabella carburante ottimizzata --- */
+.fuel-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.fuel-header {
+    display: grid;
+    grid-template-columns: 1fr 100px 110px;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-1);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--color-gray-200);
+    margin-bottom: var(--space-2);
+}
+
+.fuel-row {
+    display: grid;
+    grid-template-columns: 1fr 100px 110px;
+    gap: var(--space-2);
+    align-items: center;
+    padding: var(--space-1) 0;
+    border-bottom: 1px solid var(--color-gray-100);
+}
+
+.fuel-row:last-child {
+    border-bottom: none;
+}
+
+.fuel-label {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.fuel-litri,
+.fuel-euro {
+    width: 100%;
+}
+
+/* --- CASSA: POS dinamici --- */
+.pos-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+
+.pos-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.pos-nome {
+    flex: 2;
+    min-width: 0;
+}
+
+.pos-importo {
+    flex: 1;
+    min-width: 80px;
+    max-width: 130px;
+}
+
+.pos-remove-btn {
+    background: none;
+    border: 1px solid var(--color-danger);
+    color: var(--color-danger);
+    border-radius: var(--radius-md);
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: background-color 0.15s;
+}
+
+.pos-remove-btn:hover {
+    background-color: var(--color-danger-bg);
+}
+
+.pos-add-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    background: none;
+    border: 1px dashed var(--color-primary);
+    color: var(--color-primary);
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    margin-top: var(--space-1);
+    transition: background-color 0.15s;
+}
+
+.pos-add-btn:hover {
+    background-color: #EBF5FB;
+}
+
+/* --- CASSA: Box informativo (self notturno) --- */
+.cassa-info-box {
+    background-color: var(--color-gray-50);
+    border-left: 3px solid var(--color-primary);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+/* --- CASSA: Sezione spese giornaliere --- */
+.cassa-spese-section {
+    background-color: #FFFBEB;
+    border: 1px solid #FDE68A;
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.spesa-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid #FDE68A;
+    font-size: var(--font-size-sm);
+}
+
+.spesa-row:last-of-type {
+    border-bottom: none;
+}
+
+.spesa-desc {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.spesa-importo {
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-danger);
+    flex-shrink: 0;
+}
+
+.cassa-spese-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: var(--space-3);
+    margin-top: var(--space-2);
+    border-top: 2px solid #FDE68A;
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-sm);
+}
+
+.spesa-tot-value {
+    font-size: var(--font-size-base);
+    color: var(--color-danger);
+    font-weight: var(--font-weight-bold);
+}
+
+/* --- CASSA: Storico mensile --- */
+.cassa-storico-filters {
+    background-color: var(--bg-card);
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+/* --- SPESE: form grid --- */
+.spese-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+}
+
+/* --- Badge extra --- */
+.badge-success {
+    background-color: var(--color-success-bg);
+    color: #166534;
+}
+
+.badge-danger {
+    background-color: var(--color-danger-bg);
+    color: #991B1B;
+}
+
+.badge-gray {
+    background-color: var(--color-gray-100);
+    color: var(--color-gray-600);
+}
+
+.badge-info {
+    background-color: var(--color-info-bg);
+    color: #1E40AF;
+}
+
 /* --- Responsive cassa --- */
 @media (min-width: 480px) {
     .cassa-grid {
