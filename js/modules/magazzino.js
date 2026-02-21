@@ -19,7 +19,10 @@ ENI.Modules.Magazzino = (function() {
         container.innerHTML =
             '<div class="page-header">' +
                 '<h1 class="page-title">\u{1F4E6} Magazzino</h1>' +
-                (canWrite ? '<button class="btn btn-primary" id="btn-nuovo-prodotto">\u2795 Nuovo Prodotto</button>' : '') +
+                '<div class="page-header-actions">' +
+                    (canWrite && ENI.State.getUserRole() === 'Admin' ? '<button class="btn btn-outline" id="btn-import-csv">\u{1F4C2} Importa CSV</button>' : '') +
+                    (canWrite ? '<button class="btn btn-primary" id="btn-nuovo-prodotto">\u2795 Nuovo Prodotto</button>' : '') +
+                '</div>' +
             '</div>' +
 
             // Alert sotto scorta
@@ -71,6 +74,16 @@ ENI.Modules.Magazzino = (function() {
             btnNuovo.addEventListener('click', _showFormNuovoProdotto);
         }
 
+        // Import CSV
+        var btnImport = container.querySelector('#btn-import-csv');
+        if (btnImport) {
+            btnImport.addEventListener('click', function() {
+                if (ENI.Modules.MagazzinoImport) {
+                    ENI.Modules.MagazzinoImport.show(function() { _loadProdotti(); });
+                }
+            });
+        }
+
         // Modifica giacenza +/-
         ENI.UI.delegate(container, 'click', '[data-giacenza-action]', function(e, el) {
             e.stopPropagation();
@@ -119,7 +132,8 @@ ENI.Modules.Magazzino = (function() {
             var matchCat = _categoriaFiltro === 'Tutti' || p.categoria === _categoriaFiltro;
             var matchSearch = !_searchTerm ||
                 p.nome_prodotto.toLowerCase().indexOf(_searchTerm) !== -1 ||
-                p.codice.toLowerCase().indexOf(_searchTerm) !== -1;
+                p.codice.toLowerCase().indexOf(_searchTerm) !== -1 ||
+                (p.barcode && p.barcode.toLowerCase().indexOf(_searchTerm) !== -1);
             return matchCat && matchSearch;
         });
 
@@ -214,6 +228,10 @@ ENI.Modules.Magazzino = (function() {
 
                 '<div class="form-row">' +
                     '<div class="form-group">' +
+                        '<label class="form-label">Barcode (EAN)</label>' +
+                        '<input type="text" class="form-input" id="prod-barcode" placeholder="Scansiona o inserisci barcode">' +
+                    '</div>' +
+                    '<div class="form-group">' +
                         '<label class="form-label">Categoria</label>' +
                         '<select class="form-select" id="prod-categoria">' +
                             ENI.Config.CATEGORIE_MAGAZZINO.map(function(c) {
@@ -221,6 +239,9 @@ ENI.Modules.Magazzino = (function() {
                             }).join('') +
                         '</select>' +
                     '</div>' +
+                '</div>' +
+
+                '<div class="form-row">' +
                     '<div class="form-group">' +
                         '<label class="form-label">Fornitore</label>' +
                         '<input type="text" class="form-input" id="prod-fornitore">' +
@@ -271,6 +292,7 @@ ENI.Modules.Magazzino = (function() {
             var dati = {
                 codice: codice,
                 nome_prodotto: nome,
+                barcode: modal.querySelector('#prod-barcode').value.trim() || null,
                 categoria: modal.querySelector('#prod-categoria').value,
                 fornitore: modal.querySelector('#prod-fornitore').value.trim() || null,
                 prezzo_acquisto: parseFloat(modal.querySelector('#prod-prezzo-acquisto').value) || null,

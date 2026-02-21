@@ -718,3 +718,639 @@
         grid-template-columns: repeat(3, 1fr);
     }
 }
+
+/* ============================================================
+   MODULO VENDITA / POS
+   ============================================================ */
+
+/* --- Page header actions --- */
+.page-header-actions {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* --- POS Layout --- */
+.pos-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+}
+
+@media (min-width: 768px) {
+    .pos-layout {
+        grid-template-columns: 1fr 360px;
+        align-items: start;
+    }
+}
+
+@media (min-width: 1024px) {
+    .pos-layout {
+        grid-template-columns: 1fr 400px;
+    }
+}
+
+/* --- Barcode Input --- */
+.pos-barcode-wrapper {
+    position: relative;
+    margin-bottom: var(--space-3);
+}
+
+.pos-barcode-input {
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    font-size: 1.25rem;
+    font-weight: 600;
+    border: 2px solid var(--color-primary);
+    border-radius: var(--radius-lg);
+    background: var(--color-white);
+    transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.pos-barcode-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 4px rgba(27, 45, 78, 0.15);
+}
+
+.pos-barcode-input::placeholder {
+    font-weight: 400;
+    color: var(--color-gray-400);
+}
+
+/* --- Search Dropdown --- */
+.pos-search-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--color-white);
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 50;
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 4px;
+}
+
+.pos-search-item {
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    border-bottom: 1px solid var(--color-gray-100);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.15s;
+}
+
+.pos-search-item:last-child {
+    border-bottom: none;
+}
+
+.pos-search-item:hover {
+    background-color: var(--color-gray-50);
+}
+
+.pos-search-item-name {
+    font-weight: 500;
+}
+
+.pos-search-item-code {
+    font-size: 0.75rem;
+    color: var(--color-gray-500);
+}
+
+.pos-search-item-price {
+    font-weight: 600;
+    color: var(--color-primary);
+    white-space: nowrap;
+    margin-left: var(--space-2);
+}
+
+/* --- Quick Actions --- */
+.pos-quick-actions {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+    flex-wrap: wrap;
+}
+
+/* --- Cart Table --- */
+.pos-cart-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.pos-cart-table th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--color-gray-500);
+    padding: var(--space-2);
+    text-align: left;
+    border-bottom: 2px solid var(--color-gray-200);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
+.pos-cart-table td {
+    padding: var(--space-2);
+    border-bottom: 1px solid var(--color-gray-100);
+    vertical-align: middle;
+}
+
+.pos-cart-table .text-right {
+    text-align: right;
+}
+
+.pos-cart-nome {
+    font-weight: 500;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pos-cart-codice {
+    font-size: 0.7rem;
+    color: var(--color-gray-400);
+}
+
+/* --- Qty Controls --- */
+.pos-qty-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.pos-qty-controls button {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: var(--color-gray-50);
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-gray-600);
+    transition: background-color 0.15s;
+}
+
+.pos-qty-controls button:hover {
+    background: var(--color-gray-200);
+}
+
+.pos-qty-controls span {
+    width: 32px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+/* --- Remove Item --- */
+.pos-remove-btn {
+    background: none;
+    border: none;
+    color: var(--color-danger);
+    cursor: pointer;
+    padding: 4px;
+    font-size: 1rem;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+}
+
+.pos-remove-btn:hover {
+    opacity: 1;
+}
+
+/* --- Payment Panel --- */
+.pos-payment-panel {
+    background: var(--color-white);
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-sm);
+}
+
+@media (min-width: 768px) {
+    .pos-payment-panel {
+        position: sticky;
+        top: var(--space-4);
+    }
+}
+
+.pos-summary {
+    margin-bottom: var(--space-3);
+}
+
+.pos-summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-1) 0;
+    font-size: 0.9rem;
+}
+
+.pos-summary-divider {
+    border: none;
+    border-top: 2px solid var(--color-gray-200);
+    margin: var(--space-2) 0;
+}
+
+.pos-totale {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-primary);
+}
+
+.pos-totale-label {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+/* --- Discount Row --- */
+.pos-discount-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin-top: var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.pos-discount-row input {
+    width: 80px;
+    padding: var(--space-1) var(--space-2);
+    font-size: 0.85rem;
+}
+
+.pos-discount-row select {
+    padding: var(--space-1) var(--space-2);
+    font-size: 0.85rem;
+}
+
+/* --- Payment Buttons --- */
+.pos-pay-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+}
+
+.pos-pay-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    color: var(--color-white);
+}
+
+.pos-pay-btn:hover {
+    opacity: 0.9;
+}
+
+.pos-pay-btn:active {
+    transform: scale(0.98);
+}
+
+.pos-pay-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.pos-pay-contanti {
+    background: #16a34a;
+}
+
+.pos-pay-pos {
+    background: #2563eb;
+}
+
+.pos-pay-misto {
+    background: #ea580c;
+}
+
+/* --- Cart Empty State --- */
+.pos-cart-empty {
+    text-align: center;
+    padding: var(--space-6) var(--space-4);
+    color: var(--color-gray-400);
+}
+
+.pos-cart-empty-icon {
+    font-size: 2.5rem;
+    margin-bottom: var(--space-2);
+}
+
+/* --- Storico Tab --- */
+.pos-storico-filters {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-bottom: var(--space-3);
+}
+
+.pos-storico-filters .form-group {
+    margin-bottom: 0;
+}
+
+.pos-storico-totali {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-3);
+}
+
+.pos-storico-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-full);
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: var(--color-gray-100);
+    color: var(--color-gray-700);
+}
+
+/* --- Reso Modal --- */
+.pos-reso-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-gray-100);
+}
+
+.pos-reso-item label {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+}
+
+.pos-reso-qty {
+    width: 60px;
+    padding: var(--space-1);
+    text-align: center;
+}
+
+/* --- Tabs --- */
+.pos-tabs {
+    display: flex;
+    border-bottom: 2px solid var(--color-gray-200);
+    margin-bottom: var(--space-4);
+    gap: 0;
+}
+
+.pos-tab {
+    padding: var(--space-2) var(--space-4);
+    border: none;
+    background: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-gray-500);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.pos-tab:hover {
+    color: var(--color-gray-700);
+}
+
+.pos-tab.active {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+    font-weight: 600;
+}
+
+.pos-tab-content {
+    display: none;
+}
+
+.pos-tab-content.active {
+    display: block;
+}
+
+/* --- POS Indicator --- */
+.pos-indicator {
+    font-size: 0.75rem;
+    color: #16a34a;
+    font-weight: 500;
+}
+
+/* --- Import Progress --- */
+.import-progress {
+    margin: var(--space-3) 0;
+}
+
+.import-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--color-gray-200);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.import-progress-fill {
+    height: 100%;
+    background: var(--color-primary);
+    border-radius: var(--radius-full);
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+.import-progress-text {
+    font-size: 0.8rem;
+    color: var(--color-gray-500);
+    margin-top: var(--space-1);
+    text-align: center;
+}
+
+/* --- Import Preview Table --- */
+.import-preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    margin-top: var(--space-2);
+}
+
+.import-preview-table th {
+    background: var(--color-gray-50);
+    padding: var(--space-1) var(--space-2);
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    color: var(--color-gray-500);
+}
+
+.import-preview-table td {
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--color-gray-100);
+}
+
+/* --- Import Stats --- */
+.import-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+
+.import-stat {
+    text-align: center;
+    padding: var(--space-2);
+    background: var(--color-gray-50);
+    border-radius: var(--radius-md);
+}
+
+.import-stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-primary);
+}
+
+.import-stat-label {
+    font-size: 0.75rem;
+    color: var(--color-gray-500);
+}
+
+/* ============================================================
+   RECEIPT PRINT STYLES
+   ============================================================ */
+
+#receipt-print {
+    display: none;
+}
+
+@media print {
+    /* Hide everything except the receipt */
+    body * {
+        visibility: hidden;
+    }
+
+    #receipt-print,
+    #receipt-print * {
+        visibility: visible;
+    }
+
+    #receipt-print {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 72mm;
+        padding: 2mm;
+        font-family: 'Courier New', monospace;
+        font-size: 10px;
+        line-height: 1.3;
+        color: #000;
+        background: #fff;
+    }
+
+    .receipt-header {
+        text-align: center;
+        border-bottom: 1px dashed #000;
+        padding-bottom: 4px;
+        margin-bottom: 4px;
+    }
+
+    .receipt-header h2 {
+        font-size: 14px;
+        margin: 0;
+    }
+
+    .receipt-header p {
+        font-size: 9px;
+        margin: 1px 0;
+    }
+
+    .receipt-info {
+        font-size: 9px;
+        margin-bottom: 4px;
+        border-bottom: 1px dashed #000;
+        padding-bottom: 4px;
+    }
+
+    .receipt-items {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 4px;
+    }
+
+    .receipt-items th {
+        font-size: 9px;
+        text-align: left;
+        border-bottom: 1px solid #000;
+        padding: 1px 0;
+    }
+
+    .receipt-items td {
+        font-size: 9px;
+        padding: 1px 0;
+    }
+
+    .receipt-items .text-right {
+        text-align: right;
+    }
+
+    .receipt-totals {
+        border-top: 1px dashed #000;
+        padding-top: 4px;
+        margin-top: 4px;
+    }
+
+    .receipt-totals .receipt-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+    }
+
+    .receipt-totals .receipt-total-big {
+        font-size: 14px;
+        font-weight: bold;
+        border-top: 2px solid #000;
+        padding-top: 2px;
+        margin-top: 2px;
+    }
+
+    .receipt-footer {
+        text-align: center;
+        border-top: 1px dashed #000;
+        padding-top: 4px;
+        margin-top: 4px;
+        font-size: 9px;
+    }
+
+    .receipt-barcode {
+        text-align: center;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        letter-spacing: 2px;
+        margin-top: 4px;
+    }
+
+    /* Page setup for thermal paper */
+    @page {
+        size: 80mm auto;
+        margin: 0;
+    }
+}

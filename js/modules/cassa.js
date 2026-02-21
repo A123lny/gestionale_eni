@@ -11,6 +11,7 @@ ENI.Modules.Cassa = (function() {
 
     var _cassa = null;
     var _spese = [];
+    var _posTotals = null;
     var _dataSelezionata = '';
 
     // ============================================================
@@ -67,6 +68,17 @@ ENI.Modules.Cassa = (function() {
             _cassa = null;
             _spese = [];
         }
+
+        // Carica totali POS vendita (se cassa non chiusa)
+        _posTotals = null;
+        if (!_cassa || _cassa.stato !== 'chiusa') {
+            try {
+                _posTotals = await ENI.API.getVenditeTotaliPerData(_dataSelezionata);
+            } catch(e) {
+                _posTotals = null;
+            }
+        }
+
         _renderForm();
     }
 
@@ -120,14 +132,24 @@ ENI.Modules.Cassa = (function() {
                 ) +
 
                 // Venduto Altro
-                _section('\u{1F6D2} Venduto Altro',
+                _section('\u{1F6D2} Venduto Altro' +
+                    (_posTotals && _posTotals.numVendite > 0
+                        ? ' <span class="badge badge-success" style="font-size:0.75rem; margin-left:8px;">' +
+                            _posTotals.numVendite + ' vendite POS: ' + ENI.UI.formatValuta(_posTotals.totaleVendite) +
+                          '</span>'
+                        : ''),
                     '<div class="cassa-grid">' +
-                        _cassaInput('Bar', 'venduto_bar', c.venduto_bar, 'number') +
-                        _cassaInput('Olio', 'venduto_olio', c.venduto_olio, 'number') +
-                        _cassaInput('Accessori', 'venduto_accessori', c.venduto_accessori, 'number') +
-                        _cassaInput('AdBlue', 'venduto_adblue', c.venduto_adblue, 'number') +
+                        _cassaInputPOS('Bar', 'venduto_bar', c.venduto_bar, 'Bar') +
+                        _cassaInputPOS('Oli e lubrificanti', 'venduto_olio', c.venduto_olio, 'Oli e lubrificanti') +
+                        _cassaInputPOS('Accessori', 'venduto_accessori', c.venduto_accessori, 'Accessori') +
+                        _cassaInputPOS('AdBlue', 'venduto_adblue', c.venduto_adblue, 'AdBlue') +
                         _cassaInput('Lavaggi', 'venduto_lavaggi', c.venduto_lavaggi, 'number') +
                         _cassaInput('Buoni', 'venduto_buoni', c.venduto_buoni, 'number') +
+                        _cassaInputPOS('Tergicristalli', 'venduto_tergicristalli', c.venduto_tergicristalli, 'Tergicristalli') +
+                        _cassaInputPOS('Catene', 'venduto_catene', c.venduto_catene, 'Catene') +
+                        _cassaInputPOS('Profumatori', 'venduto_profumatori', c.venduto_profumatori, 'Profumatori') +
+                        _cassaInputPOS('Detailing', 'venduto_detailing', c.venduto_detailing, 'Detailing') +
+                        _cassaInputPOS('Uso interno', 'venduto_uso_interno', c.venduto_uso_interno, 'Uso interno') +
                     '</div>' +
                     '<div class="cassa-subtotal text-right mt-2">Totale Altro: <span id="tot-altro">\u20AC 0,00</span></div>'
                 ) +
@@ -305,6 +327,23 @@ ENI.Modules.Cassa = (function() {
         '</div>';
     }
 
+    // Input con auto-populate da totali POS vendita
+    function _cassaInputPOS(label, name, value, posCategoria) {
+        var posVal = (_posTotals && _posTotals.perCategoria && _posTotals.perCategoria[posCategoria])
+            ? _posTotals.perCategoria[posCategoria] : 0;
+        // Se il campo cassa non ha valore ma il POS si, usa il valore POS
+        var displayVal = (value !== null && value !== undefined && value !== 0) ? value : (posVal > 0 ? posVal : '');
+        var hint = posVal > 0 ? '<span class="text-xs" style="color: var(--color-success); margin-left: 4px;">(POS: ' + ENI.UI.formatValuta(posVal) + ')</span>' : '';
+
+        return '<div class="cassa-row">' +
+            '<span class="cassa-row-label">' + label + hint + '</span>' +
+            '<div class="cassa-row-input">' +
+                '<input type="number" step="0.01" min="0" class="form-input cassa-field" ' +
+                    'data-field="' + name + '" value="' + displayVal + '">' +
+            '</div>' +
+        '</div>';
+    }
+
     // --- Tabella carburante ottimizzata ---
 
     function _renderCarburanteTable(c) {
@@ -444,7 +483,9 @@ ENI.Modules.Cassa = (function() {
         // Altro venduto
         var totAltro =
             val('venduto_bar') + val('venduto_olio') + val('venduto_accessori') +
-            val('venduto_adblue') + val('venduto_lavaggi') + val('venduto_buoni');
+            val('venduto_adblue') + val('venduto_lavaggi') + val('venduto_buoni') +
+            val('venduto_tergicristalli') + val('venduto_catene') + val('venduto_profumatori') +
+            val('venduto_detailing') + val('venduto_uso_interno');
 
         var totVenduto = totCarburante + totAltro;
 
@@ -582,7 +623,9 @@ ENI.Modules.Cassa = (function() {
             val('gpl_euro') + val('self_notturno_euro');
         var totAltro =
             val('venduto_bar') + val('venduto_olio') + val('venduto_accessori') +
-            val('venduto_adblue') + val('venduto_lavaggi') + val('venduto_buoni');
+            val('venduto_adblue') + val('venduto_lavaggi') + val('venduto_buoni') +
+            val('venduto_tergicristalli') + val('venduto_catene') + val('venduto_profumatori') +
+            val('venduto_detailing') + val('venduto_uso_interno');
         var totVenduto = totCarburante + totAltro;
 
         var fondoCassa = val('fondo_cassa');
@@ -627,12 +670,17 @@ ENI.Modules.Cassa = (function() {
             diesel_plus_litri: val('diesel_plus_litri'), diesel_plus_euro: val('diesel_plus_euro'),
             gpl_litri:         val('gpl_litri'),         gpl_euro:         val('gpl_euro'),
             self_notturno_litri: val('self_notturno_litri'), self_notturno_euro: val('self_notturno_euro'),
-            venduto_bar:        val('venduto_bar'),
-            venduto_olio:       val('venduto_olio'),
-            venduto_accessori:  val('venduto_accessori'),
-            venduto_adblue:     val('venduto_adblue'),
-            venduto_lavaggi:    val('venduto_lavaggi'),
-            venduto_buoni:      val('venduto_buoni'),
+            venduto_bar:            val('venduto_bar'),
+            venduto_olio:           val('venduto_olio'),
+            venduto_accessori:      val('venduto_accessori'),
+            venduto_adblue:         val('venduto_adblue'),
+            venduto_lavaggi:        val('venduto_lavaggi'),
+            venduto_buoni:          val('venduto_buoni'),
+            venduto_tergicristalli: val('venduto_tergicristalli'),
+            venduto_catene:         val('venduto_catene'),
+            venduto_profumatori:    val('venduto_profumatori'),
+            venduto_detailing:      val('venduto_detailing'),
+            venduto_uso_interno:    val('venduto_uso_interno'),
             contanti_banconote: val('contanti_banconote'),
             contanti_monete:    val('contanti_monete'),
             pos_bsi_carburante:    collectPosGroup('pos-bsi-carburante'),

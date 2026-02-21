@@ -19,6 +19,7 @@ ENI.Router = (function() {
         'spese':        { module: 'Spese',        id: 'spese' },
         'crediti':      { module: 'Crediti',      id: 'crediti' },
         'lavaggi':      { module: 'Lavaggi',      id: 'lavaggi' },
+        'vendita':      { module: 'Vendita',      id: 'vendita' },
         'magazzino':    { module: 'Magazzino',    id: 'magazzino' },
         'personale':    { module: 'Personale',    id: 'personale' },
         'manutenzioni': { module: 'Manutenzioni', id: 'manutenzioni' },

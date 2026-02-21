@@ -569,6 +569,246 @@ ENI.API = (function() {
         };
     }
 
+    // --- Bulk Insert (per import CSV) ---
+
+    async function insertBulk(tabella, dataArray) {
+        var result = await getClient().from(tabella).insert(dataArray).select();
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    // --- Magazzino: Cerca per Barcode ---
+
+    async function cercaProdottoByBarcode(barcode) {
+        var result = await getClient()
+            .from('magazzino')
+            .select('*')
+            .eq('barcode', barcode)
+            .eq('attivo', true)
+            .limit(1);
+        if (result.error) throw new Error(result.error.message);
+        return (result.data && result.data.length > 0) ? result.data[0] : null;
+    }
+
+    // --- Magazzino: Cerca per nome (autocomplete POS) ---
+
+    async function cercaProdottiByNome(term) {
+        var result = await getClient()
+            .from('magazzino')
+            .select('*')
+            .eq('attivo', true)
+            .ilike('nome_prodotto', '%' + term + '%')
+            .order('nome_prodotto', { ascending: true })
+            .limit(20);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // --- Vendite ---
+
+    async function salvaVendita(vendita, dettagli) {
+        var codice = await generaCodice('vendite', ENI.Config.PREFISSI.VENDITA);
+        vendita.codice = codice;
+        vendita.operatore_id = ENI.State.getUserId();
+        vendita.operatore_nome = ENI.State.getUserName();
+
+        var record = await insert('vendite', vendita);
+
+        dettagli.forEach(function(d) {
+            d.vendita_id = record.id;
+        });
+        await insertBulk('vendite_dettaglio', dettagli);
+
+        // Scalare giacenza
+        for (var i = 0; i < dettagli.length; i++) {
+            var d = dettagli[i];
+            if (d.prodotto_id) {
+                try {
+                    var prodotto = await getById('magazzino', d.prodotto_id);
+                    if (prodotto) {
+                        await update('magazzino', d.prodotto_id, {
+                            giacenza: Math.max(0, prodotto.giacenza - d.quantita),
+                            ultima_movimentazione: new Date().toISOString()
+                        });
+                    }
+                } catch(e) {
+                    console.error('Errore aggiornamento giacenza prodotto:', d.prodotto_id, e);
+                }
+            }
+        }
+
+        await scriviLog('Vendita', 'Vendita',
+            codice + ' - ' + ENI.UI.formatValuta(vendita.totale) +
+            ' - ' + vendita.metodo_pagamento);
+
+        return record;
+    }
+
+    async function getVendite(options) {
+        options = options || {};
+        var query = getClient()
+            .from('vendite')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (options.data) {
+            query = query.eq('data', options.data);
+        }
+        if (options.da) {
+            query = query.gte('data', options.da);
+        }
+        if (options.a) {
+            query = query.lte('data', options.a);
+        }
+        if (options.stato) {
+            query = query.eq('stato', options.stato);
+        }
+        if (options.operatore_id) {
+            query = query.eq('operatore_id', options.operatore_id);
+        }
+
+        query = query.limit(options.limit || 100);
+
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getVenditaDettaglio(venditaId) {
+        return await getAll('vendite_dettaglio', {
+            filters: [{ op: 'eq', col: 'vendita_id', val: venditaId }]
+        });
+    }
+
+    async function annullaVendita(id, vendita) {
+        var record = await update('vendite', id, { stato: 'annullata' });
+
+        // Ripristinare giacenza
+        var dettagli = await getVenditaDettaglio(id);
+        for (var i = 0; i < dettagli.length; i++) {
+            var d = dettagli[i];
+            if (d.prodotto_id) {
+                try {
+                    var prodotto = await getById('magazzino', d.prodotto_id);
+                    if (prodotto) {
+                        await update('magazzino', d.prodotto_id, {
+                            giacenza: prodotto.giacenza + d.quantita,
+                            ultima_movimentazione: new Date().toISOString()
+                        });
+                    }
+                } catch(e) {
+                    console.error('Errore ripristino giacenza:', d.prodotto_id, e);
+                }
+            }
+        }
+
+        await scriviLog('Annullata_Vendita', 'Vendita',
+            vendita.codice + ' - ' + ENI.UI.formatValuta(vendita.totale));
+        return record;
+    }
+
+    // --- Totali vendite per data (per auto-populate cassa) ---
+
+    async function getVenditeTotaliPerData(data) {
+        var vendite = await getVendite({ data: data, stato: 'completata', limit: 500 });
+
+        if (!vendite || vendite.length === 0) {
+            return { totaleVendite: 0, numVendite: 0, perCategoria: {}, perMetodo: { contanti: 0, pos: 0 } };
+        }
+
+        var totaleVendite = 0;
+        var perMetodo = { contanti: 0, pos: 0 };
+        vendite.forEach(function(v) {
+            totaleVendite += Number(v.totale || 0);
+            perMetodo.contanti += Number(v.importo_contanti || 0);
+            perMetodo.pos += Number(v.importo_pos || 0);
+        });
+
+        // Totali per categoria dalle righe dettaglio
+        var perCategoria = {};
+        for (var i = 0; i < vendite.length; i++) {
+            var dettagli = await getVenditaDettaglio(vendite[i].id);
+            dettagli.forEach(function(d) {
+                var cat = d.categoria || 'Altro';
+                if (!perCategoria[cat]) perCategoria[cat] = 0;
+                perCategoria[cat] += Number(d.totale_riga || 0);
+            });
+        }
+
+        return {
+            totaleVendite: totaleVendite,
+            numVendite: vendite.length,
+            perCategoria: perCategoria,
+            perMetodo: perMetodo
+        };
+    }
+
+    // --- Resi ---
+
+    async function salvaReso(reso, dettagli) {
+        var codice = await generaCodice('resi', ENI.Config.PREFISSI.RESO);
+        reso.codice = codice;
+        reso.operatore_id = ENI.State.getUserId();
+        reso.operatore_nome = ENI.State.getUserName();
+
+        var record = await insert('resi', reso);
+
+        dettagli.forEach(function(d) {
+            d.reso_id = record.id;
+        });
+        await insertBulk('resi_dettaglio', dettagli);
+
+        // Riassortire giacenza
+        for (var i = 0; i < dettagli.length; i++) {
+            var d = dettagli[i];
+            if (d.prodotto_id && d.riassortito) {
+                try {
+                    var prodotto = await getById('magazzino', d.prodotto_id);
+                    if (prodotto) {
+                        await update('magazzino', d.prodotto_id, {
+                            giacenza: prodotto.giacenza + d.quantita_resa,
+                            ultima_movimentazione: new Date().toISOString()
+                        });
+                    }
+                } catch(e) {
+                    console.error('Errore riassortimento:', d.prodotto_id, e);
+                }
+            }
+        }
+
+        // Aggiorna stato vendita
+        var venditaDettagli = await getVenditaDettaglio(reso.vendita_id);
+        var resiEsistenti = await getResiPerVendita(reso.vendita_id);
+        var totQtyVenduta = venditaDettagli.reduce(function(s, d) { return s + d.quantita; }, 0);
+        var totQtyResa = 0;
+        resiEsistenti.forEach(function(r) {
+            if (r.dettagli) r.dettagli.forEach(function(rd) { totQtyResa += rd.quantita_resa; });
+        });
+        totQtyResa += dettagli.reduce(function(s, d) { return s + d.quantita_resa; }, 0);
+
+        await update('vendite', reso.vendita_id, {
+            stato: totQtyResa >= totQtyVenduta ? 'reso_totale' : 'reso_parziale'
+        });
+
+        await scriviLog('Reso', 'Vendita',
+            codice + ' (da ' + reso.vendita_codice + ') - ' + ENI.UI.formatValuta(reso.totale_reso));
+
+        return record;
+    }
+
+    async function getResiPerVendita(venditaId) {
+        var resi = await getAll('resi', {
+            filters: [{ op: 'eq', col: 'vendita_id', val: venditaId }]
+        });
+
+        for (var i = 0; i < resi.length; i++) {
+            resi[i].dettagli = await getAll('resi_dettaglio', {
+                filters: [{ op: 'eq', col: 'reso_id', val: resi[i].id }]
+            });
+        }
+        return resi;
+    }
+
     // API pubblica
     return {
         init: init,
@@ -617,6 +857,16 @@ ENI.API = (function() {
         salvaPersonale: salvaPersonale,
         aggiornaPersonale: aggiornaPersonale,
         getLog: getLog,
-        getDashboardData: getDashboardData
+        getDashboardData: getDashboardData,
+        insertBulk: insertBulk,
+        cercaProdottoByBarcode: cercaProdottoByBarcode,
+        cercaProdottiByNome: cercaProdottiByNome,
+        salvaVendita: salvaVendita,
+        getVendite: getVendite,
+        getVenditaDettaglio: getVenditaDettaglio,
+        annullaVendita: annullaVendita,
+        getVenditeTotaliPerData: getVenditeTotaliPerData,
+        salvaReso: salvaReso,
+        getResiPerVendita: getResiPerVendita
     };
 })();
