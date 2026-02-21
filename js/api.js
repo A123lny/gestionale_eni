@@ -355,11 +355,11 @@ ENI.API = (function() {
 
     // --- Cassa ---
 
-    async function getCassaOggi() {
+    async function getCassaPerData(data) {
         var result = await getClient()
             .from('cassa')
             .select('*')
-            .eq('data', ENI.UI.oggiISO())
+            .eq('data', data)
             .single();
 
         if (result.error && result.error.code !== 'PGRST116') {
@@ -368,14 +368,35 @@ ENI.API = (function() {
         return result.data;
     }
 
+    async function getCassaOggi() {
+        return getCassaPerData(ENI.UI.oggiISO());
+    }
+
+    async function getCassaMese(anno, mese) {
+        var primoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-01';
+        var ultimoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-' +
+            new Date(anno, mese, 0).getDate();
+
+        var result = await getClient()
+            .from('cassa')
+            .select('*')
+            .gte('data', primoGiorno)
+            .lte('data', ultimoGiorno)
+            .order('data', { ascending: false });
+
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
     async function salvaCassa(dati) {
         var record;
-        var existing = await getCassaOggi();
+        var data = dati.data || ENI.UI.oggiISO();
+        var existing = await getCassaPerData(data);
 
         if (existing) {
             record = await update('cassa', existing.id, dati);
         } else {
-            dati.data = ENI.UI.oggiISO();
+            dati.data = data;
             record = await insert('cassa', dati);
         }
 
@@ -386,6 +407,36 @@ ENI.API = (function() {
         );
 
         return record;
+    }
+
+    // --- Spese Cassa ---
+
+    async function getSpeseCassa(data) {
+        var result = await getClient()
+            .from('spese_cassa')
+            .select('*')
+            .eq('data', data)
+            .order('created_at', { ascending: true });
+
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function salvaSpesa(dati) {
+        dati.utente_inserimento = ENI.State.getUserId();
+        var record = await insert('spese_cassa', dati);
+        await scriviLog('Aggiunta_Spesa', 'Spese',
+            dati.descrizione + ' - ' + ENI.UI.formatValuta(dati.importo)
+        );
+        return record;
+    }
+
+    async function eliminaSpesa(id, spesa) {
+        await remove('spese_cassa', id);
+        await scriviLog('Eliminata_Spesa', 'Spese',
+            spesa.descrizione + ' - ' + ENI.UI.formatValuta(spesa.importo)
+        );
+        return true;
     }
 
     // --- Magazzino ---
@@ -550,8 +601,13 @@ ENI.API = (function() {
         creaCredito: creaCredito,
         incassaCredito: incassaCredito,
         annullaCredito: annullaCredito,
+        getCassaPerData: getCassaPerData,
         getCassaOggi: getCassaOggi,
+        getCassaMese: getCassaMese,
         salvaCassa: salvaCassa,
+        getSpeseCassa: getSpeseCassa,
+        salvaSpesa: salvaSpesa,
+        eliminaSpesa: eliminaSpesa,
         getMagazzino: getMagazzino,
         salvaProdotto: salvaProdotto,
         aggiornaProdotto: aggiornaProdotto,
