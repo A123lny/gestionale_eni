@@ -785,11 +785,11 @@
     top: 100%;
     left: 0;
     right: 0;
-    background: var(--color-white);
-    border: 1px solid var(--color-gray-200);
+    background: #ffffff;
+    border: 1px solid var(--color-gray-300);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    z-index: 50;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
     max-height: 300px;
     overflow-y: auto;
     margin-top: 4px;
@@ -1108,45 +1108,6 @@
     width: 60px;
     padding: var(--space-1);
     text-align: center;
-}
-
-/* --- Tabs --- */
-.pos-tabs {
-    display: flex;
-    border-bottom: 2px solid var(--color-gray-200);
-    margin-bottom: var(--space-4);
-    gap: 0;
-}
-
-.pos-tab {
-    padding: var(--space-2) var(--space-4);
-    border: none;
-    background: none;
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: var(--color-gray-500);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    transition: color 0.2s, border-color 0.2s;
-}
-
-.pos-tab:hover {
-    color: var(--color-gray-700);
-}
-
-.pos-tab.active {
-    color: var(--color-primary);
-    border-bottom-color: var(--color-primary);
-    font-weight: 600;
-}
-
-.pos-tab-content {
-    display: none;
-}
-
-.pos-tab-content.active {
-    display: block;
 }
 
 /* --- POS Indicator --- */

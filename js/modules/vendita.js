@@ -36,10 +36,10 @@ ENI.Modules.Vendita = (function() {
             '</div>' +
 
             // Tabs
-            '<div class="tabs" style="margin-bottom: var(--space-4);">' +
-                '<button class="tab active" data-tab="vendita">Nuova Vendita</button>' +
-                '<button class="tab" data-tab="storico">Storico</button>' +
-                '<button class="tab" data-tab="resi">Resi</button>' +
+            '<div class="tabs">' +
+                '<button class="tab-btn active" data-tab="vendita">Nuova Vendita</button>' +
+                '<button class="tab-btn" data-tab="storico">Storico</button>' +
+                '<button class="tab-btn" data-tab="resi">Resi</button>' +
             '</div>' +
 
             '<div id="vendita-content"></div>' +
@@ -61,9 +61,9 @@ ENI.Modules.Vendita = (function() {
     }
 
     function _setupTabEvents(container) {
-        ENI.UI.delegate(container, 'click', '.tab[data-tab]', function(e, el) {
+        ENI.UI.delegate(container, 'click', '.tab-btn[data-tab]', function(e, el) {
             _activeTab = el.dataset.tab;
-            container.querySelectorAll('.tab[data-tab]').forEach(function(t) {
+            container.querySelectorAll('.tab-btn[data-tab]').forEach(function(t) {
                 t.classList.toggle('active', t.dataset.tab === _activeTab);
             });
             _renderTab();
