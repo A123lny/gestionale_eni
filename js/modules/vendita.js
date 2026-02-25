@@ -90,11 +90,24 @@ ENI.Modules.Vendita = (function() {
             '<div class="pos-layout">' +
                 // Colonna sinistra: barcode + carrello
                 '<div class="pos-main">' +
-                    // Input barcode
+                    // Input barcode + bottone scanner
                     '<div class="pos-barcode-wrapper">' +
-                        '<input type="text" class="form-input pos-barcode-input" id="barcode-input" ' +
-                            'placeholder="\u{1F50D} Scansiona barcode o cerca prodotto..." autocomplete="off">' +
+                        '<div class="pos-barcode-row">' +
+                            '<input type="text" class="form-input pos-barcode-input" id="barcode-input" ' +
+                                'placeholder="\u{1F50D} Scansiona barcode o cerca prodotto..." autocomplete="off">' +
+                            '<button class="btn btn-primary pos-camera-btn" id="btn-camera-scan" style="display:none;" title="Scansiona con fotocamera">' +
+                                '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>' +
+                            '</button>' +
+                        '</div>' +
                         '<div id="search-dropdown" class="pos-search-dropdown" style="display: none;"></div>' +
+                    '</div>' +
+                    // Scanner fotocamera (nascosto, si apre on-demand)
+                    '<div id="camera-scanner-container" class="pos-scanner-container" style="display:none;">' +
+                        '<div class="pos-scanner-header">' +
+                            '<span>Inquadra il barcode</span>' +
+                            '<button class="btn btn-sm btn-danger" id="btn-camera-stop">Chiudi</button>' +
+                        '</div>' +
+                        '<div id="camera-scanner-reader"></div>' +
                     '</div>' +
                     '<div style="margin-bottom: var(--space-3); display: flex; gap: var(--space-2);">' +
                         '<button class="btn btn-sm btn-outline" id="btn-manuale">\u270F\uFE0F Aggiungi manuale</button>' +
@@ -178,6 +191,9 @@ ENI.Modules.Vendita = (function() {
             });
         }
 
+        // Scanner fotocamera (solo se il device ha la fotocamera)
+        _initCameraButton();
+
         // Delegati carrello
         ENI.UI.delegate(container, 'click', '[data-cart-action]', function(e, el) {
             var idx = parseInt(el.dataset.cartIndex, 10);
@@ -197,6 +213,86 @@ ENI.Modules.Vendita = (function() {
             var input = document.getElementById('barcode-input');
             if (input) input.focus();
         }, 100);
+    }
+
+    // --- Scanner Fotocamera ---
+
+    var _html5QrCode = null;
+    var _scannerRunning = false;
+
+    function _initCameraButton() {
+        var btn = document.getElementById('btn-camera-scan');
+        if (!btn) return;
+
+        // Mostra il bottone solo se il device ha la fotocamera
+        if (navigator.mediaDevices && typeof navigator.mediaDevices.enumerateDevices === 'function') {
+            navigator.mediaDevices.enumerateDevices().then(function(devices) {
+                var hasCamera = devices.some(function(d) { return d.kind === 'videoinput'; });
+                if (hasCamera) {
+                    btn.style.display = 'flex';
+                }
+            }).catch(function() {});
+        }
+
+        btn.addEventListener('click', _startCameraScanner);
+
+        var btnStop = document.getElementById('btn-camera-stop');
+        if (btnStop) {
+            btnStop.addEventListener('click', _stopCameraScanner);
+        }
+    }
+
+    function _startCameraScanner() {
+        if (_scannerRunning) return;
+
+        var scannerContainer = document.getElementById('camera-scanner-container');
+        if (scannerContainer) scannerContainer.style.display = 'block';
+
+        if (typeof Html5Qrcode === 'undefined') {
+            ENI.UI.error('Libreria scanner non caricata');
+            return;
+        }
+
+        _html5QrCode = new Html5Qrcode('camera-scanner-reader');
+        _scannerRunning = true;
+
+        _html5QrCode.start(
+            { facingMode: 'environment' },
+            {
+                fps: 10,
+                qrbox: { width: 280, height: 120 },
+                aspectRatio: 1.5
+            },
+            function onScanSuccess(decodedText) {
+                // Barcode letto, ferma lo scanner e processa
+                _stopCameraScanner();
+                _processBarcodeScan(decodedText);
+            },
+            function onScanFailure() {
+                // Silenzioso: continua a provare
+            }
+        ).catch(function(err) {
+            _scannerRunning = false;
+            var scannerContainer = document.getElementById('camera-scanner-container');
+            if (scannerContainer) scannerContainer.style.display = 'none';
+            ENI.UI.error('Impossibile accedere alla fotocamera: ' + err);
+        });
+    }
+
+    function _stopCameraScanner() {
+        if (_html5QrCode && _scannerRunning) {
+            _html5QrCode.stop().then(function() {
+                _html5QrCode.clear();
+                _scannerRunning = false;
+            }).catch(function() {
+                _scannerRunning = false;
+            });
+        }
+
+        var scannerContainer = document.getElementById('camera-scanner-container');
+        if (scannerContainer) scannerContainer.style.display = 'none';
+
+        _refocusBarcode();
     }
 
     // --- Barcode Scan ---
