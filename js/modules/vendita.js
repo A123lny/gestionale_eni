@@ -224,14 +224,11 @@ ENI.Modules.Vendita = (function() {
         var btn = document.getElementById('btn-camera-scan');
         if (!btn) return;
 
-        // Mostra il bottone solo se il device ha la fotocamera
-        if (navigator.mediaDevices && typeof navigator.mediaDevices.enumerateDevices === 'function') {
-            navigator.mediaDevices.enumerateDevices().then(function(devices) {
-                var hasCamera = devices.some(function(d) { return d.kind === 'videoinput'; });
-                if (hasCamera) {
-                    btn.style.display = 'flex';
-                }
-            }).catch(function() {});
+        // Mostra il bottone se l'API mediaDevices esiste (HTTPS + browser moderno)
+        // Non usiamo enumerateDevices perché su mobile non rileva la fotocamera
+        // finché l'utente non ha dato il permesso almeno una volta
+        if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+            btn.style.display = 'flex';
         }
 
         btn.addEventListener('click', _startCameraScanner);
