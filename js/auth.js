@@ -30,13 +30,21 @@ ENI.Auth = (function() {
                     '<div id="login-error" class="login-error"></div>' +
                     '<button id="btn-login" class="btn btn-primary btn-block btn-lg">Accedi</button>' +
                     '<div style="text-align: center; margin-top: var(--space-4);">' +
-                        '<a href="#/area-cliente" style="color: var(--color-text-muted); font-size: 0.85rem;">Area Clienti</a>' +
+                        '<button type="button" id="btn-area-clienti" style="background: none; border: none; color: var(--color-text-muted); font-size: 0.85rem; cursor: pointer; padding: 8px 16px; text-decoration: underline;">Area Clienti</button>' +
                     '</div>' +
                 '</div>' +
             '</div>';
 
         _setupPinInputs();
         _setupLoginButton();
+
+        // Area Clienti
+        var btnAreaClienti = document.getElementById('btn-area-clienti');
+        if (btnAreaClienti) {
+            btnAreaClienti.addEventListener('click', function() {
+                window.location.hash = '#/area-cliente';
+            });
+        }
     }
 
     // --- Setup PIN Input Behavior ---
