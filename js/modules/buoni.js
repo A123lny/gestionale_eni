@@ -251,10 +251,11 @@ ENI.Modules.Buoni = (function() {
             '<div class="form-group">' +
                 '<label class="form-label">Modalita Pagamento</label>' +
                 '<select class="form-select" id="nc-pagamento">' +
-                    '<option value="contanti">Contanti</option>' +
-                    '<option value="pos">POS</option>' +
-                    '<option value="credito">Credito</option>' +
-                    '<option value="buoni">Buoni</option>' +
+                    '<option value="Cash">Cash</option>' +
+                    '<option value="Addebito_Mese">Addebito Mese</option>' +
+                    '<option value="Addebito_30gg">Addebito 30gg</option>' +
+                    '<option value="Addebito_60gg">Addebito 60gg</option>' +
+                    '<option value="Bonifico_Anticipato">Bonifico Anticipato</option>' +
                 '</select>' +
             '</div>';
 
