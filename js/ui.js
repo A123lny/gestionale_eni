@@ -78,9 +78,11 @@ ENI.UI = (function() {
             backdrop.classList.add('active');
         });
 
-        // Chiudi con X
-        backdrop.querySelector('[data-modal-close]').addEventListener('click', function() {
-            closeModal(backdrop);
+        // Chiudi con X e bottoni data-modal-close
+        backdrop.querySelectorAll('[data-modal-close]').forEach(function(el) {
+            el.addEventListener('click', function() {
+                closeModal(backdrop);
+            });
         });
 
         // Chiudi cliccando fuori
