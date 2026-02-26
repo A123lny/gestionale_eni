@@ -18,10 +18,9 @@ ENI.App = (function() {
         // Check se gia' loggato
         if (ENI.State.isLoggedIn()) {
             renderShell();
-            ENI.Router.init();
-        } else {
-            ENI.Auth.renderLogin();
         }
+        // Router sempre attivo (gestisce area-cliente anche senza login staff)
+        ENI.Router.init();
     }
 
     // --- Render App Shell ---

@@ -15,7 +15,7 @@ ENI.Auth = (function() {
         app.innerHTML =
             '<div class="login-screen">' +
                 '<div class="login-card">' +
-                    '<div class="login-logo"><img src="assets/Titan.png" alt="Titanwash" class="login-logo-img"></div>' +
+                    '<div class="login-logo"><img src="assets/logo_ritagliato.png" alt="Titanwash" class="login-logo-img"></div>' +
                     '<h1 class="login-title">Titanwash</h1>' +
                     '<p class="login-subtitle">Borgo Maggiore - San Marino</p>' +
                     '<div class="form-group">' +
