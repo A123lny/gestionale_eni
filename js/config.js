@@ -22,20 +22,35 @@ ENI.Config = {
         CREDITO: 'CRE',
         MANUTENZIONE: 'MAN',
         VENDITA: 'VEN',
-        RESO: 'RES'
+        RESO: 'RES',
+        BUONO: 'BUO'
     },
+
+    // Tagli buoni cartacei
+    TAGLI_BUONI: [5, 10, 20, 50],
+
+    // Colori per taglio buono
+    COLORI_BUONI: {
+        5:  { primary: '#4CAF50', accent: '#2E7D32', label: 'Verde' },
+        10: { primary: '#2196F3', accent: '#1565C0', label: 'Blu' },
+        20: { primary: '#FF9800', accent: '#E65100', label: 'Arancione' },
+        50: { primary: '#9C27B0', accent: '#6A1B9A', label: 'Viola' }
+    },
+
+    // Codice denominazione per EAN-13
+    DENOM_CODE_BUONI: { 5: '1', 10: '2', 20: '3', 50: '4' },
 
     // Ruoli e permessi
     RUOLI: {
         Admin: {
             label: 'Amministratore',
-            moduli: ['dashboard', 'clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'personale', 'manutenzioni', 'log'],
-            scrivere: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'personale', 'manutenzioni']
+            moduli: ['dashboard', 'clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'personale', 'manutenzioni', 'log'],
+            scrivere: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'personale', 'manutenzioni']
         },
         Cassiere: {
             label: 'Cassiere',
-            moduli: ['dashboard', 'clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino'],
-            scrivere: ['cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino']
+            moduli: ['dashboard', 'clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni'],
+            scrivere: ['cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni']
         },
         Lavaggi: {
             label: 'Operatore Lavaggi',
@@ -54,6 +69,7 @@ ENI.Config = {
         { id: 'lavaggi', label: 'Lavaggi', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14"/><path d="M6 17l1-5h10l1 5"/><circle cx="8" cy="17" r="1"/><circle cx="16" cy="17" r="1"/><path d="M7 12l1-3h8l1 3"/><path d="M8 5v2M12 4v3M16 5v2"/></svg>', route: '#/lavaggi' },
         { id: 'vendita', label: 'Vendita', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', route: '#/vendita' },
         { id: 'magazzino', label: 'Magazzino', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>', route: '#/magazzino' },
+        { id: 'buoni', label: 'Buoni', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>', route: '#/buoni' },
         { id: 'personale', label: 'Personale', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', route: '#/personale' },
         { id: 'manutenzioni', label: 'Manutenzioni', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>', route: '#/manutenzioni' },
         { id: 'log', label: 'Log', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></svg>', route: '#/log' }
@@ -86,7 +102,11 @@ ENI.Config = {
     METODI_PAGAMENTO_POS: [
         { value: 'contanti', label: 'Contanti' },
         { value: 'pos', label: 'POS / Carta' },
-        { value: 'misto', label: 'Misto (Contanti + POS)' }
+        { value: 'misto', label: 'Misto (Contanti + POS)' },
+        { value: 'buono_cartaceo', label: 'Buono Cartaceo' },
+        { value: 'buono_cartaceo_misto', label: 'Buono + Altro' },
+        { value: 'wallet_digitale', label: 'Wallet Digitale' },
+        { value: 'wallet_misto', label: 'Wallet + Altro' }
     ],
 
     // Servizi extra lavaggio (default con prezzi predefiniti)

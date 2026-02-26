@@ -29,6 +29,9 @@ ENI.Auth = (function() {
                     '</div>' +
                     '<div id="login-error" class="login-error"></div>' +
                     '<button id="btn-login" class="btn btn-primary btn-block btn-lg">Accedi</button>' +
+                    '<div style="text-align: center; margin-top: var(--space-4);">' +
+                        '<a href="#/area-cliente" style="color: var(--color-text-muted); font-size: 0.85rem;">Area Clienti</a>' +
+                    '</div>' +
                 '</div>' +
             '</div>';
 

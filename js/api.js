@@ -809,6 +809,222 @@ ENI.API = (function() {
         return resi;
     }
 
+    // ============================================================
+    // BUONI CARTACEI
+    // ============================================================
+
+    async function cercaBuonoByEAN(ean) {
+        var result = await getClient().from('buoni_cartacei')
+            .select('*')
+            .eq('codice_ean', ean)
+            .single();
+        if (result.error) {
+            if (result.error.code === 'PGRST116') return null;
+            throw new Error(result.error.message);
+        }
+        return result.data;
+    }
+
+    async function generaBuoniCartacei(buoniArray) {
+        var records = await insertBulk('buoni_cartacei', buoniArray);
+        await scriviLog('Generati_Buoni', 'Buoni',
+            buoniArray.length + ' buoni generati - Lotto: ' + (buoniArray[0] ? buoniArray[0].lotto : ''));
+        ENI.State.cacheClear('buoni');
+        return records;
+    }
+
+    async function utilizzaBuono(buonoId, venditaId) {
+        var record = await update('buoni_cartacei', buonoId, {
+            stato: 'utilizzato',
+            vendita_id: venditaId,
+            utilizzato_at: new Date().toISOString(),
+            utilizzato_da: ENI.State.getUserId()
+        });
+        ENI.State.cacheClear('buoni');
+        return record;
+    }
+
+    async function annullaBuono(buonoId) {
+        var buono = await getById('buoni_cartacei', buonoId);
+        var record = await update('buoni_cartacei', buonoId, { stato: 'annullato' });
+        await scriviLog('Annullato_Buono', 'Buoni', 'EAN: ' + buono.codice_ean + ' - ' + ENI.UI.formatValuta(buono.taglio));
+        ENI.State.cacheClear('buoni');
+        return record;
+    }
+
+    async function getBuoni(filtri) {
+        filtri = filtri || {};
+        var query = getClient().from('buoni_cartacei').select('*');
+        if (filtri.stato) query = query.eq('stato', filtri.stato);
+        if (filtri.lotto) query = query.eq('lotto', filtri.lotto);
+        if (filtri.taglio) query = query.eq('taglio', filtri.taglio);
+        query = query.order('created_at', { ascending: false });
+        if (filtri.limit) query = query.limit(filtri.limit);
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    async function getMaxSequenzialeBuono(denomCode) {
+        var prefix = '20' + denomCode;
+        var result = await getClient().from('buoni_cartacei')
+            .select('codice_ean')
+            .like('codice_ean', prefix + '%')
+            .order('codice_ean', { ascending: false })
+            .limit(1);
+        if (result.error) throw new Error(result.error.message);
+        if (result.data && result.data.length > 0) {
+            var lastEAN = result.data[0].codice_ean;
+            return parseInt(lastEAN.substring(3, 12), 10);
+        }
+        return 0;
+    }
+
+    async function getLottiBuoni() {
+        var result = await getClient().rpc('get_lotti_buoni_summary');
+        if (result.error) {
+            // Fallback se RPC non esiste: query manuale
+            var buoni = await getAll('buoni_cartacei', {
+                select: 'lotto, taglio, stato, created_at, creato_nome'
+            });
+            var lottiMap = {};
+            buoni.forEach(function(b) {
+                if (!b.lotto) return;
+                if (!lottiMap[b.lotto]) {
+                    lottiMap[b.lotto] = { lotto: b.lotto, totale: 0, attivi: 0, utilizzati: 0, data: b.created_at, operatore: b.creato_nome };
+                }
+                lottiMap[b.lotto].totale++;
+                if (b.stato === 'attivo') lottiMap[b.lotto].attivi++;
+                if (b.stato === 'utilizzato') lottiMap[b.lotto].utilizzati++;
+            });
+            return Object.values(lottiMap);
+        }
+        return result.data;
+    }
+
+    // ============================================================
+    // CLIENTI PORTALE (DIGITALE)
+    // ============================================================
+
+    async function loginCliente(email, password) {
+        var result = await getClient().rpc('login_cliente', {
+            p_email: email,
+            p_password: password
+        });
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    async function creaClientePortale(email, password, nome, clienteId) {
+        var result = await getClient().rpc('crea_cliente_portale', {
+            p_email: email,
+            p_password: password,
+            p_nome: nome,
+            p_cliente_id: clienteId || null
+        });
+        if (result.error) throw new Error(result.error.message);
+        if (result.data && result.data.success) {
+            await scriviLog('Creato_Account_Cliente', 'Buoni', 'Email: ' + email + ' - Nome: ' + nome);
+        }
+        ENI.State.cacheClear('clienti_portale');
+        return result.data;
+    }
+
+    async function ricaricaSaldo(clientePortaleId, importo, descrizione) {
+        var result = await getClient().rpc('ricarica_saldo', {
+            p_cliente_portale_id: clientePortaleId,
+            p_importo: importo,
+            p_descrizione: descrizione || 'Ricarica saldo',
+            p_operatore_id: ENI.State.getUserId(),
+            p_operatore_nome: ENI.State.getUserName()
+        });
+        if (result.error) throw new Error(result.error.message);
+        if (result.data && result.data.success) {
+            await scriviLog('Ricarica_Saldo', 'Buoni',
+                'Importo: ' + ENI.UI.formatValuta(importo) + ' - Nuovo saldo: ' + ENI.UI.formatValuta(result.data.nuovo_saldo));
+        }
+        ENI.State.cacheClear('clienti_portale');
+        return result.data;
+    }
+
+    async function deduciSaldoCliente(clientePortaleId, importo, descrizione, refTipo, refId) {
+        var result = await getClient().rpc('deduci_saldo', {
+            p_cliente_portale_id: clientePortaleId,
+            p_importo: importo,
+            p_descrizione: descrizione || 'Pagamento',
+            p_riferimento_tipo: refTipo || null,
+            p_riferimento_id: refId || null,
+            p_operatore_id: ENI.State.getUserId(),
+            p_operatore_nome: ENI.State.getUserName()
+        });
+        if (result.error) throw new Error(result.error.message);
+        ENI.State.cacheClear('clienti_portale');
+        return result.data;
+    }
+
+    async function getClientiPortale(filtri) {
+        filtri = filtri || {};
+        var query = getClient().from('clienti_portale').select('*');
+        if (filtri.attivo !== undefined) query = query.eq('attivo', filtri.attivo);
+        if (filtri.search) {
+            query = query.or('nome_display.ilike.%' + filtri.search + '%,email.ilike.%' + filtri.search + '%');
+        }
+        query = query.order('nome_display', { ascending: true });
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    async function getClientePortaleById(id) {
+        return await getById('clienti_portale', id);
+    }
+
+    async function aggiornaClientePortale(id, dati) {
+        var record = await update('clienti_portale', id, dati);
+        ENI.State.cacheClear('clienti_portale');
+        return record;
+    }
+
+    async function getMovimentiSaldo(clientePortaleId, options) {
+        options = options || {};
+        var query = getClient().from('movimenti_saldo')
+            .select('*')
+            .eq('cliente_portale_id', clientePortaleId)
+            .order('created_at', { ascending: false });
+        if (options.limit) query = query.limit(options.limit);
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    // ============================================================
+    // PRENOTAZIONI LAVAGGIO
+    // ============================================================
+
+    async function creaPrenotazioneLavaggio(dati) {
+        var record = await insert('prenotazioni_lavaggio', dati);
+        return record;
+    }
+
+    async function getPrenotazioniLavaggio(filtri) {
+        filtri = filtri || {};
+        var query = getClient().from('prenotazioni_lavaggio')
+            .select('*, clienti_portale(nome_display, email)');
+        if (filtri.stato) query = query.eq('stato', filtri.stato);
+        if (filtri.cliente_portale_id) query = query.eq('cliente_portale_id', filtri.cliente_portale_id);
+        if (filtri.data_da) query = query.gte('data_richiesta', filtri.data_da);
+        if (filtri.data_a) query = query.lte('data_richiesta', filtri.data_a);
+        query = query.order('data_richiesta', { ascending: true }).order('created_at', { ascending: false });
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    async function aggiornaPrenotazione(id, dati) {
+        var record = await update('prenotazioni_lavaggio', id, dati);
+        return record;
+    }
+
     // API pubblica
     return {
         init: init,
@@ -867,6 +1083,27 @@ ENI.API = (function() {
         annullaVendita: annullaVendita,
         getVenditeTotaliPerData: getVenditeTotaliPerData,
         salvaReso: salvaReso,
-        getResiPerVendita: getResiPerVendita
+        getResiPerVendita: getResiPerVendita,
+        // Buoni cartacei
+        cercaBuonoByEAN: cercaBuonoByEAN,
+        generaBuoniCartacei: generaBuoniCartacei,
+        utilizzaBuono: utilizzaBuono,
+        annullaBuono: annullaBuono,
+        getBuoni: getBuoni,
+        getMaxSequenzialeBuono: getMaxSequenzialeBuono,
+        getLottiBuoni: getLottiBuoni,
+        // Clienti portale
+        loginCliente: loginCliente,
+        creaClientePortale: creaClientePortale,
+        ricaricaSaldo: ricaricaSaldo,
+        deduciSaldoCliente: deduciSaldoCliente,
+        getClientiPortale: getClientiPortale,
+        getClientePortaleById: getClientePortaleById,
+        aggiornaClientePortale: aggiornaClientePortale,
+        getMovimentiSaldo: getMovimentiSaldo,
+        // Prenotazioni lavaggio
+        creaPrenotazioneLavaggio: creaPrenotazioneLavaggio,
+        getPrenotazioniLavaggio: getPrenotazioniLavaggio,
+        aggiornaPrenotazione: aggiornaPrenotazione
     };
 })();

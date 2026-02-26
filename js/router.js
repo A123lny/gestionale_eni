@@ -21,6 +21,7 @@ ENI.Router = (function() {
         'lavaggi':      { module: 'Lavaggi',      id: 'lavaggi' },
         'vendita':      { module: 'Vendita',      id: 'vendita' },
         'magazzino':    { module: 'Magazzino',    id: 'magazzino' },
+        'buoni':        { module: 'Buoni',        id: 'buoni' },
         'personale':    { module: 'Personale',    id: 'personale' },
         'manutenzioni': { module: 'Manutenzioni', id: 'manutenzioni' },
         'log':          { module: 'Log',          id: 'log' }
@@ -47,7 +48,13 @@ ENI.Router = (function() {
     function _onHashChange() {
         var hash = window.location.hash.replace('#/', '') || 'dashboard';
 
-        // Se non loggato -> login
+        // ---- AREA CLIENTE: routing separato ----
+        if (hash === 'area-cliente' || hash.indexOf('area-cliente/') === 0) {
+            _handleClienteRoute(hash);
+            return;
+        }
+
+        // Se non loggato come staff -> login
         if (!ENI.State.isLoggedIn()) {
             ENI.Auth.renderLogin();
             return;
@@ -71,6 +78,44 @@ ENI.Router = (function() {
         _currentRoute = hash;
         _renderModule(routeConfig);
         _updateNav(routeConfig.id);
+    }
+
+    // --- Area Cliente routing ---
+
+    function _handleClienteRoute(hash) {
+        var appContainer = document.getElementById('app') || document.body;
+
+        // Se non loggato come cliente -> mostra login
+        if (!ENI.State.isClienteLoggedIn()) {
+            ENI.Modules.AreaCliente.renderLogin(appContainer);
+            return;
+        }
+
+        // Render shell se non esiste
+        if (!document.querySelector('.cliente-shell')) {
+            ENI.Modules.AreaCliente.renderShell(appContainer);
+        }
+
+        var content = document.getElementById('cliente-content');
+        if (!content) return;
+
+        // Sub-route
+        var subRoute = hash.replace('area-cliente/', '').replace('area-cliente', '');
+
+        switch(subRoute) {
+            case '':
+            case 'dashboard':
+                ENI.Modules.AreaCliente.renderDashboard(content);
+                break;
+            case 'saldo':
+                ENI.Modules.AreaCliente.renderSaldo(content);
+                break;
+            case 'prenota':
+                ENI.Modules.AreaCliente.renderPrenota(content);
+                break;
+            default:
+                ENI.Modules.AreaCliente.renderDashboard(content);
+        }
     }
 
     // --- Render Module ---

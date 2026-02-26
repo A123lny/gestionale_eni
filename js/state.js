@@ -8,8 +8,11 @@ var ENI = ENI || {};
 ENI.State = (function() {
     'use strict';
 
-    // Stato utente corrente
+    // Stato utente corrente (staff)
     var _currentUser = null;
+
+    // Stato cliente corrente (portale)
+    var _currentCliente = null;
 
     // Cache dati con TTL
     var _cache = {};
@@ -126,7 +129,53 @@ ENI.State = (function() {
         });
     }
 
-    // --- Logout ---
+    // --- Cliente Portale ---
+
+    function setCliente(cliente) {
+        _currentCliente = cliente;
+        if (cliente) {
+            sessionStorage.setItem('eni_cliente', JSON.stringify(cliente));
+        } else {
+            sessionStorage.removeItem('eni_cliente');
+        }
+        _emit('clienteChanged', cliente);
+    }
+
+    function getCliente() {
+        if (!_currentCliente) {
+            var stored = sessionStorage.getItem('eni_cliente');
+            if (stored) {
+                try {
+                    _currentCliente = JSON.parse(stored);
+                } catch(e) {
+                    sessionStorage.removeItem('eni_cliente');
+                }
+            }
+        }
+        return _currentCliente;
+    }
+
+    function isClienteLoggedIn() {
+        return getCliente() !== null;
+    }
+
+    function getClienteId() {
+        var cliente = getCliente();
+        return cliente ? cliente.id : null;
+    }
+
+    function getClienteNome() {
+        var cliente = getCliente();
+        return cliente ? cliente.nome : null;
+    }
+
+    function logoutCliente() {
+        _currentCliente = null;
+        sessionStorage.removeItem('eni_cliente');
+        _emit('clienteChanged', null);
+    }
+
+    // --- Logout Staff ---
 
     function logout() {
         _currentUser = null;
@@ -150,6 +199,12 @@ ENI.State = (function() {
         cacheClear: cacheClear,
         on: on,
         off: off,
-        logout: logout
+        logout: logout,
+        setCliente: setCliente,
+        getCliente: getCliente,
+        isClienteLoggedIn: isClienteLoggedIn,
+        getClienteId: getClienteId,
+        getClienteNome: getClienteNome,
+        logoutCliente: logoutCliente
     };
 })();

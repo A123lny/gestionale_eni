@@ -295,6 +295,12 @@ ENI.Modules.Vendita = (function() {
     // --- Barcode Scan ---
 
     async function _processBarcodeScan(value) {
+        // Check: e' un buono cartaceo? (EAN-13 con prefisso "20")
+        if (/^\d{13}$/.test(value) && value.startsWith('20')) {
+            _processVoucherScan(value);
+            return;
+        }
+
         // Se numerico e >= 8 cifre: barcode EAN
         if (/^\d+$/.test(value) && value.length >= 8) {
             try {
@@ -708,6 +714,10 @@ ENI.Modules.Vendita = (function() {
                 '\u{1F4B3} POS / Carta</button>' +
             '<button class="btn pos-pay-btn pos-pay-misto" id="btn-pay-misto"' + (_carrello.length === 0 ? ' disabled' : '') + '>' +
                 '\u{1F4B0} Misto</button>' +
+            '<button class="btn pos-pay-btn pos-pay-buono" id="btn-pay-buono"' + (_carrello.length === 0 ? ' disabled' : '') + '>' +
+                '\u{1F3AB} Buono</button>' +
+            '<button class="btn pos-pay-btn pos-pay-wallet" id="btn-pay-wallet"' + (_carrello.length === 0 ? ' disabled' : '') + '>' +
+                '\u{1F4F1} Wallet Cliente</button>' +
         '</div>';
 
         el.innerHTML = html;
@@ -726,6 +736,12 @@ ENI.Modules.Vendita = (function() {
 
         var btnMisto = document.getElementById('btn-pay-misto');
         if (btnMisto) btnMisto.addEventListener('click', function() { _avviaPagamento('misto'); });
+
+        var btnBuono = document.getElementById('btn-pay-buono');
+        if (btnBuono) btnBuono.addEventListener('click', function() { _avviaPagamento('buono'); });
+
+        var btnWallet = document.getElementById('btn-pay-wallet');
+        if (btnWallet) btnWallet.addEventListener('click', function() { _avviaPagamento('wallet'); });
     }
 
     function _calcolaTotali() {
@@ -812,6 +828,262 @@ ENI.Modules.Vendita = (function() {
             _pagamentoPOS(totali);
         } else if (metodo === 'misto') {
             _pagamentoMisto(totali);
+        } else if (metodo === 'buono') {
+            _pagamentoBuonoScan(totali);
+        } else if (metodo === 'wallet') {
+            _pagamentoWallet(totali);
+        }
+    }
+
+    // --- Scansione buono dal POS barcode ---
+
+    async function _processVoucherScan(ean) {
+        try {
+            var buono = await ENI.API.cercaBuonoByEAN(ean);
+            if (!buono) {
+                ENI.UI.warning('Buono non trovato: ' + ean);
+                return;
+            }
+            if (buono.stato !== 'attivo') {
+                ENI.UI.warning('Buono gia ' + buono.stato + ': ' + ean);
+                return;
+            }
+
+            // Se il carrello e' vuoto, avvisa
+            if (_carrello.length === 0) {
+                ENI.UI.info('Buono ' + ENI.UI.formatValuta(buono.taglio) + ' riconosciuto. Aggiungi prodotti al carrello prima di pagare.');
+                return;
+            }
+
+            // Procedi con pagamento buono
+            _pagamentoBuonoConDati(buono);
+        } catch(e) {
+            ENI.UI.error('Errore verifica buono: ' + e.message);
+        }
+    }
+
+    // --- Pagamento Buono (scansione manuale da bottone) ---
+
+    function _pagamentoBuonoScan(totali) {
+        var body =
+            '<div style="text-align: center; margin-bottom: var(--space-4);">' +
+                '<div class="text-sm text-muted">Totale da pagare</div>' +
+                '<div style="font-size: 2rem; font-weight: bold; color: var(--color-primary);">' + ENI.UI.formatValuta(totali.totale) + '</div>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label form-label-required">Scansiona o inserisci codice EAN del buono</label>' +
+                '<input type="text" class="form-input" id="buono-ean-input" placeholder="Codice EAN 13 cifre" style="font-size: 1.25rem; text-align: center; font-weight: bold;">' +
+            '</div>' +
+            '<div id="buono-info" style="text-align: center; margin-top: var(--space-3);"></div>';
+
+        var modal = ENI.UI.showModal({
+            title: '\u{1F3AB} Pagamento con Buono',
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-primary" id="btn-verifica-buono">Verifica Buono</button>'
+        });
+
+        modal.querySelector('#buono-ean-input').focus();
+
+        modal.querySelector('#buono-ean-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                modal.querySelector('#btn-verifica-buono').click();
+            }
+        });
+
+        modal.querySelector('#btn-verifica-buono').addEventListener('click', async function() {
+            var ean = modal.querySelector('#buono-ean-input').value.trim();
+            if (!ean) {
+                ENI.UI.warning('Inserisci il codice EAN');
+                return;
+            }
+
+            try {
+                var buono = await ENI.API.cercaBuonoByEAN(ean);
+                if (!buono) {
+                    modal.querySelector('#buono-info').innerHTML = '<span style="color: var(--color-danger); font-weight: 600;">Buono non trovato</span>';
+                    return;
+                }
+                if (buono.stato !== 'attivo') {
+                    modal.querySelector('#buono-info').innerHTML = '<span style="color: var(--color-danger); font-weight: 600;">Buono gia ' + buono.stato + '</span>';
+                    return;
+                }
+
+                ENI.UI.closeModal(modal);
+                _pagamentoBuonoConDati(buono);
+            } catch(e) {
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
+    }
+
+    function _pagamentoBuonoConDati(buono) {
+        var totali = _calcolaTotali();
+        var taglio = parseFloat(buono.taglio);
+
+        if (taglio >= totali.totale) {
+            // Buono copre tutto
+            var resto = Math.round((taglio - totali.totale) * 100) / 100;
+            var msg = 'Buono da ' + ENI.UI.formatValuta(taglio) + ' per un totale di ' + ENI.UI.formatValuta(totali.totale);
+            if (resto > 0) {
+                msg += '.\nResto in contanti: ' + ENI.UI.formatValuta(resto);
+            }
+
+            ENI.UI.confirm(msg, function() {
+                _completaVendita('buono_cartaceo', 0, 0, resto, { id: buono.id, taglio: taglio, ean: buono.codice_ean }, null);
+            });
+        } else {
+            // Buono non copre tutto: pagamento misto
+            var differenza = Math.round((totali.totale - taglio) * 100) / 100;
+            var body =
+                '<div style="text-align: center; margin-bottom: var(--space-4);">' +
+                    '<div class="text-sm text-muted">Totale da pagare</div>' +
+                    '<div style="font-size: 2rem; font-weight: bold; color: var(--color-primary);">' + ENI.UI.formatValuta(totali.totale) + '</div>' +
+                    '<div style="margin-top: var(--space-2);">' +
+                        '<span class="badge badge-info">Buono: ' + ENI.UI.formatValuta(taglio) + '</span> ' +
+                        '<span class="badge badge-warning">Residuo: ' + ENI.UI.formatValuta(differenza) + '</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Come pagare il residuo di ' + ENI.UI.formatValuta(differenza) + '?</label>' +
+                    '<div style="display: flex; gap: var(--space-2); margin-top: var(--space-2);">' +
+                        '<button class="btn btn-outline" id="buono-resto-contanti" style="flex: 1;">Contanti</button>' +
+                        '<button class="btn btn-outline" id="buono-resto-pos" style="flex: 1;">POS / Carta</button>' +
+                    '</div>' +
+                '</div>';
+
+            var modal = ENI.UI.showModal({
+                title: '\u{1F3AB} Buono + Altro',
+                body: body,
+                footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>'
+            });
+
+            modal.querySelector('#buono-resto-contanti').addEventListener('click', function() {
+                ENI.UI.closeModal(modal);
+                _completaVendita('buono_cartaceo_misto', differenza, 0, 0, { id: buono.id, taglio: taglio, ean: buono.codice_ean }, null);
+            });
+
+            modal.querySelector('#buono-resto-pos').addEventListener('click', function() {
+                ENI.UI.closeModal(modal);
+                _completaVendita('buono_cartaceo_misto', 0, differenza, 0, { id: buono.id, taglio: taglio, ean: buono.codice_ean }, null);
+            });
+        }
+    }
+
+    // --- Pagamento Wallet Digitale ---
+
+    function _pagamentoWallet(totali) {
+        var body =
+            '<div style="text-align: center; margin-bottom: var(--space-4);">' +
+                '<div class="text-sm text-muted">Totale da pagare</div>' +
+                '<div style="font-size: 2rem; font-weight: bold; color: var(--color-primary);">' + ENI.UI.formatValuta(totali.totale) + '</div>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label form-label-required">Cerca cliente per nome o email</label>' +
+                '<input type="text" class="form-input" id="wallet-search-input" placeholder="Nome o email del cliente...">' +
+            '</div>' +
+            '<div id="wallet-search-results" style="margin-top: var(--space-2);"></div>';
+
+        var modal = ENI.UI.showModal({
+            title: '\u{1F4F1} Pagamento Wallet',
+            body: body,
+            footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>'
+        });
+
+        var searchInput = modal.querySelector('#wallet-search-input');
+        var resultsEl = modal.querySelector('#wallet-search-results');
+        var debounce = null;
+        searchInput.focus();
+
+        searchInput.addEventListener('input', function() {
+            clearTimeout(debounce);
+            var term = searchInput.value.trim();
+            if (term.length < 2) { resultsEl.innerHTML = ''; return; }
+            debounce = setTimeout(async function() {
+                try {
+                    var clienti = await ENI.API.getClientiPortale({ search: term, attivo: true });
+                    if (clienti.length === 0) {
+                        resultsEl.innerHTML = '<p class="text-muted">Nessun cliente trovato</p>';
+                        return;
+                    }
+                    var html = '';
+                    clienti.forEach(function(c) {
+                        var saldoOk = c.saldo >= totali.totale;
+                        html += '<div class="wallet-search-item" data-cliente-id="' + c.id + '" ' +
+                            'data-nome="' + ENI.UI.escapeHtml(c.nome_display) + '" data-saldo="' + c.saldo + '" ' +
+                            'style="padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: var(--space-1); cursor: pointer; display: flex; justify-content: space-between; align-items: center;">' +
+                            '<div><strong>' + ENI.UI.escapeHtml(c.nome_display) + '</strong><br><span class="text-sm text-muted">' + ENI.UI.escapeHtml(c.email) + '</span></div>' +
+                            '<div style="text-align: right;"><div style="font-weight: 600; color: ' + (saldoOk ? 'var(--color-success)' : 'var(--color-danger)') + ';">' + ENI.UI.formatValuta(c.saldo) + '</div>' +
+                            (saldoOk ? '' : '<div class="text-sm text-danger">Saldo insufficiente</div>') +
+                            '</div></div>';
+                    });
+                    resultsEl.innerHTML = html;
+
+                    // Click handler per selezione
+                    resultsEl.querySelectorAll('.wallet-search-item').forEach(function(item) {
+                        item.addEventListener('click', function() {
+                            var cId = item.dataset.clienteId;
+                            var cNome = item.dataset.nome;
+                            var cSaldo = parseFloat(item.dataset.saldo);
+                            ENI.UI.closeModal(modal);
+                            _processWalletPayment(cId, cNome, cSaldo, totali);
+                        });
+                    });
+                } catch(e) {
+                    resultsEl.innerHTML = '<p class="text-danger">Errore ricerca</p>';
+                }
+            }, 300);
+        });
+    }
+
+    function _processWalletPayment(clienteId, nome, saldo, totali) {
+        if (saldo >= totali.totale) {
+            // Saldo sufficiente
+            ENI.UI.confirm(
+                'Scalare ' + ENI.UI.formatValuta(totali.totale) + ' dal wallet di ' + nome + '?\n' +
+                'Saldo attuale: ' + ENI.UI.formatValuta(saldo) + '\n' +
+                'Saldo dopo: ' + ENI.UI.formatValuta(saldo - totali.totale),
+                function() {
+                    _completaVendita('wallet_digitale', 0, 0, 0, null, { clientePortaleId: clienteId, importo: totali.totale, nome: nome });
+                }
+            );
+        } else {
+            // Saldo insufficiente: pagamento misto
+            var differenza = Math.round((totali.totale - saldo) * 100) / 100;
+            var body =
+                '<div style="text-align: center; margin-bottom: var(--space-4);">' +
+                    '<div class="text-sm text-muted">Totale da pagare</div>' +
+                    '<div style="font-size: 2rem; font-weight: bold; color: var(--color-primary);">' + ENI.UI.formatValuta(totali.totale) + '</div>' +
+                    '<div style="margin-top: var(--space-2);">' +
+                        '<span class="badge badge-info">Wallet (' + ENI.UI.escapeHtml(nome) + '): ' + ENI.UI.formatValuta(saldo) + '</span> ' +
+                        '<span class="badge badge-warning">Residuo: ' + ENI.UI.formatValuta(differenza) + '</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Come pagare il residuo di ' + ENI.UI.formatValuta(differenza) + '?</label>' +
+                    '<div style="display: flex; gap: var(--space-2); margin-top: var(--space-2);">' +
+                        '<button class="btn btn-outline" id="wallet-resto-contanti" style="flex: 1;">Contanti</button>' +
+                        '<button class="btn btn-outline" id="wallet-resto-pos" style="flex: 1;">POS / Carta</button>' +
+                    '</div>' +
+                '</div>';
+
+            var modal = ENI.UI.showModal({
+                title: '\u{1F4F1} Wallet + Altro',
+                body: body,
+                footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>'
+            });
+
+            modal.querySelector('#wallet-resto-contanti').addEventListener('click', function() {
+                ENI.UI.closeModal(modal);
+                _completaVendita('wallet_misto', differenza, 0, 0, null, { clientePortaleId: clienteId, importo: saldo, nome: nome });
+            });
+
+            modal.querySelector('#wallet-resto-pos').addEventListener('click', function() {
+                ENI.UI.closeModal(modal);
+                _completaVendita('wallet_misto', 0, differenza, 0, null, { clientePortaleId: clienteId, importo: saldo, nome: nome });
+            });
         }
     }
 
@@ -941,7 +1213,7 @@ ENI.Modules.Vendita = (function() {
 
     // --- Completa vendita ---
 
-    async function _completaVendita(metodo, importoContanti, importoPOS, resto) {
+    async function _completaVendita(metodo, importoContanti, importoPOS, resto, buonoData, walletData) {
         var totali = _calcolaTotali();
 
         var vendita = {
@@ -954,6 +1226,10 @@ ENI.Modules.Vendita = (function() {
             metodo_pagamento: metodo,
             importo_contanti: importoContanti,
             importo_pos: importoPOS,
+            importo_buono: buonoData ? buonoData.taglio : 0,
+            buono_cartaceo_id: buonoData ? buonoData.id : null,
+            importo_wallet: walletData ? walletData.importo : 0,
+            cliente_portale_id: walletData ? walletData.clientePortaleId : null,
             resto: resto,
             stato: 'completata'
         };
@@ -975,6 +1251,31 @@ ENI.Modules.Vendita = (function() {
 
         try {
             var record = await ENI.API.salvaVendita(vendita, dettagli);
+
+            // Marca buono come utilizzato
+            if (buonoData && buonoData.id) {
+                try {
+                    await ENI.API.utilizzaBuono(buonoData.id, record.id);
+                } catch(e2) {
+                    console.error('Errore marcatura buono:', e2);
+                }
+            }
+
+            // Deduci saldo wallet
+            if (walletData && walletData.clientePortaleId) {
+                try {
+                    await ENI.API.deduciSaldoCliente(
+                        walletData.clientePortaleId,
+                        walletData.importo,
+                        'Vendita ' + record.codice,
+                        'vendita',
+                        record.id
+                    );
+                } catch(e2) {
+                    console.error('Errore deduzione wallet:', e2);
+                }
+            }
+
             ENI.UI.success('Vendita ' + record.codice + ' completata! Totale: ' + ENI.UI.formatValuta(totali.totale));
 
             // Chiedi se stampare
