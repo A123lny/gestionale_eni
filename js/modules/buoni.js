@@ -201,7 +201,7 @@ ENI.Modules.Buoni = (function() {
 
     function _generaPDF(buoni, lotto) {
         /* global jspdf, JsBarcode */
-        var doc = new jspdf.jsPDF({
+        var doc = new window.jspdf.jsPDF({
             orientation: 'portrait',
             unit: 'mm',
             format: 'a4'
