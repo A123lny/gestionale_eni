@@ -218,6 +218,15 @@ ENI.Modules.Cassa = (function() {
                     '</div>'
                 ) +
 
+                // Buoni Incassati (Titanwash cartacei + wallet digitale)
+                _section('\u{1F3AB} Buoni Incassati',
+                    '<div class="cassa-grid">' +
+                        _cassaInputBuoni('Buoni Cartacei', 'incasso_buoni_cartacei', c.incasso_buoni_cartacei, 'buono') +
+                        _cassaInputBuoni('Wallet Digitale', 'incasso_wallet_digitale', c.incasso_wallet_digitale, 'wallet') +
+                    '</div>' +
+                    '<div class="cassa-subtotal text-right mt-2">Totale Buoni: <span id="tot-buoni-incassati">\u20AC 0,00</span></div>'
+                ) +
+
                 // TOTALE INCASSATO
                 '<div class="cassa-totale">' +
                     '<div class="cassa-totale-label">\u{1F4B5} TOTALE INCASSATO</div>' +
@@ -334,6 +343,22 @@ ENI.Modules.Cassa = (function() {
         // Se il campo cassa non ha valore ma il POS si, usa il valore POS
         var displayVal = (value !== null && value !== undefined && value !== 0) ? value : (posVal > 0 ? posVal : '');
         var hint = posVal > 0 ? '<span class="text-xs" style="color: var(--color-success); margin-left: 4px;">(POS: ' + ENI.UI.formatValuta(posVal) + ')</span>' : '';
+
+        return '<div class="cassa-row">' +
+            '<span class="cassa-row-label">' + label + hint + '</span>' +
+            '<div class="cassa-row-input">' +
+                '<input type="number" step="0.01" min="0" class="form-input cassa-field" ' +
+                    'data-field="' + name + '" value="' + displayVal + '">' +
+            '</div>' +
+        '</div>';
+    }
+
+    // Input con auto-populate da totali buoni/wallet vendita
+    function _cassaInputBuoni(label, name, value, metodoKey) {
+        var posVal = (_posTotals && _posTotals.perMetodo && _posTotals.perMetodo[metodoKey])
+            ? _posTotals.perMetodo[metodoKey] : 0;
+        var displayVal = (value !== null && value !== undefined && value !== 0) ? value : (posVal > 0 ? posVal : '');
+        var hint = posVal > 0 ? '<span class="text-xs" style="color: var(--color-success); margin-left: 4px;">(Vendite: ' + ENI.UI.formatValuta(posVal) + ')</span>' : '';
 
         return '<div class="cassa-row">' +
             '<span class="cassa-row-label">' + label + hint + '</span>' +
@@ -505,9 +530,12 @@ ENI.Modules.Cassa = (function() {
         // Altro incassato (assegni + bonifici)
         var totAltroInc = val('assegni') + val('bonifici');
 
+        // Buoni incassati (cartacei + wallet)
+        var totBuoniInc = val('incasso_buoni_cartacei') + val('incasso_wallet_digitale');
+
         // Totale incassato
         var totIncassato = contantiNetti + totBsiCarb + totBsiLav + totBsiAcc +
-            totCarisp + totCazz + totAltriPag + totAltroInc;
+            totCarisp + totCazz + totAltriPag + totAltroInc + totBuoniInc;
 
         // Crediti
         var totCrediti =
@@ -530,6 +558,7 @@ ENI.Modules.Cassa = (function() {
         _setText('tot-carisp',        ENI.UI.formatValuta(totCarisp));
         _setText('tot-carta-azzurra', ENI.UI.formatValuta(totCazz));
         _setText('tot-altri-pagamenti',ENI.UI.formatValuta(totAltriPag));
+        _setText('tot-buoni-incassati',ENI.UI.formatValuta(totBuoniInc));
         _setText('tot-incassato',     ENI.UI.formatValuta(totIncassato));
         _setText('tot-crediti',       ENI.UI.formatValuta(totCrediti));
         _setText('tot-differenza',    ENI.UI.formatValuta(differenza));
@@ -639,8 +668,9 @@ ENI.Modules.Cassa = (function() {
         var totCazz      = _getPosGroupTotal('carta-azzurra');
         var totAltriPag  = _getPosGroupTotal('altri-pagamenti-carta');
         var totAltroInc  = val('assegni') + val('bonifici');
+        var totBuoniInc  = val('incasso_buoni_cartacei') + val('incasso_wallet_digitale');
         var totIncassato = contantiNetti + totBsiCarb + totBsiLav + totBsiAcc +
-            totCarisp + totCazz + totAltriPag + totAltroInc;
+            totCarisp + totCazz + totAltriPag + totAltroInc + totBuoniInc;
 
         var totCrediti =
             val('crediti_paghero') + val('crediti_mobile_payment') +
@@ -692,6 +722,8 @@ ENI.Modules.Cassa = (function() {
             self_notturno_contanti: val('self_notturno_contanti'),
             assegni:  val('assegni'),
             bonifici: val('bonifici'),
+            incasso_buoni_cartacei:  val('incasso_buoni_cartacei'),
+            incasso_wallet_digitale: val('incasso_wallet_digitale'),
             crediti_paghero:         val('crediti_paghero'),
             crediti_mobile_payment:  val('crediti_mobile_payment'),
             crediti_buoni_eni:       val('crediti_buoni_eni'),

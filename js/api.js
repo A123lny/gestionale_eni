@@ -736,15 +736,17 @@ ENI.API = (function() {
         var vendite = await getVendite({ data: data, stato: 'completata', limit: 500 });
 
         if (!vendite || vendite.length === 0) {
-            return { totaleVendite: 0, numVendite: 0, perCategoria: {}, perMetodo: { contanti: 0, pos: 0 } };
+            return { totaleVendite: 0, numVendite: 0, perCategoria: {}, perMetodo: { contanti: 0, pos: 0, buono: 0, wallet: 0 } };
         }
 
         var totaleVendite = 0;
-        var perMetodo = { contanti: 0, pos: 0 };
+        var perMetodo = { contanti: 0, pos: 0, buono: 0, wallet: 0 };
         vendite.forEach(function(v) {
             totaleVendite += Number(v.totale || 0);
             perMetodo.contanti += Number(v.importo_contanti || 0);
             perMetodo.pos += Number(v.importo_pos || 0);
+            perMetodo.buono += Number(v.importo_buono || 0);
+            perMetodo.wallet += Number(v.importo_wallet || 0);
         });
 
         // Totali per categoria dalle righe dettaglio
