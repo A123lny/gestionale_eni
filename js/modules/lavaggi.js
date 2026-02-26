@@ -206,7 +206,9 @@ ENI.Modules.Lavaggi = (function() {
                         (l.walk_in ? ' <span class="badge badge-annullato">walk-in</span>' : '') +
                         (l.cellulare ? '<br><a href="tel:' + ENI.UI.escapeHtml(l.cellulare) + '" class="text-xs text-muted">\u{1F4F1} ' + ENI.UI.escapeHtml(l.cellulare) + '</a>' : '') +
                     '</td>' +
-                    '<td class="text-sm">' + ENI.UI.escapeHtml(l.tipo_lavaggio) + '</td>' +
+                    '<td class="text-sm">' + ENI.UI.escapeHtml(l.tipo_lavaggio) +
+                        (l.servizi_extra && l.servizi_extra.length > 0 ? ' <span class="badge badge-info" title="' + l.servizi_extra.map(function(e) { return e.nome; }).join(', ') + '">+' + l.servizi_extra.length + ' extra</span>' : '') +
+                    '</td>' +
                     '<td><strong>' + ENI.UI.formatValuta(l.prezzo) + '</strong></td>' +
                     '<td>' + (l.priorita ? ENI.UI.badgeStato(l.priorita) : '-') + '</td>' +
                     '<td>' + ENI.UI.badgeStato(l.stato) + '</td>' +
@@ -215,6 +217,9 @@ ENI.Modules.Lavaggi = (function() {
                             ? '<button class="btn btn-sm btn-success" data-completa-id="' + l.id + '" title="Completa">\u2713</button>' +
                               '<button class="btn btn-sm btn-outline" data-modifica-id="' + l.id + '" title="Modifica">\u270F\uFE0F</button>' +
                               '<button class="btn btn-sm btn-ghost" data-annulla-id="' + l.id + '" title="Annulla">\u274C</button>'
+                            : '') +
+                        (l.stato === 'Completato'
+                            ? '<button class="btn btn-sm btn-outline" data-modifica-id="' + l.id + '" title="Modifica">\u270F\uFE0F</button>'
                             : '') +
                         '<button class="btn btn-sm btn-ghost" data-elimina-id="' + l.id + '" title="Elimina definitivamente">\u{1F5D1}</button>' +
                     '</td>' +
@@ -317,6 +322,11 @@ ENI.Modules.Lavaggi = (function() {
                         (lav.priorita ? '<div class="credito-info-row"><span class="credito-info-label">Priorit\u00E0</span><span class="credito-info-value">' + ENI.UI.badgeStato(lav.priorita) + '</span></div>' : '') +
                         (lav.cellulare ? '<div class="credito-info-row"><span class="credito-info-label">Cellulare</span><span class="credito-info-value"><a href="tel:' + ENI.UI.escapeHtml(lav.cellulare) + '">' + ENI.UI.escapeHtml(lav.cellulare) + '</a></span></div>' : '') +
                         (lav.note ? '<div class="credito-info-row"><span class="credito-info-label">Note</span><span class="credito-info-value">' + ENI.UI.escapeHtml(lav.note) + '</span></div>' : '') +
+                        (lav.servizi_extra && lav.servizi_extra.length > 0
+                            ? '<div class="credito-info-row"><span class="credito-info-label">Extra</span><span class="credito-info-value">' +
+                                lav.servizi_extra.map(function(ex) { return ENI.UI.escapeHtml(ex.nome) + ' ' + ENI.UI.formatValuta(ex.prezzo); }).join('<br>') +
+                              '</span></div>'
+                            : '') +
                     '</div>',
                 footer: '<button class="btn btn-outline" data-modal-close>Chiudi</button>'
             });
@@ -395,6 +405,24 @@ ENI.Modules.Lavaggi = (function() {
                         '<input type="number" step="0.01" min="0" class="form-input" id="lav-prezzo">' +
                         '<div id="lav-prezzo-info" class="text-xs text-muted mt-1"></div>' +
                     '</div>' +
+                '</div>' +
+
+                // Servizi Extra
+                '<div class="form-group">' +
+                    '<label class="form-label">Servizi Extra</label>' +
+                    '<div id="lav-extra-container" class="extra-servizi-list">' +
+                        ENI.Config.SERVIZI_EXTRA_LAVAGGIO.map(function(s, i) {
+                            return '<div class="extra-servizio-row">' +
+                                '<label class="form-check" style="flex:1;">' +
+                                    '<input type="checkbox" class="lav-extra-check" data-extra-index="' + i + '"> ' +
+                                    ENI.UI.escapeHtml(s.nome) +
+                                '</label>' +
+                                '<input type="number" step="0.01" min="0" class="form-input lav-extra-prezzo" data-extra-index="' + i + '" value="' + s.prezzo.toFixed(2) + '" style="width: 80px; text-align: right;">' +
+                                '<span class="text-sm text-muted">\u20AC</span>' +
+                            '</div>';
+                        }).join('') +
+                    '</div>' +
+                    '<div id="lav-extra-totale" class="extra-totale" style="display:none;"></div>' +
                 '</div>' +
 
                 // Orario e priorita (solo prenota)
@@ -490,6 +518,34 @@ ENI.Modules.Lavaggi = (function() {
             _aggiornaPrezzo();
         });
 
+        // Servizi extra: ricalcola totale
+        function _aggiornaExtraTotale() {
+            var checks = modal.querySelectorAll('.lav-extra-check');
+            var totExtra = 0;
+            checks.forEach(function(cb) {
+                if (cb.checked) {
+                    var idx = cb.dataset.extraIndex;
+                    var prezzoExtra = parseFloat(modal.querySelector('.lav-extra-prezzo[data-extra-index="' + idx + '"]').value) || 0;
+                    totExtra += prezzoExtra;
+                }
+            });
+            var totaleEl = modal.querySelector('#lav-extra-totale');
+            var prezzoBase = parseFloat(prezzoInput.value) || 0;
+            if (totExtra > 0) {
+                totaleEl.style.display = 'block';
+                totaleEl.innerHTML = 'Base: ' + ENI.UI.formatValuta(prezzoBase) + ' + Extra: ' + ENI.UI.formatValuta(totExtra) + ' = <strong>Totale: ' + ENI.UI.formatValuta(prezzoBase + totExtra) + '</strong>';
+            } else {
+                totaleEl.style.display = 'none';
+            }
+        }
+
+        modal.querySelectorAll('.lav-extra-check').forEach(function(cb) {
+            cb.addEventListener('change', _aggiornaExtraTotale);
+        });
+        modal.querySelectorAll('.lav-extra-prezzo').forEach(function(inp) {
+            inp.addEventListener('input', _aggiornaExtraTotale);
+        });
+
         // Bottone + Nuovo cliente inline
         modal.querySelector('#btn-nuovo-cliente-inline').addEventListener('click', function() {
             _showFormNuovoClienteInline(modal, clienteSelect, cellulareInput, clienti);
@@ -521,16 +577,34 @@ ENI.Modules.Lavaggi = (function() {
                 ? clienteOpt.textContent.replace(/^[\u{1F3E2}\u{1F464}]\s*/u, '').trim()
                 : 'Walk-in';
 
+            // Raccogli servizi extra selezionati
+            var serviziExtra = [];
+            modal.querySelectorAll('.lav-extra-check').forEach(function(cb) {
+                if (cb.checked) {
+                    var idx = cb.dataset.extraIndex;
+                    var prezzoExtra = parseFloat(modal.querySelector('.lav-extra-prezzo[data-extra-index="' + idx + '"]').value) || 0;
+                    serviziExtra.push({
+                        nome: ENI.Config.SERVIZI_EXTRA_LAVAGGIO[parseInt(idx, 10)].nome,
+                        prezzo: prezzoExtra
+                    });
+                }
+            });
+
+            // Prezzo totale = base + extra
+            var totExtra = serviziExtra.reduce(function(sum, s) { return sum + s.prezzo; }, 0);
+            var prezzoTotale = prezzo + totExtra;
+
             var dati = {
                 data: _dataSelezionata,
                 cliente_id: clienteId || null,
                 nome_cliente: nomeCliente,
                 tipo_lavaggio: tipo,
-                prezzo: prezzo,
+                prezzo: prezzoTotale,
                 veicolo: veicolo,
                 cellulare: cellulare,
                 walk_in: isWalkin,
-                note: modal.querySelector('#lav-note').value.trim() || null
+                note: modal.querySelector('#lav-note').value.trim() || null,
+                servizi_extra: serviziExtra
             };
 
             if (!isWalkin) {
@@ -647,6 +721,49 @@ ENI.Modules.Lavaggi = (function() {
         var lavaggio = _lavaggi.find(function(l) { return l.id === id; });
         if (!lavaggio) return;
 
+        // Se ci sono note, mostrare alert con riepilogo note prima di completare
+        if (lavaggio.note && lavaggio.note.trim()) {
+            var extraHtml = '';
+            var extras = lavaggio.servizi_extra;
+            if (extras && extras.length > 0) {
+                extraHtml = '<div style="margin-top: 8px;"><strong>Servizi Extra:</strong><ul style="margin: 4px 0; padding-left: 20px;">';
+                extras.forEach(function(ex) {
+                    extraHtml += '<li>' + ENI.UI.escapeHtml(ex.nome) + ' - ' + ENI.UI.formatValuta(ex.prezzo) + '</li>';
+                });
+                extraHtml += '</ul></div>';
+            }
+
+            var noteModal = ENI.UI.showModal({
+                title: '\u26A0\uFE0F Attenzione - Note del lavaggio',
+                body:
+                    '<div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 12px; margin-bottom: 12px;">' +
+                        '<strong>NOTE:</strong><br>' +
+                        '<span style="font-size: 1.05rem;">' + ENI.UI.escapeHtml(lavaggio.note) + '</span>' +
+                    '</div>' +
+                    '<div style="margin-bottom: 8px;">' +
+                        '<strong>' + ENI.UI.escapeHtml(lavaggio.veicolo || lavaggio.nome_cliente) + '</strong> - ' +
+                        lavaggio.tipo_lavaggio + ' - ' + ENI.UI.formatValuta(lavaggio.prezzo) +
+                    '</div>' +
+                    extraHtml,
+                footer:
+                    '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                    '<button class="btn btn-success" id="btn-conferma-note">Ho letto le note - Completa</button>'
+            });
+
+            noteModal.querySelector('#btn-conferma-note').addEventListener('click', async function() {
+                ENI.UI.closeModal(noteModal);
+                try {
+                    await ENI.API.completaLavaggio(id, lavaggio);
+                    ENI.UI.success('Lavaggio completato');
+                    await _loadLavaggi();
+                } catch(e) {
+                    ENI.UI.error('Errore: ' + e.message);
+                }
+            });
+            return;
+        }
+
+        // Senza note: conferma standard
         var msg = 'Completare il lavaggio?\n' +
                   (lavaggio.veicolo || lavaggio.nome_cliente) + ' - ' +
                   lavaggio.tipo_lavaggio + ' - ' + ENI.UI.formatValuta(lavaggio.prezzo);
@@ -908,6 +1025,10 @@ ENI.Modules.Lavaggi = (function() {
 
         var body =
             '<form id="form-modifica-lavaggio">' +
+                '<div class="form-group">' +
+                    '<label class="form-label form-label-required">Data</label>' +
+                    '<input type="date" class="form-input" id="mod-data" value="' + (lavaggio.data || '') + '">' +
+                '</div>' +
                 '<div class="form-row">' +
                     '<div class="form-group">' +
                         '<label class="form-label form-label-required">Veicolo</label>' +
@@ -930,9 +1051,27 @@ ENI.Modules.Lavaggi = (function() {
                         '</select>' +
                     '</div>' +
                     '<div class="form-group">' +
-                        '<label class="form-label form-label-required">Prezzo \u20AC</label>' +
+                        '<label class="form-label form-label-required">Prezzo Base \u20AC</label>' +
                         '<input type="number" step="0.01" min="0" class="form-input" id="mod-prezzo" value="' + (lavaggio.prezzo || '') + '">' +
                     '</div>' +
+                '</div>' +
+                // Servizi Extra (precompilati con quelli salvati)
+                '<div class="form-group">' +
+                    '<label class="form-label">Servizi Extra</label>' +
+                    '<div id="mod-extra-container" class="extra-servizi-list">' +
+                        ENI.Config.SERVIZI_EXTRA_LAVAGGIO.map(function(s, i) {
+                            var existing = (lavaggio.servizi_extra || []).find(function(e) { return e.nome === s.nome; });
+                            return '<div class="extra-servizio-row">' +
+                                '<label class="form-check" style="flex:1;">' +
+                                    '<input type="checkbox" class="mod-extra-check" data-extra-index="' + i + '"' + (existing ? ' checked' : '') + '> ' +
+                                    ENI.UI.escapeHtml(s.nome) +
+                                '</label>' +
+                                '<input type="number" step="0.01" min="0" class="form-input mod-extra-prezzo" data-extra-index="' + i + '" value="' + (existing ? existing.prezzo.toFixed(2) : s.prezzo.toFixed(2)) + '" style="width: 80px; text-align: right;">' +
+                                '<span class="text-sm text-muted">\u20AC</span>' +
+                            '</div>';
+                        }).join('') +
+                    '</div>' +
+                    '<div id="mod-extra-totale" class="extra-totale" style="display:none;"></div>' +
                 '</div>' +
                 '<div class="form-row">' +
                     '<div class="form-group">' +
@@ -965,15 +1104,60 @@ ENI.Modules.Lavaggi = (function() {
                 '<button class="btn btn-primary" id="btn-salva-modifica">\u{1F4BE} Salva Modifiche</button>'
         });
 
+        // Servizi extra modifica: ricalcola totale
+        function _aggiornaModExtraTotale() {
+            var checks = modal.querySelectorAll('.mod-extra-check');
+            var totExtra = 0;
+            checks.forEach(function(cb) {
+                if (cb.checked) {
+                    var idx = cb.dataset.extraIndex;
+                    var prezzoExtra = parseFloat(modal.querySelector('.mod-extra-prezzo[data-extra-index="' + idx + '"]').value) || 0;
+                    totExtra += prezzoExtra;
+                }
+            });
+            var totaleEl = modal.querySelector('#mod-extra-totale');
+            var prezzoBase = parseFloat(modal.querySelector('#mod-prezzo').value) || 0;
+            if (totExtra > 0) {
+                totaleEl.style.display = 'block';
+                totaleEl.innerHTML = 'Base: ' + ENI.UI.formatValuta(prezzoBase) + ' + Extra: ' + ENI.UI.formatValuta(totExtra) + ' = <strong>Totale: ' + ENI.UI.formatValuta(prezzoBase + totExtra) + '</strong>';
+            } else {
+                totaleEl.style.display = 'none';
+            }
+        }
+
+        modal.querySelectorAll('.mod-extra-check').forEach(function(cb) {
+            cb.addEventListener('change', _aggiornaModExtraTotale);
+        });
+        modal.querySelectorAll('.mod-extra-prezzo').forEach(function(inp) {
+            inp.addEventListener('input', _aggiornaModExtraTotale);
+        });
+        _aggiornaModExtraTotale(); // Inizializza
+
         modal.querySelector('#btn-salva-modifica').addEventListener('click', async function() {
             var veicolo = modal.querySelector('#mod-veicolo').value.trim();
             var cellulare = modal.querySelector('#mod-cellulare').value.trim();
             var tipo = modal.querySelector('#mod-tipo').value;
-            var prezzo = parseFloat(modal.querySelector('#mod-prezzo').value);
+            var prezzoBase = parseFloat(modal.querySelector('#mod-prezzo').value);
 
             if (!veicolo) { ENI.UI.warning('Inserisci il veicolo'); return; }
             if (!cellulare) { ENI.UI.warning('Inserisci il cellulare'); return; }
-            if (!tipo || isNaN(prezzo) || prezzo <= 0) { ENI.UI.warning('Seleziona tipo lavaggio e verifica il prezzo'); return; }
+            if (!tipo || isNaN(prezzoBase) || prezzoBase <= 0) { ENI.UI.warning('Seleziona tipo lavaggio e verifica il prezzo'); return; }
+
+            // Raccogli servizi extra
+            var serviziExtra = [];
+            modal.querySelectorAll('.mod-extra-check').forEach(function(cb) {
+                if (cb.checked) {
+                    var idx = cb.dataset.extraIndex;
+                    var prezzoExtra = parseFloat(modal.querySelector('.mod-extra-prezzo[data-extra-index="' + idx + '"]').value) || 0;
+                    serviziExtra.push({
+                        nome: ENI.Config.SERVIZI_EXTRA_LAVAGGIO[parseInt(idx, 10)].nome,
+                        prezzo: prezzoExtra
+                    });
+                }
+            });
+
+            var totExtra = serviziExtra.reduce(function(sum, s) { return sum + s.prezzo; }, 0);
+            var prezzoTotale = prezzoBase + totExtra;
 
             var clienteSelect = modal.querySelector('#mod-cliente');
             var clienteOpt = clienteSelect.options[clienteSelect.selectedIndex];
@@ -983,16 +1167,18 @@ ENI.Modules.Lavaggi = (function() {
                 : 'Walk-in';
 
             var dati = {
+                data: modal.querySelector('#mod-data').value,
                 veicolo: veicolo,
                 cellulare: cellulare,
                 cliente_id: clienteId || null,
                 nome_cliente: nomeCliente,
                 tipo_lavaggio: tipo,
-                prezzo: prezzo,
+                prezzo: prezzoTotale,
                 orario_inizio: modal.querySelector('#mod-inizio').value || null,
                 orario_fine: modal.querySelector('#mod-fine').value || null,
                 priorita: modal.querySelector('input[name="mod-priorita"]:checked').value,
-                note: modal.querySelector('#mod-note').value.trim() || null
+                note: modal.querySelector('#mod-note').value.trim() || null,
+                servizi_extra: serviziExtra
             };
 
             try {

@@ -90,6 +90,35 @@
     color: #991B1B;
 }
 
+/* --- LAVAGGI: Servizi Extra --- */
+.extra-servizi-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.extra-servizio-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    background: var(--color-gray-50);
+    border-radius: var(--radius-md);
+}
+
+.extra-servizio-row .form-check {
+    margin: 0;
+}
+
+.extra-totale {
+    margin-top: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: #dbeafe;
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    color: #1e40af;
+}
+
 /* --- LAVAGGI: Timeline --- */
 .timeline-container {
     overflow-x: auto;

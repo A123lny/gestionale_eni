@@ -89,6 +89,15 @@ ENI.Config = {
         { value: 'misto', label: 'Misto (Contanti + POS)' }
     ],
 
+    // Servizi extra lavaggio (default con prezzi predefiniti)
+    SERVIZI_EXTRA_LAVAGGIO: [
+        { nome: 'Disinfettante/germicida', prezzo: 10 },
+        { nome: 'Pulizia e Protettivo sedili in pelle', prezzo: 12 },
+        { nome: 'Lucida fascioni esterni', prezzo: 5 },
+        { nome: 'Lavaggio tappetini con lava-moquette', prezzo: 5 },
+        { nome: 'Lavaggio zona motore (idro-asciugata-lucido)', prezzo: 5 }
+    ],
+
     // Durata cache dati (millisecondi)
     CACHE_TTL: 5 * 60 * 1000,   // 5 minuti
 
