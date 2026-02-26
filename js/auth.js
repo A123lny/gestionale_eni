@@ -137,6 +137,9 @@ ENI.Auth = (function() {
                 // Avvia app
                 ENI.App.renderShell();
                 ENI.Router.init();
+
+                // Controlla prenotazioni in attesa (notifica toast)
+                _checkPrenotazioniPendenti();
             } else {
                 _showError('PIN non valido');
                 _clearPin();
@@ -182,6 +185,25 @@ ENI.Auth = (function() {
         } catch(e) {}
 
         renderLogin();
+    }
+
+    // --- Check Prenotazioni Pendenti (toast al login) ---
+
+    async function _checkPrenotazioniPendenti() {
+        try {
+            var pren = await ENI.API.getPrenotazioniLavaggio({ stato: 'in_attesa' });
+            if (pren && pren.length > 0) {
+                var oggi = ENI.UI.oggiISO();
+                var perOggi = pren.filter(function(p) { return p.data_richiesta === oggi; });
+                var msg = pren.length + ' prenotazion' + (pren.length === 1 ? 'e' : 'i') + ' da confermare';
+                if (perOggi.length > 0) {
+                    msg += ' (' + perOggi.length + ' per oggi)';
+                }
+                ENI.UI.warning(msg);
+            }
+        } catch(e) {
+            // Silenzioso, non bloccare il login
+        }
     }
 
     // API pubblica

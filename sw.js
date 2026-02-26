@@ -3,12 +3,11 @@
 // Cache-first per assets statici, network-first per API
 // ============================================================
 
-const CACHE_NAME = 'titanwash-v13';
+const CACHE_NAME = 'titanwash-v14';
 const BASE = self.registration.scope;
 const STATIC_ASSETS = [
     BASE,
     BASE + 'index.html',
-    BASE + 'assets/Titan.png',
     BASE + 'assets/logo_ritagliato.png',
     BASE + 'css/variables.css',
     BASE + 'css/base.css',
@@ -27,7 +26,10 @@ const STATIC_ASSETS = [
     BASE + 'js/modules/lavaggi.js',
     BASE + 'js/modules/crediti.js',
     BASE + 'js/modules/cassa.js',
+    BASE + 'js/modules/spese.js',
     BASE + 'js/modules/magazzino.js',
+    BASE + 'js/modules/vendita-import.js',
+    BASE + 'js/modules/vendita.js',
     BASE + 'js/modules/personale.js',
     BASE + 'js/modules/manutenzioni.js',
     BASE + 'js/modules/log.js',

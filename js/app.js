@@ -69,6 +69,7 @@ ENI.App = (function() {
             '</div>';
 
         _setupEventListeners();
+        _startBadgeCheck();
     }
 
     // --- Get Nav Items for Role ---
@@ -97,7 +98,9 @@ ENI.App = (function() {
 
             html +=
                 '<a class="nav-item" data-route="' + item.id + '" href="' + item.route + '">' +
-                    '<span class="nav-item-icon">' + item.icon + '</span>' +
+                    '<span class="nav-item-icon" style="position:relative;">' + item.icon +
+                        (item.id === 'lavaggi' ? '<span class="nav-badge-dot" id="sidebar-badge-lavaggi" style="display:none;"></span>' : '') +
+                    '</span>' +
                     '<span>' + item.label + '</span>' +
                 '</a>';
         });
@@ -120,7 +123,9 @@ ENI.App = (function() {
         bottomItems.forEach(function(item) {
             html +=
                 '<a class="bottom-nav-item" data-route="' + item.id + '" href="' + item.route + '">' +
-                    '<span class="bottom-nav-icon">' + item.icon + '</span>' +
+                    '<span class="bottom-nav-icon" style="position:relative;">' + item.icon +
+                        (item.id === 'lavaggi' ? '<span class="nav-badge-dot" id="bottom-badge-lavaggi" style="display:none;"></span>' : '') +
+                    '</span>' +
                     '<span class="bottom-nav-label">' + item.label + '</span>' +
                 '</a>';
         });
@@ -197,10 +202,39 @@ ENI.App = (function() {
         }
     }
 
+    // --- Badge Prenotazioni Pendenti ---
+
+    var _badgeTimer = null;
+
+    function _startBadgeCheck() {
+        _updateBadge();
+        if (_badgeTimer) clearInterval(_badgeTimer);
+        _badgeTimer = setInterval(_updateBadge, ENI.Config.DASHBOARD_REFRESH);
+    }
+
+    async function _updateBadge() {
+        try {
+            var pren = await ENI.API.getPrenotazioniLavaggio({ stato: 'in_attesa' });
+            var count = pren ? pren.length : 0;
+            var badges = document.querySelectorAll('.nav-badge-dot');
+            badges.forEach(function(b) {
+                if (count > 0) {
+                    b.style.display = '';
+                    b.textContent = count;
+                } else {
+                    b.style.display = 'none';
+                }
+            });
+        } catch(e) {
+            // Silenzioso
+        }
+    }
+
     // API pubblica
     return {
         init: init,
-        renderShell: renderShell
+        renderShell: renderShell,
+        updateBadge: _updateBadge
     };
 })();
 

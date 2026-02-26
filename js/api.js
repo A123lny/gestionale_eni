@@ -561,17 +561,22 @@ ENI.API = (function() {
             // Clienti attivi
             getClient().from('clienti').select('id, tipo').eq('attivo', true),
             // Crediti scaduti
-            getClient().from('crediti').select('id').eq('stato', 'Aperto').lt('scadenza', oggi)
+            getClient().from('crediti').select('id').eq('stato', 'Aperto').lt('scadenza', oggi),
+            // Prenotazioni in attesa
+            getClient().from('prenotazioni_lavaggio').select('id, data_richiesta, fascia_oraria').eq('stato', 'in_attesa')
         ]);
 
         var creditiAperti = results[0].data || [];
         var lavaggiOggi = results[1].data || [];
         var clientiAttivi = results[2].data || [];
         var creditiScaduti = results[3].data || [];
+        var prenotazioniInAttesa = results[4].data || [];
 
         var totaleCreditiAperti = creditiAperti.reduce(function(sum, c) {
             return sum + Number(c.importo || 0);
         }, 0);
+
+        var prenOggi = prenotazioniInAttesa.filter(function(p) { return p.data_richiesta === oggi; });
 
         return {
             creditiAperti: totaleCreditiAperti,
@@ -581,7 +586,9 @@ ENI.API = (function() {
             lavaggiPrenotati: lavaggiOggi.filter(function(l) { return l.stato === 'Prenotato'; }).length,
             clientiAttivi: clientiAttivi.length,
             clientiCorporate: clientiAttivi.filter(function(c) { return c.tipo === 'Corporate'; }).length,
-            clientiPrivati: clientiAttivi.filter(function(c) { return c.tipo === 'Privato'; }).length
+            clientiPrivati: clientiAttivi.filter(function(c) { return c.tipo === 'Privato'; }).length,
+            prenotazioniInAttesa: prenotazioniInAttesa.length,
+            prenotazioniInAttesaOggi: prenOggi.length
         };
     }
 

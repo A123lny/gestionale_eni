@@ -98,12 +98,13 @@ ENI.Modules.AreaCliente = (function() {
                 '<header class="cliente-header">' +
                     '<div class="cliente-header-inner">' +
                         '<div class="cliente-header-left">' +
-                            '<img src="assets/logo_ritagliato.png" alt="Titanwash" style="height: 32px;" onerror="this.style.display=\'none\'">' +
-                            '<span class="cliente-header-title">Titanwash</span>' +
+                            '<img src="assets/logo_ritagliato.png" alt="Titanwash" style="height: 28px;" onerror="this.style.display=\'none\'">' +
+                        '</div>' +
+                        '<div class="cliente-header-center">' +
+                            '<span class="cliente-header-nome">Ciao, ' + ENI.UI.escapeHtml(nome) + '!</span>' +
                         '</div>' +
                         '<div class="cliente-header-right">' +
-                            '<span class="cliente-header-nome">Ciao, ' + ENI.UI.escapeHtml(nome) + '!</span>' +
-                            '<button class="btn btn-sm btn-outline" id="btn-cliente-logout">Esci</button>' +
+                            '<button class="btn btn-sm btn-outline" id="btn-cliente-logout" style="font-size: 0.75rem; padding: 4px 10px; white-space: nowrap;">Esci</button>' +
                         '</div>' +
                     '</div>' +
                 '</header>' +
@@ -124,10 +125,13 @@ ENI.Modules.AreaCliente = (function() {
                 '</nav>' +
             '</div>';
 
-        // Logout
-        document.getElementById('btn-cliente-logout').addEventListener('click', function() {
-            ENI.State.logoutCliente();
-            window.location.hash = '#/area-cliente';
+        // Logout con conferma
+        document.getElementById('btn-cliente-logout').addEventListener('click', async function() {
+            var conferma = await ENI.UI.confirm('Vuoi uscire dall\'area clienti?');
+            if (conferma) {
+                ENI.State.logoutCliente();
+                window.location.hash = '#/area-cliente';
+            }
         });
 
         // Nav
@@ -325,12 +329,19 @@ ENI.Modules.AreaCliente = (function() {
                         case 'rifiutata': statoCls = 'badge-danger'; break;
                         case 'annullata': statoCls = 'badge-gray'; break;
                     }
-                    var fasciaLabel = { mattina: 'Mattina', pomeriggio: 'Pomeriggio', qualsiasi: 'Qualsiasi' };
+                    var fasciaLabel = p.fascia_oraria || '';
+                    // Vecchi valori compatibilità
+                    if (fasciaLabel === 'mattina') fasciaLabel = 'Mattina';
+                    else if (fasciaLabel === 'pomeriggio') fasciaLabel = 'Pomeriggio';
+                    else if (fasciaLabel === 'qualsiasi') fasciaLabel = 'Qualsiasi';
+                    // Nuovi slot tipo "08:30" → "ore 8:30"
+                    else if (/^\d{2}:\d{2}$/.test(fasciaLabel)) fasciaLabel = 'ore ' + fasciaLabel;
+
                     prenHtml +=
                         '<div class="cliente-booking-card">' +
                             '<div class="cliente-booking-info">' +
                                 '<strong>' + ENI.UI.formatData(p.data_richiesta) + '</strong> - ' +
-                                (fasciaLabel[p.fascia_oraria] || p.fascia_oraria || '') +
+                                fasciaLabel +
                                 '<br>' + ENI.UI.escapeHtml(p.tipo_lavaggio) +
                                 (p.veicolo ? ' - ' + ENI.UI.escapeHtml(p.veicolo) : '') +
                             '</div>' +
@@ -338,6 +349,9 @@ ENI.Modules.AreaCliente = (function() {
                         '</div>';
                 });
             }
+
+            // Genera slot orari da 8:30 a 17:30 (ogni ora)
+            var slotOrari = _getSlotOrari(giorni[0].value);
 
             container.innerHTML =
                 '<div class="card">' +
@@ -348,12 +362,8 @@ ENI.Modules.AreaCliente = (function() {
                             '<select class="form-select" id="pren-data">' + giorniOptions + '</select>' +
                         '</div>' +
                         '<div class="form-group">' +
-                            '<label class="form-label form-label-required">Fascia oraria</label>' +
-                            '<select class="form-select" id="pren-fascia">' +
-                                '<option value="mattina">Mattina (8:00 - 12:00)</option>' +
-                                '<option value="pomeriggio">Pomeriggio (12:00 - 18:00)</option>' +
-                                '<option value="qualsiasi">Qualsiasi orario</option>' +
-                            '</select>' +
+                            '<label class="form-label form-label-required">Orario</label>' +
+                            '<select class="form-select" id="pren-fascia">' + slotOrari + '</select>' +
                         '</div>' +
                         '<div class="form-group">' +
                             '<label class="form-label form-label-required">Tipo lavaggio</label>' +
@@ -371,6 +381,12 @@ ENI.Modules.AreaCliente = (function() {
                     '</div>' +
                 '</div>' +
                 (prenHtml ? '<div class="card" style="margin-top: var(--space-4);"><div class="card-header"><h3>Le tue prenotazioni</h3></div><div class="card-body">' + prenHtml + '</div></div>' : '');
+
+            // Aggiorna slot quando cambia data
+            document.getElementById('pren-data').addEventListener('change', function() {
+                var sel = document.getElementById('pren-fascia');
+                sel.innerHTML = _getSlotOrari(this.value);
+            });
 
             document.getElementById('btn-invia-prenotazione').addEventListener('click', async function() {
                 var data = document.getElementById('pren-data').value;
@@ -410,6 +426,38 @@ ENI.Modules.AreaCliente = (function() {
         } catch(e) {
             container.innerHTML = '<p class="text-danger" style="padding: var(--space-4);">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p>';
         }
+    }
+
+    // ============================================================
+    // HELPER: Genera slot orari 1h (8:30 - 17:30)
+    // ============================================================
+
+    function _getSlotOrari(dataSelezionata) {
+        var slots = [];
+        var oggi = new Date().toISOString().split('T')[0];
+        var isOggi = dataSelezionata === oggi;
+        var oraAdesso = new Date();
+
+        // Slot ogni ora: 08:30, 09:30, 10:30, ..., 17:30
+        for (var h = 8; h <= 17; h++) {
+            var hh = (h < 10 ? '0' : '') + h;
+            var value = hh + ':30';
+            var hFine = h + 1;
+            var hhFine = (hFine < 10 ? '0' : '') + hFine;
+            var label = value + ' - ' + hhFine + ':30';
+
+            var disabled = false;
+            if (isOggi) {
+                var slotDate = new Date();
+                slotDate.setHours(h, 30, 0, 0);
+                if (slotDate.getTime() - oraAdesso.getTime() < 3600000) disabled = true;
+            }
+
+            slots.push('<option value="' + value + '"' + (disabled ? ' disabled' : '') + '>' +
+                label + (disabled ? ' (non disponibile)' : '') + '</option>');
+        }
+
+        return slots.join('');
     }
 
     // API pubblica

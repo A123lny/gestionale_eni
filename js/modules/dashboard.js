@@ -29,7 +29,8 @@ ENI.Modules.Dashboard = (function() {
         return (
             '<div class="kpi-card"><div class="kpi-label">Crediti Aperti</div><div class="kpi-value">---</div></div>' +
             '<div class="kpi-card"><div class="kpi-label">Lavaggi Oggi</div><div class="kpi-value">---</div></div>' +
-            '<div class="kpi-card"><div class="kpi-label">Clienti Attivi</div><div class="kpi-value">---</div></div>'
+            '<div class="kpi-card"><div class="kpi-label">Clienti Attivi</div><div class="kpi-value">---</div></div>' +
+            '<div class="kpi-card"><div class="kpi-label">Prenotazioni</div><div class="kpi-value">---</div></div>'
         );
     }
 
@@ -79,6 +80,17 @@ ENI.Modules.Dashboard = (function() {
                     '\u{1F3E2} ' + data.clientiCorporate + ' corporate' +
                     ' &nbsp; ' +
                     '\u{1F464} ' + data.clientiPrivati + ' privati' +
+                '</div>' +
+            '</div>' +
+
+            // Prenotazioni in attesa
+            '<div class="kpi-card' + (data.prenotazioniInAttesa > 0 ? ' kpi-card-alert' : '') + '" onclick="ENI.Router.navigate(\'lavaggi\')">' +
+                '<div class="kpi-label">\u{1F4C5} Prenotazioni da confermare</div>' +
+                '<div class="kpi-value">' + data.prenotazioniInAttesa + '</div>' +
+                '<div class="kpi-detail">' +
+                    (data.prenotazioniInAttesaOggi > 0
+                        ? '<span class="text-danger">\u{1F534} ' + data.prenotazioniInAttesaOggi + ' per oggi</span>'
+                        : '<span class="text-success">\u2705 Nessuna urgente</span>') +
                 '</div>' +
             '</div>';
     }

@@ -182,6 +182,30 @@
     color: var(--text-muted);
 }
 
+.kpi-card-alert {
+    border-color: var(--color-warning);
+    background: linear-gradient(135deg, #fffbeb, var(--bg-card));
+}
+
+/* --- NAV BADGE (notifica) --- */
+.nav-badge-dot {
+    position: absolute;
+    top: -4px;
+    right: -6px;
+    min-width: 16px;
+    height: 16px;
+    background: var(--color-danger);
+    color: white;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+    line-height: 1;
+}
+
 /* --- BADGE --- */
 .badge {
     display: inline-flex;

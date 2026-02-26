@@ -36,11 +36,12 @@ ENI.Modules.Lavaggi = (function() {
 
             '<div class="filter-bar">' +
                 '<input type="date" class="form-input" id="lavaggi-data" value="' + _dataSelezionata + '"' +
-                    (_vistaCorrente === 'listino' ? ' style="display:none;"' : '') + '>' +
+                    (_vistaCorrente === 'listino' || _vistaCorrente === 'prenotazioni' ? ' style="display:none;"' : '') + '>' +
                 '<div class="filter-chips">' +
                     '<button class="chip ' + (_vistaCorrente === 'tabella' ? 'active' : '') + '" data-vista="tabella">\u{1F4CB} Tabella</button>' +
                     '<button class="chip ' + (_vistaCorrente === 'timeline' ? 'active' : '') + '" data-vista="timeline">\u{1F3A8} Timeline</button>' +
                     '<button class="chip ' + (_vistaCorrente === 'calendario' ? 'active' : '') + '" data-vista="calendario">\u{1F4C5} Calendario</button>' +
+                    '<button class="chip ' + (_vistaCorrente === 'prenotazioni' ? 'active' : '') + '" data-vista="prenotazioni">\u{1F514} Prenotazioni</button>' +
                     listinoChip +
                 '</div>' +
             '</div>' +
@@ -50,6 +51,8 @@ ENI.Modules.Lavaggi = (function() {
         _setupEvents(container);
         if (_vistaCorrente === 'listino') {
             _renderListino();
+        } else if (_vistaCorrente === 'prenotazioni') {
+            _renderPrenotazioni();
         } else {
             await _loadLavaggi();
         }
@@ -86,6 +89,10 @@ ENI.Modules.Lavaggi = (function() {
                 if (dateInput) dateInput.style.display = 'none';
                 if (actionsEl) actionsEl.style.display = 'none';
                 _renderCalendario();
+            } else if (_vistaCorrente === 'prenotazioni') {
+                if (dateInput) dateInput.style.display = 'none';
+                if (actionsEl) actionsEl.style.display = 'none';
+                _renderPrenotazioni();
             } else {
                 if (dateInput) dateInput.style.display = '';
                 if (actionsEl) actionsEl.style.display = '';
@@ -164,6 +171,8 @@ ENI.Modules.Lavaggi = (function() {
             _renderListino();
         } else if (_vistaCorrente === 'calendario') {
             _renderCalendario();
+        } else if (_vistaCorrente === 'prenotazioni') {
+            _renderPrenotazioni();
         } else {
             _renderTabella();
         }
@@ -1346,6 +1355,149 @@ ENI.Modules.Lavaggi = (function() {
             if (dateInput) dateInput.value = _dataSelezionata;
             _showFormLavaggio(false);
         });
+    }
+
+    // ============================================================
+    // PRENOTAZIONI CLIENTI (da portale)
+    // ============================================================
+
+    async function _renderPrenotazioni() {
+        var contentEl = document.getElementById('lavaggi-content');
+        if (!contentEl) return;
+
+        contentEl.innerHTML = '<div class="flex justify-center" style="padding: 2rem;"><div class="spinner"></div></div>';
+
+        try {
+            var tutte = await ENI.API.getPrenotazioniLavaggio({});
+            // Separa in attesa e altre
+            var inAttesa = tutte.filter(function(p) { return p.stato === 'in_attesa'; });
+            var altre = tutte.filter(function(p) { return p.stato !== 'in_attesa'; });
+
+            var html = '';
+
+            // Sezione in attesa
+            html += '<div class="card" style="margin-bottom: var(--space-4);">' +
+                '<div class="card-header"><h3>\u{1F514} Da confermare (' + inAttesa.length + ')</h3></div>' +
+                '<div class="card-body">';
+
+            if (inAttesa.length === 0) {
+                html += '<p class="text-muted text-center" style="padding: var(--space-4);">Nessuna prenotazione in attesa</p>';
+            } else {
+                inAttesa.forEach(function(p) {
+                    var clienteNome = (p.clienti_portale && p.clienti_portale.nome_display) || 'Sconosciuto';
+                    var clienteEmail = (p.clienti_portale && p.clienti_portale.email) || '';
+                    var fasciaLabel = p.fascia_oraria || '';
+                    if (/^\d{2}:\d{2}$/.test(fasciaLabel)) fasciaLabel = 'ore ' + fasciaLabel;
+                    else if (fasciaLabel === 'mattina') fasciaLabel = 'Mattina';
+                    else if (fasciaLabel === 'pomeriggio') fasciaLabel = 'Pomeriggio';
+
+                    html +=
+                        '<div class="pren-card">' +
+                            '<div class="pren-card-header">' +
+                                '<div>' +
+                                    '<strong>' + ENI.UI.escapeHtml(clienteNome) + '</strong>' +
+                                    (clienteEmail ? ' <span class="text-xs text-muted">(' + ENI.UI.escapeHtml(clienteEmail) + ')</span>' : '') +
+                                '</div>' +
+                                '<span class="badge badge-warning">in attesa</span>' +
+                            '</div>' +
+                            '<div class="pren-card-body">' +
+                                '<div class="pren-detail">' +
+                                    '<span>\u{1F4C5} ' + ENI.UI.formatData(p.data_richiesta) + '</span>' +
+                                    '<span>\u{1F555} ' + fasciaLabel + '</span>' +
+                                    '<span>\u{1F697} ' + ENI.UI.escapeHtml(p.tipo_lavaggio) + '</span>' +
+                                    (p.prezzo_previsto ? '<span>\u{1F4B0} ' + ENI.UI.formatValuta(p.prezzo_previsto) + '</span>' : '') +
+                                '</div>' +
+                                (p.veicolo ? '<div class="text-sm" style="margin-top:4px;">\u{1F698} Veicolo: ' + ENI.UI.escapeHtml(p.veicolo) + '</div>' : '') +
+                                (p.note ? '<div class="text-sm text-muted" style="margin-top:4px;">\u{1F4DD} ' + ENI.UI.escapeHtml(p.note) + '</div>' : '') +
+                            '</div>' +
+                            '<div class="pren-card-actions">' +
+                                '<button class="btn btn-sm btn-success" data-conferma-pren="' + p.id + '">\u2713 Conferma</button>' +
+                                '<button class="btn btn-sm btn-danger" data-rifiuta-pren="' + p.id + '">\u2717 Rifiuta</button>' +
+                            '</div>' +
+                        '</div>';
+                });
+            }
+
+            html += '</div></div>';
+
+            // Storico recente (ultime 20 non in_attesa)
+            var recenti = altre.slice(0, 20);
+            if (recenti.length > 0) {
+                html += '<div class="card">' +
+                    '<div class="card-header"><h3>\u{1F4CB} Storico prenotazioni</h3></div>' +
+                    '<div class="card-body">' +
+                    '<div class="table-wrapper"><table class="table"><thead><tr>' +
+                        '<th>Data</th><th>Orario</th><th>Cliente</th><th>Tipo</th><th>Stato</th>' +
+                    '</tr></thead><tbody>';
+
+                recenti.forEach(function(p) {
+                    var clienteNome = (p.clienti_portale && p.clienti_portale.nome_display) || '-';
+                    var fasciaLabel = p.fascia_oraria || '';
+                    if (/^\d{2}:\d{2}$/.test(fasciaLabel)) fasciaLabel = 'ore ' + fasciaLabel;
+                    else if (fasciaLabel === 'mattina') fasciaLabel = 'Mattina';
+                    else if (fasciaLabel === 'pomeriggio') fasciaLabel = 'Pomeriggio';
+
+                    var statoCls = '';
+                    switch(p.stato) {
+                        case 'confermata': statoCls = 'badge-info'; break;
+                        case 'completata': statoCls = 'badge-success'; break;
+                        case 'rifiutata': statoCls = 'badge-danger'; break;
+                        case 'annullata': statoCls = 'badge-gray'; break;
+                    }
+
+                    html += '<tr>' +
+                        '<td>' + ENI.UI.formatData(p.data_richiesta) + '</td>' +
+                        '<td>' + fasciaLabel + '</td>' +
+                        '<td>' + ENI.UI.escapeHtml(clienteNome) + '</td>' +
+                        '<td>' + ENI.UI.escapeHtml(p.tipo_lavaggio) + '</td>' +
+                        '<td><span class="badge ' + statoCls + '">' + (p.stato || '').replace('_', ' ') + '</span></td>' +
+                    '</tr>';
+                });
+
+                html += '</tbody></table></div></div></div>';
+            }
+
+            contentEl.innerHTML = html;
+
+            // Event handlers per conferma/rifiuta
+            ENI.UI.delegate(contentEl, 'click', '[data-conferma-pren]', function(e, el) {
+                _confermaPrenotazione(el.dataset.confermaPren);
+            });
+
+            ENI.UI.delegate(contentEl, 'click', '[data-rifiuta-pren]', function(e, el) {
+                _rifiutaPrenotazione(el.dataset.rifiutaPren);
+            });
+
+        } catch(e) {
+            contentEl.innerHTML = '<p class="text-danger" style="padding: var(--space-4);">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p>';
+        }
+    }
+
+    async function _confermaPrenotazione(id) {
+        var ok = await ENI.UI.confirm('Confermare questa prenotazione?');
+        if (!ok) return;
+        try {
+            await ENI.API.aggiornaPrenotazione(id, { stato: 'confermata' });
+            ENI.UI.success('Prenotazione confermata');
+            _renderPrenotazioni();
+            // Aggiorna badge
+            if (ENI.App.updateBadge) ENI.App.updateBadge();
+        } catch(e) {
+            ENI.UI.error('Errore: ' + e.message);
+        }
+    }
+
+    async function _rifiutaPrenotazione(id) {
+        var ok = await ENI.UI.confirm('Rifiutare questa prenotazione? Il cliente vedr\u00E0 lo stato aggiornato.');
+        if (!ok) return;
+        try {
+            await ENI.API.aggiornaPrenotazione(id, { stato: 'rifiutata' });
+            ENI.UI.success('Prenotazione rifiutata');
+            _renderPrenotazioni();
+            if (ENI.App.updateBadge) ENI.App.updateBadge();
+        } catch(e) {
+            ENI.UI.error('Errore: ' + e.message);
+        }
     }
 
     return { render: render };

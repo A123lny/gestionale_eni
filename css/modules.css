@@ -475,6 +475,38 @@
     }
 }
 
+/* --- PRENOTAZIONI CARD (tab lavaggi) --- */
+.pren-card {
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3);
+    margin-bottom: var(--space-3);
+    background: var(--bg-card);
+}
+
+.pren-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-2);
+}
+
+.pren-card-body {
+    margin-bottom: var(--space-3);
+}
+
+.pren-detail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    font-size: var(--font-size-sm);
+}
+
+.pren-card-actions {
+    display: flex;
+    gap: var(--space-2);
+}
+
 /* --- CASSA: subtotale riga (più leggero del totale principale) --- */
 .cassa-subtotal {
     font-size: var(--font-size-sm);
@@ -1506,25 +1538,29 @@
 }
 
 .cliente-header-left {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: var(--space-2);
 }
 
-.cliente-header-title {
-    font-weight: 700;
-    font-size: 1.1rem;
+.cliente-header-center {
+    flex: 1;
+    text-align: center;
+    min-width: 0;
 }
 
 .cliente-header-right {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: var(--space-2);
 }
 
 .cliente-header-nome {
-    font-size: 0.85rem;
-    opacity: 0.9;
+    font-size: 0.95rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Main Content */
