@@ -169,6 +169,22 @@ ENI.API = (function() {
         return record;
     }
 
+    async function cercaClienti(searchTerm) {
+        var result = await getClient()
+            .from('clienti')
+            .select('id, nome_ragione_sociale, targa, p_iva_coe, tipo, telefono, email, modalita_pagamento')
+            .eq('attivo', true)
+            .or(
+                'nome_ragione_sociale.ilike.%' + searchTerm + '%,' +
+                'targa.ilike.%' + searchTerm + '%,' +
+                'p_iva_coe.ilike.%' + searchTerm + '%'
+            )
+            .order('nome_ragione_sociale', { ascending: true })
+            .limit(15);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
     // --- Listino Lavaggi ---
 
     async function getListino() {
@@ -854,10 +870,11 @@ ENI.API = (function() {
 
     async function getBuoni(filtri) {
         filtri = filtri || {};
-        var query = getClient().from('buoni_cartacei').select('*');
+        var query = getClient().from('buoni_cartacei').select('*, clienti(nome_ragione_sociale)');
         if (filtri.stato) query = query.eq('stato', filtri.stato);
         if (filtri.lotto) query = query.eq('lotto', filtri.lotto);
         if (filtri.taglio) query = query.eq('taglio', filtri.taglio);
+        if (filtri.cliente_id) query = query.eq('cliente_id', filtri.cliente_id);
         query = query.order('created_at', { ascending: false });
         if (filtri.limit) query = query.limit(filtri.limit);
         var result = await query;
@@ -1040,6 +1057,7 @@ ENI.API = (function() {
         getClienti: getClienti,
         salvaCliente: salvaCliente,
         aggiornaCliente: aggiornaCliente,
+        cercaClienti: cercaClienti,
         getListino: getListino,
         getListinoCompleto: getListinoCompleto,
         salvaListino: salvaListino,

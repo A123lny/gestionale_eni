@@ -12,13 +12,19 @@ ENI.Modules.Buoni = (function() {
     var _clientiPortale = [];
     var _searchTimeout = null;
 
+    // Stato selezione cliente
+    var _selectedCliente = null;     // Tab Genera
+    var _gestioneCliente = null;     // Tab Gestione
+
+    // Logo cache per PDF
+    var _logoTitanB64 = null;
+    var _logoEniliveB64 = null;
+
     // ============================================================
     // RENDER PRINCIPALE
     // ============================================================
 
     async function render(container) {
-        var canWrite = ENI.State.canWrite('buoni');
-
         container.innerHTML =
             '<div class="module-header">' +
                 '<h1>Buoni e Clienti</h1>' +
@@ -61,6 +67,86 @@ ENI.Modules.Buoni = (function() {
     }
 
     // ============================================================
+    // UTILITA: RICERCA CLIENTI (usata da Tab 1 e Tab 2)
+    // ============================================================
+
+    function _setupClienteSearch(inputId, resultsId, onSelect) {
+        var searchInput = document.getElementById(inputId);
+        var resultsEl = document.getElementById(resultsId);
+        if (!searchInput || !resultsEl) return;
+
+        var debounce = null;
+
+        searchInput.addEventListener('input', function() {
+            clearTimeout(debounce);
+            var term = searchInput.value.trim();
+            if (term.length < 2) { resultsEl.style.display = 'none'; return; }
+
+            debounce = setTimeout(async function() {
+                try {
+                    var clienti = await ENI.API.cercaClienti(term);
+                    if (clienti.length === 0) {
+                        resultsEl.innerHTML = '<div class="pos-search-item"><span class="text-muted">Nessun cliente trovato</span></div>';
+                    } else {
+                        resultsEl.innerHTML = clienti.map(function(c) {
+                            return '<div class="pos-search-item buoni-search-result" data-sel-id="' + c.id + '">' +
+                                '<div>' +
+                                    '<span class="pos-search-item-name">' + ENI.UI.escapeHtml(c.nome_ragione_sociale) + '</span>' +
+                                    (c.targa ? '<br><span class="pos-search-item-code">' + ENI.UI.escapeHtml(c.targa) + '</span>' : '') +
+                                    (c.p_iva_coe ? '<br><span class="pos-search-item-code">P.IVA: ' + ENI.UI.escapeHtml(c.p_iva_coe) + '</span>' : '') +
+                                '</div>' +
+                                '<span class="text-xs text-muted">' + ENI.UI.escapeHtml(c.tipo) + '</span>' +
+                            '</div>';
+                        }).join('');
+                    }
+                    resultsEl.style.display = 'block';
+
+                    resultsEl.querySelectorAll('[data-sel-id]').forEach(function(item) {
+                        item.addEventListener('click', function() {
+                            var cId = item.dataset.selId;
+                            var found = clienti.find(function(c) { return c.id === cId; });
+                            if (found) {
+                                onSelect(found);
+                                searchInput.value = '';
+                                resultsEl.style.display = 'none';
+                            }
+                        });
+                    });
+                } catch(e) {
+                    resultsEl.innerHTML = '<div class="pos-search-item text-danger">Errore ricerca</div>';
+                    resultsEl.style.display = 'block';
+                }
+            }, 300);
+        });
+
+        // Chiudi dropdown cliccando fuori
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('#' + inputId) && !e.target.closest('#' + resultsId)) {
+                resultsEl.style.display = 'none';
+            }
+        });
+    }
+
+    function _renderClienteBadge(cliente, containerId, onRemove) {
+        var el = document.getElementById(containerId);
+        if (!el || !cliente) return;
+        el.style.display = 'block';
+        el.innerHTML =
+            '<div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-3); background: var(--color-success-bg, #e8f5e9); border: 1px solid var(--color-success, #4caf50); border-radius: var(--radius-md);">' +
+                '<div>' +
+                    '<strong>' + ENI.UI.escapeHtml(cliente.nome_ragione_sociale) + '</strong>' +
+                    (cliente.targa ? ' <span class="text-sm text-muted">(' + ENI.UI.escapeHtml(cliente.targa) + ')</span>' : '') +
+                    (cliente.tipo ? ' <span class="badge badge-gray" style="margin-left: 4px;">' + ENI.UI.escapeHtml(cliente.tipo) + '</span>' : '') +
+                '</div>' +
+                '<button class="btn btn-sm btn-outline" id="' + containerId + '-change">Cambia</button>' +
+            '</div>';
+        document.getElementById(containerId + '-change').addEventListener('click', function() {
+            onRemove();
+            el.style.display = 'none';
+        });
+    }
+
+    // ============================================================
     // TAB 1: GENERA BUONI CARTACEI
     // ============================================================
 
@@ -68,6 +154,7 @@ ENI.Modules.Buoni = (function() {
         var tagli = ENI.Config.TAGLI_BUONI;
         var colori = ENI.Config.COLORI_BUONI;
 
+        // Card selezione denominations
         var cardsHtml = '';
         tagli.forEach(function(taglio) {
             var c = colori[taglio];
@@ -86,10 +173,25 @@ ENI.Modules.Buoni = (function() {
         });
 
         container.innerHTML =
-            '<div class="card">' +
-                '<div class="card-header"><h3>Genera Buoni Cartacei</h3></div>' +
+            // Step 1: Selezione cliente
+            '<div class="card" style="margin-bottom: var(--space-4);">' +
+                '<div class="card-header"><h3>1. Seleziona Cliente</h3></div>' +
                 '<div class="card-body">' +
-                    '<p class="text-muted" style="margin-bottom: var(--space-4);">Seleziona i tagli e le quantita da generare. I buoni verranno salvati e potrai stamparli come PDF.</p>' +
+                    '<p class="text-muted" style="margin-bottom: var(--space-3);">I buoni devono essere associati a un cliente. Cerca un cliente esistente o creane uno nuovo.</p>' +
+                    '<div class="form-group" style="position: relative;">' +
+                        '<input type="text" class="form-input" id="genera-cerca-cliente" placeholder="Cerca per nome, ragione sociale, targa o P.IVA...">' +
+                        '<div id="genera-clienti-results" class="pos-search-dropdown" style="display: none;"></div>' +
+                    '</div>' +
+                    '<div id="genera-cliente-selected" style="display: none;"></div>' +
+                    '<div style="margin-top: var(--space-2);">' +
+                        '<button class="btn btn-outline btn-sm" id="btn-genera-nuovo-cliente">+ Crea Nuovo Cliente</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            // Step 2: Tagli e quantita
+            '<div class="card">' +
+                '<div class="card-header"><h3>2. Seleziona Tagli e Quantita</h3></div>' +
+                '<div class="card-body">' +
                     '<div class="buono-gen-grid">' + cardsHtml + '</div>' +
                     '<div style="margin-top: var(--space-4); text-align: center;">' +
                         '<button class="btn btn-primary btn-lg" id="btn-genera-buoni" style="min-width: 250px;">' +
@@ -99,10 +201,113 @@ ENI.Modules.Buoni = (function() {
                 '</div>' +
             '</div>';
 
+        // Setup ricerca cliente
+        _setupClienteSearch('genera-cerca-cliente', 'genera-clienti-results', function(cliente) {
+            _selectedCliente = cliente;
+            _renderClienteBadge(cliente, 'genera-cliente-selected', function() {
+                _selectedCliente = null;
+            });
+        });
+
+        // Ripristina se gia selezionato
+        if (_selectedCliente) {
+            _renderClienteBadge(_selectedCliente, 'genera-cliente-selected', function() {
+                _selectedCliente = null;
+            });
+        }
+
+        // Bottone nuovo cliente
+        document.getElementById('btn-genera-nuovo-cliente').addEventListener('click', _mostraNuovoClientePerBuoni);
+
+        // Bottone genera
         document.getElementById('btn-genera-buoni').addEventListener('click', _generaBuoni);
     }
 
+    function _mostraNuovoClientePerBuoni() {
+        var body =
+            '<div class="form-group">' +
+                '<label class="form-label form-label-required">Tipo</label>' +
+                '<select class="form-select" id="nc-tipo">' +
+                    '<option value="Privato">Privato</option>' +
+                    '<option value="Corporate">Azienda / Corporate</option>' +
+                '</select>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label form-label-required">Nome / Ragione Sociale</label>' +
+                '<input type="text" class="form-input" id="nc-nome" placeholder="Mario Rossi / Azienda SRL">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">Targa</label>' +
+                '<input type="text" class="form-input" id="nc-targa" placeholder="AA000AA">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">Telefono</label>' +
+                '<input type="text" class="form-input" id="nc-telefono" placeholder="+39...">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">Email</label>' +
+                '<input type="email" class="form-input" id="nc-email" placeholder="email@esempio.com">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">Modalita Pagamento</label>' +
+                '<select class="form-select" id="nc-pagamento">' +
+                    '<option value="contanti">Contanti</option>' +
+                    '<option value="pos">POS</option>' +
+                    '<option value="credito">Credito</option>' +
+                    '<option value="buoni">Buoni</option>' +
+                '</select>' +
+            '</div>';
+
+        var modal = ENI.UI.showModal({
+            title: 'Nuovo Cliente',
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-primary" id="btn-salva-nc">Crea Cliente</button>'
+        });
+
+        modal.querySelector('#btn-salva-nc').addEventListener('click', async function() {
+            var nome = modal.querySelector('#nc-nome').value.trim();
+            var tipo = modal.querySelector('#nc-tipo').value;
+
+            if (!nome) {
+                ENI.UI.warning('Inserisci il nome o ragione sociale');
+                return;
+            }
+
+            try {
+                var dati = {
+                    nome_ragione_sociale: nome,
+                    tipo: tipo,
+                    targa: modal.querySelector('#nc-targa').value.trim() || null,
+                    telefono: modal.querySelector('#nc-telefono').value.trim() || null,
+                    email: modal.querySelector('#nc-email').value.trim() || null,
+                    modalita_pagamento: modal.querySelector('#nc-pagamento').value,
+                    attivo: true
+                };
+
+                var record = await ENI.API.salvaCliente(dati);
+                ENI.UI.closeModal(modal);
+                ENI.UI.success('Cliente "' + nome + '" creato');
+
+                // Seleziona automaticamente il nuovo cliente
+                _selectedCliente = record;
+                _renderClienteBadge(record, 'genera-cliente-selected', function() {
+                    _selectedCliente = null;
+                });
+            } catch(e) {
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
+    }
+
     async function _generaBuoni() {
+        // Validazione cliente
+        if (!_selectedCliente) {
+            ENI.UI.warning('Seleziona un cliente prima di generare i buoni');
+            return;
+        }
+
         var inputs = document.querySelectorAll('.buono-qty-input');
         var buoniDaGenerare = [];
 
@@ -122,7 +327,7 @@ ENI.Modules.Buoni = (function() {
         var totale = buoniDaGenerare.reduce(function(s, b) { return s + b.qty; }, 0);
 
         var conferma = await ENI.UI.confirm(
-            'Generare ' + totale + ' buoni cartacei?'
+            'Generare ' + totale + ' buoni per "' + _selectedCliente.nome_ragione_sociale + '"?'
         );
         if (!conferma) return;
 
@@ -152,6 +357,7 @@ ENI.Modules.Buoni = (function() {
                         taglio: bg.taglio,
                         stato: 'attivo',
                         lotto: lotto,
+                        cliente_id: _selectedCliente.id,
                         creato_da: ENI.State.getUserId(),
                         creato_nome: ENI.State.getUserName()
                     });
@@ -162,12 +368,15 @@ ENI.Modules.Buoni = (function() {
             await ENI.API.generaBuoniCartacei(tuttiBuoni);
 
             // Genera PDF
-            _generaPDF(tuttiBuoni, lotto);
+            await _generaPDF(tuttiBuoni, lotto, _selectedCliente.nome_ragione_sociale);
 
             ENI.UI.hideLoading();
-            ENI.UI.success('Generati ' + totale + ' buoni - Lotto: ' + lotto);
+            ENI.UI.success('Generati ' + totale + ' buoni per "' + _selectedCliente.nome_ragione_sociale + '" - Lotto: ' + lotto);
 
-            // Reset quantita
+            // Reset
+            _selectedCliente = null;
+            var selEl = document.getElementById('genera-cliente-selected');
+            if (selEl) selEl.style.display = 'none';
             inputs.forEach(function(input) { input.value = '0'; });
 
         } catch(e) {
@@ -197,18 +406,66 @@ ENI.Modules.Buoni = (function() {
         return remainder === 0 ? '0' : String(10 - remainder);
     }
 
-    // --- PDF GENERATION ---
+    // ============================================================
+    // LOGO LOADING PER PDF
+    // ============================================================
 
-    function _generaPDF(buoni, lotto) {
-        /* global jspdf, JsBarcode */
+    function _loadLogos() {
+        return new Promise(function(resolve) {
+            if (_logoTitanB64 && _logoEniliveB64) { resolve(); return; }
+
+            var loaded = 0;
+            var total = 2;
+            function check() { if (++loaded >= total) resolve(); }
+
+            // Logo Titanwash
+            var img1 = new Image();
+            img1.crossOrigin = 'anonymous';
+            img1.onload = function() {
+                try {
+                    var c = document.createElement('canvas');
+                    c.width = img1.naturalWidth;
+                    c.height = img1.naturalHeight;
+                    c.getContext('2d').drawImage(img1, 0, 0);
+                    _logoTitanB64 = c.toDataURL('image/png');
+                } catch(e) { /* fallback a testo */ }
+                check();
+            };
+            img1.onerror = check;
+            img1.src = 'assets/logo_ritagliato.png';
+
+            // Logo Enilive
+            var img2 = new Image();
+            img2.crossOrigin = 'anonymous';
+            img2.onload = function() {
+                try {
+                    var c = document.createElement('canvas');
+                    c.width = img2.naturalWidth;
+                    c.height = img2.naturalHeight;
+                    c.getContext('2d').drawImage(img2, 0, 0);
+                    _logoEniliveB64 = c.toDataURL('image/png');
+                } catch(e) { /* fallback a testo */ }
+                check();
+            };
+            img2.onerror = check;
+            img2.src = 'assets/enilive.png';
+        });
+    }
+
+    // ============================================================
+    // PDF GENERATION
+    // ============================================================
+
+    async function _generaPDF(buoni, lotto, clienteNome) {
+        // Carica loghi
+        await _loadLogos();
+
         var doc = new window.jspdf.jsPDF({
             orientation: 'portrait',
             unit: 'mm',
             format: 'a4'
         });
 
-        var pageW = 210;
-        var pageH = 297;
         var marginX = 10;
         var marginY = 10;
         var voucherW = 90;
@@ -223,7 +480,6 @@ ENI.Modules.Buoni = (function() {
 
         for (var idx = 0; idx < buoni.length; idx++) {
             var b = buoni[idx];
-            var pageIdx = Math.floor(idx / perPage);
             var posOnPage = idx % perPage;
 
             if (posOnPage === 0 && idx > 0) {
@@ -235,7 +491,7 @@ ENI.Modules.Buoni = (function() {
             var x = marginX + col * (voucherW + gapX);
             var y = marginY + row * (voucherH + gapY);
 
-            _drawVoucher(doc, b, x, y, voucherW, voucherH, colori[b.taglio]);
+            _drawVoucher(doc, b, x, y, voucherW, voucherH, colori[b.taglio], clienteNome);
         }
 
         // Apri PDF
@@ -244,7 +500,7 @@ ENI.Modules.Buoni = (function() {
         window.open(url, '_blank');
     }
 
-    function _drawVoucher(doc, buono, x, y, w, h, colore) {
+    function _drawVoucher(doc, buono, x, y, w, h, colore, clienteNome) {
         // Bordo esterno
         doc.setDrawColor(colore.accent);
         doc.setLineWidth(0.8);
@@ -258,32 +514,63 @@ ENI.Modules.Buoni = (function() {
         doc.setFillColor(colore.primary);
         doc.rect(x + 2, y + 2, w - 4, 12, 'F');
 
-        // Logo testo Titan Wash (in alto a sx)
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
-        doc.text('TITAN WASH', x + 5, y + 7);
+        // Logo Titanwash (in alto a sx)
+        if (_logoTitanB64) {
+            try {
+                doc.addImage(_logoTitanB64, 'PNG', x + 4, y + 3, 18, 10);
+            } catch(e) {
+                doc.setTextColor(255, 255, 255);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(8);
+                doc.text('TITAN WASH', x + 5, y + 7);
+            }
+        } else {
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.text('TITAN WASH', x + 5, y + 7);
+        }
 
-        // Enilive (in alto a dx)
-        doc.setFontSize(7);
-        doc.text('Enilive', x + w - 5, y + 7, { align: 'right' });
+        // Logo Enilive (in alto a dx)
+        if (_logoEniliveB64) {
+            try {
+                doc.addImage(_logoEniliveB64, 'PNG', x + w - 22, y + 3, 18, 10);
+            } catch(e) {
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(7);
+                doc.text('Enilive', x + w - 5, y + 7, { align: 'right' });
+            }
+        } else {
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(7);
+            doc.text('Enilive', x + w - 5, y + 7, { align: 'right' });
+        }
 
         // Sottotitolo
+        doc.setTextColor(255, 255, 255);
         doc.setFontSize(5.5);
         doc.setFont('helvetica', 'normal');
-        doc.text('Borgo Maggiore - San Marino', x + 5, y + 12);
+        doc.text('Borgo Maggiore - San Marino', x + w / 2, y + 12.5, { align: 'center' });
+
+        // Nome cliente
+        if (clienteNome) {
+            doc.setTextColor(colore.accent);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(6);
+            doc.text('Cliente: ' + clienteNome, x + w / 2, y + 18, { align: 'center' });
+        }
 
         // BUONO VALORE
         doc.setTextColor(colore.accent);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
-        doc.text('BUONO VALORE', x + w / 2, y + 20, { align: 'center' });
+        doc.text('BUONO VALORE', x + w / 2, y + 22.5, { align: 'center' });
 
         // Taglio grande
-        doc.setFontSize(22);
+        doc.setFontSize(20);
         doc.setTextColor(colore.primary);
         var taglioStr = 'EUR ' + Number(buono.taglio).toFixed(0) + ',00';
-        doc.text(taglioStr, x + w / 2, y + 30, { align: 'center' });
+        doc.text(taglioStr, x + w / 2, y + 31, { align: 'center' });
 
         // Linea decorativa
         doc.setDrawColor(colore.primary);
@@ -296,15 +583,14 @@ ENI.Modules.Buoni = (function() {
             JsBarcode(canvas, buono.codice_ean, {
                 format: 'EAN13',
                 width: 1.5,
-                height: 30,
+                height: 28,
                 displayValue: true,
                 fontSize: 10,
                 margin: 0
             });
             var barcodeImg = canvas.toDataURL('image/png');
-            doc.addImage(barcodeImg, 'PNG', x + w / 2 - 22, y + 35, 44, 14);
+            doc.addImage(barcodeImg, 'PNG', x + w / 2 - 22, y + 35, 44, 13);
         } catch(e) {
-            // Fallback: mostra solo testo
             doc.setFontSize(8);
             doc.setTextColor(0, 0, 0);
             doc.text(buono.codice_ean, x + w / 2, y + 44, { align: 'center' });
@@ -317,11 +603,10 @@ ENI.Modules.Buoni = (function() {
         doc.text('TWB-' + buono.codice_ean, x + 5, y + h - 4);
         doc.text('Buono monouso - Non ha scadenza', x + w - 5, y + h - 4, { align: 'right' });
 
-        // Guide taglio (tratteggio ai bordi)
+        // Guide taglio
         doc.setDrawColor(200, 200, 200);
         doc.setLineWidth(0.1);
         doc.setLineDashPattern([1, 1], 0);
-        // Angoli taglio
         doc.line(x - 3, y, x, y);
         doc.line(x, y - 3, x, y);
         doc.line(x + w, y - 3, x + w, y);
@@ -334,17 +619,25 @@ ENI.Modules.Buoni = (function() {
     }
 
     // ============================================================
-    // TAB 2: GESTIONE BUONI
+    // TAB 2: GESTIONE BUONI (vista per cliente)
     // ============================================================
 
     async function _renderGestione(container) {
         container.innerHTML =
             '<div class="card">' +
-                '<div class="card-header">' +
-                    '<h3>Gestione Buoni Cartacei</h3>' +
-                '</div>' +
+                '<div class="card-header"><h3>Gestione Buoni Cartacei</h3></div>' +
                 '<div class="card-body">' +
-                    '<div class="filter-bar" style="margin-bottom: var(--space-3);">' +
+                    // Selezione cliente
+                    '<div class="form-group" style="position: relative; margin-bottom: var(--space-3);">' +
+                        '<label class="form-label">Cerca cliente per visualizzare i suoi buoni</label>' +
+                        '<input type="text" class="form-input" id="gestione-cerca-cliente" placeholder="Cerca per nome, ragione sociale, targa o P.IVA...">' +
+                        '<div id="gestione-clienti-results" class="pos-search-dropdown" style="display: none;"></div>' +
+                    '</div>' +
+                    '<div id="gestione-cliente-selected" style="display: none;"></div>' +
+                    // Riepilogo cliente
+                    '<div id="gestione-riepilogo" style="display: none; margin: var(--space-3) 0;"></div>' +
+                    // Filtri stato
+                    '<div class="filter-bar" style="margin-bottom: var(--space-3); display: none;" id="gestione-filtri">' +
                         '<div class="filter-chips">' +
                             '<button class="chip' + (_filtroStato === 'tutti' ? ' active' : '') + '" data-filtro-stato="tutti">Tutti</button>' +
                             '<button class="chip' + (_filtroStato === 'attivo' ? ' active' : '') + '" data-filtro-stato="attivo">Attivi</button>' +
@@ -355,12 +648,41 @@ ENI.Modules.Buoni = (function() {
                             '<input type="text" class="form-input" id="buoni-search-ean" placeholder="Cerca per codice EAN...">' +
                         '</div>' +
                     '</div>' +
-                    '<div id="buoni-lista"><div class="flex justify-center" style="padding: 2rem;"><div class="spinner"></div></div></div>' +
+                    // Lista buoni
+                    '<div id="buoni-lista">' +
+                        '<div class="empty-state"><p class="empty-state-text">Seleziona un cliente per visualizzare i suoi buoni</p></div>' +
+                    '</div>' +
                 '</div>' +
             '</div>';
 
+        // Setup ricerca cliente
+        _setupClienteSearch('gestione-cerca-cliente', 'gestione-clienti-results', function(cliente) {
+            _gestioneCliente = cliente;
+            _renderClienteBadge(cliente, 'gestione-cliente-selected', function() {
+                _gestioneCliente = null;
+                document.getElementById('gestione-filtri').style.display = 'none';
+                document.getElementById('gestione-riepilogo').style.display = 'none';
+                document.getElementById('buoni-lista').innerHTML =
+                    '<div class="empty-state"><p class="empty-state-text">Seleziona un cliente per visualizzare i suoi buoni</p></div>';
+            });
+            document.getElementById('gestione-filtri').style.display = 'block';
+            _loadBuoni();
+        });
+
+        // Ripristina se gia selezionato
+        if (_gestioneCliente) {
+            _renderClienteBadge(_gestioneCliente, 'gestione-cliente-selected', function() {
+                _gestioneCliente = null;
+                document.getElementById('gestione-filtri').style.display = 'none';
+                document.getElementById('gestione-riepilogo').style.display = 'none';
+                document.getElementById('buoni-lista').innerHTML =
+                    '<div class="empty-state"><p class="empty-state-text">Seleziona un cliente per visualizzare i suoi buoni</p></div>';
+            });
+            document.getElementById('gestione-filtri').style.display = 'block';
+            _loadBuoni();
+        }
+
         _setupGestioneEvents(container);
-        _loadBuoni();
     }
 
     function _setupGestioneEvents(container) {
@@ -395,10 +717,16 @@ ENI.Modules.Buoni = (function() {
         var listaEl = document.getElementById('buoni-lista');
         if (!listaEl) return;
 
+        if (!_gestioneCliente) {
+            listaEl.innerHTML =
+                '<div class="empty-state"><p class="empty-state-text">Seleziona un cliente per visualizzare i suoi buoni</p></div>';
+            return;
+        }
+
         try {
-            var filtri = {};
+            var filtri = { cliente_id: _gestioneCliente.id };
             if (_filtroStato !== 'tutti') filtri.stato = _filtroStato;
-            filtri.limit = 200;
+            filtri.limit = 500;
             var buoni = await ENI.API.getBuoni(filtri);
 
             if (searchEAN) {
@@ -407,10 +735,34 @@ ENI.Modules.Buoni = (function() {
                 });
             }
 
+            // Riepilogo
+            var allBuoni = buoni;
+            if (_filtroStato !== 'tutti' || searchEAN) {
+                // Se filtrato, carica tutti per il riepilogo
+                var allFiltri = { cliente_id: _gestioneCliente.id, limit: 500 };
+                allBuoni = await ENI.API.getBuoni(allFiltri);
+            }
+            var totAttivi = allBuoni.filter(function(b) { return b.stato === 'attivo'; });
+            var totUtilizzati = allBuoni.filter(function(b) { return b.stato === 'utilizzato'; });
+            var totAnnullati = allBuoni.filter(function(b) { return b.stato === 'annullato'; });
+            var valoreAttivo = totAttivi.reduce(function(s, b) { return s + Number(b.taglio); }, 0);
+
+            var riepilogoEl = document.getElementById('gestione-riepilogo');
+            if (riepilogoEl) {
+                riepilogoEl.style.display = 'flex';
+                riepilogoEl.style.gap = 'var(--space-3)';
+                riepilogoEl.style.flexWrap = 'wrap';
+                riepilogoEl.innerHTML =
+                    '<span class="badge badge-success" style="font-size: 0.85rem; padding: 6px 12px;">Attivi: ' + totAttivi.length + ' (' + ENI.UI.formatValuta(valoreAttivo) + ')</span>' +
+                    '<span class="badge badge-info" style="font-size: 0.85rem; padding: 6px 12px;">Utilizzati: ' + totUtilizzati.length + '</span>' +
+                    '<span class="badge badge-danger" style="font-size: 0.85rem; padding: 6px 12px;">Annullati: ' + totAnnullati.length + '</span>' +
+                    '<span class="badge badge-gray" style="font-size: 0.85rem; padding: 6px 12px;">Totale: ' + allBuoni.length + '</span>';
+            }
+
             if (buoni.length === 0) {
                 listaEl.innerHTML =
                     '<div class="empty-state">' +
-                        '<p class="empty-state-text">Nessun buono trovato</p>' +
+                        '<p class="empty-state-text">Nessun buono trovato per questo cliente</p>' +
                     '</div>';
                 return;
             }
@@ -504,6 +856,14 @@ ENI.Modules.Buoni = (function() {
             if (btnStorico) {
                 _mostraStoricoMovimenti(btnStorico.dataset.storicoCliente, btnStorico.dataset.nome);
             }
+            var btnScala = e.target.closest('[data-scala-cliente]');
+            if (btnScala) {
+                _mostraScalaCreditoModal(
+                    btnScala.dataset.scalaCliente,
+                    btnScala.dataset.nome,
+                    parseFloat(btnScala.dataset.saldo)
+                );
+            }
         });
 
         var searchInput = container.querySelector('#clienti-portale-search');
@@ -520,6 +880,10 @@ ENI.Modules.Buoni = (function() {
     async function _loadClientiPortale(search) {
         var listaEl = document.getElementById('clienti-portale-lista');
         if (!listaEl) return;
+
+        // Check ruolo per bottone Scala
+        var ruolo = ENI.State.getUserRole ? ENI.State.getUserRole() : '';
+        var canScala = ['Admin', 'Cassiere'].indexOf(ruolo) !== -1;
 
         try {
             var filtri = { attivo: true };
@@ -548,6 +912,9 @@ ENI.Modules.Buoni = (function() {
                     '<td>' + ultimoAccesso + '</td>' +
                     '<td>' +
                         '<button class="btn btn-sm btn-primary" data-ricarica-cliente="' + c.id + '" data-nome="' + ENI.UI.escapeHtml(c.nome_display) + '" style="margin-right: 4px;">Ricarica</button>' +
+                        (canScala && c.saldo > 0 ?
+                            '<button class="btn btn-sm btn-danger" data-scala-cliente="' + c.id + '" data-nome="' + ENI.UI.escapeHtml(c.nome_display) + '" data-saldo="' + c.saldo + '" style="margin-right: 4px;">Scala</button>'
+                        : '') +
                         '<button class="btn btn-sm btn-outline" data-storico-cliente="' + c.id + '" data-nome="' + ENI.UI.escapeHtml(c.nome_display) + '">Storico</button>' +
                     '</td>' +
                 '</tr>';
@@ -674,6 +1041,67 @@ ENI.Modules.Buoni = (function() {
                     _loadClientiPortale();
                 } else {
                     ENI.UI.error(result.error || 'Errore ricarica');
+                }
+            } catch(e) {
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
+    }
+
+    // --- SCALA CREDITO MANUALE ---
+
+    function _mostraScalaCreditoModal(clienteId, nome, saldoAttuale) {
+        var body =
+            '<div style="text-align: center; margin-bottom: var(--space-3);">' +
+                '<div class="text-sm text-muted">Scala credito per</div>' +
+                '<div style="font-size: 1.25rem; font-weight: 600;">' + ENI.UI.escapeHtml(nome) + '</div>' +
+                '<div class="text-sm" style="margin-top: var(--space-1);">Saldo attuale: <strong style="color: var(--color-success);">' + ENI.UI.formatValuta(saldoAttuale) + '</strong></div>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label form-label-required">Importo da scalare (EUR)</label>' +
+                '<input type="number" step="0.01" min="0.01" max="' + saldoAttuale + '" class="form-input" id="scala-importo" ' +
+                    'style="font-size: 1.5rem; text-align: center; font-weight: 600;" placeholder="0.00">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label form-label-required">Descrizione / Motivo</label>' +
+                '<input type="text" class="form-input" id="scala-note" placeholder="Es. Lavaggio esterno, Benzina...">' +
+            '</div>';
+
+        var modal = ENI.UI.showModal({
+            title: 'Scala Credito',
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-danger" id="btn-conferma-scala">Conferma Deduzione</button>'
+        });
+
+        modal.querySelector('#scala-importo').focus();
+
+        modal.querySelector('#btn-conferma-scala').addEventListener('click', async function() {
+            var importo = parseFloat(modal.querySelector('#scala-importo').value);
+            var note = modal.querySelector('#scala-note').value.trim();
+
+            if (!importo || importo <= 0) {
+                ENI.UI.warning('Inserisci un importo valido');
+                return;
+            }
+            if (!note) {
+                ENI.UI.warning('Inserisci una descrizione o motivo');
+                return;
+            }
+            if (importo > saldoAttuale) {
+                ENI.UI.warning('Importo superiore al saldo disponibile (' + ENI.UI.formatValuta(saldoAttuale) + ')');
+                return;
+            }
+
+            try {
+                var result = await ENI.API.deduciSaldoCliente(clienteId, importo, note, 'manuale', null);
+                if (result.success) {
+                    ENI.UI.closeModal(modal);
+                    ENI.UI.success('Scalati ' + ENI.UI.formatValuta(importo) + ' - Nuovo saldo: ' + ENI.UI.formatValuta(result.nuovo_saldo));
+                    _loadClientiPortale();
+                } else {
+                    ENI.UI.error(result.error || 'Errore deduzione');
                 }
             } catch(e) {
                 ENI.UI.error('Errore: ' + e.message);

@@ -3,7 +3,7 @@
 // Cache-first per assets statici, network-first per API
 // ============================================================
 
-const CACHE_NAME = 'titanwash-v12';
+const CACHE_NAME = 'titanwash-v13';
 const BASE = self.registration.scope;
 const STATIC_ASSETS = [
     BASE,
