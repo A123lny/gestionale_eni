@@ -56,6 +56,9 @@ ENI.Modules.Lavaggi = (function() {
     }
 
     function _setupEvents(container) {
+        if (container._lavaggiEventsSetup) return;
+        container._lavaggiEventsSetup = true;
+
         var dateInput = container.querySelector('#lavaggi-data');
         if (dateInput) {
             dateInput.addEventListener('change', function(e) {

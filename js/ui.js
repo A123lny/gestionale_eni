@@ -251,10 +251,16 @@ ENI.UI = (function() {
         if (el) el.innerHTML = html;
     }
 
-    // Delegate events
+    // Delegate events (con protezione duplicati)
     function delegate(container, event, selector, handler) {
         var el = typeof container === 'string' ? document.getElementById(container) : container;
         if (!el) return;
+
+        // Previeni listener duplicati sullo stesso container+evento+selettore
+        var key = '_dlg_' + event + '_' + selector.replace(/[^a-zA-Z0-9]/g, '_');
+        if (el[key]) return;
+        el[key] = true;
+
         el.addEventListener(event, function(e) {
             var target = e.target.closest(selector);
             if (target && el.contains(target)) {
