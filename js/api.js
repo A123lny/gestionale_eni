@@ -1011,6 +1011,18 @@ ENI.API = (function() {
         return record;
     }
 
+    async function resetPasswordClienteAdmin(clientePortaleId, nuovaPassword) {
+        var result = await getClient().rpc('reset_password_cliente_admin', {
+            p_cliente_portale_id: clientePortaleId,
+            p_nuova_password: nuovaPassword
+        });
+        if (result.error) throw new Error(result.error.message);
+        if (result.data && result.data.success) {
+            await scriviLog('Reset_Password_Cliente', 'Buoni', 'ID cliente: ' + clientePortaleId);
+        }
+        return result.data;
+    }
+
     async function getMovimentiSaldo(clientePortaleId, options) {
         options = options || {};
         var query = getClient().from('movimenti_saldo')
@@ -1127,6 +1139,7 @@ ENI.API = (function() {
         getClientiPortale: getClientiPortale,
         getClientePortaleById: getClientePortaleById,
         aggiornaClientePortale: aggiornaClientePortale,
+        resetPasswordClienteAdmin: resetPasswordClienteAdmin,
         getMovimentiSaldo: getMovimentiSaldo,
         // Prenotazioni lavaggio
         creaPrenotazioneLavaggio: creaPrenotazioneLavaggio,
