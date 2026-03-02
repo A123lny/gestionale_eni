@@ -1048,7 +1048,8 @@ ENI.Modules.Buoni = (function() {
                 if (result.success) {
                     ENI.UI.closeModal(modal);
                     ENI.UI.success('Account creato per ' + nome);
-                    _loadClientiPortale();
+                    var searchVal = document.getElementById('clienti-portale-search');
+                    _loadClientiPortale(searchVal ? searchVal.value.trim() : '');
                 } else {
                     ENI.UI.error(result.error || 'Errore creazione account');
                 }
@@ -1098,7 +1099,8 @@ ENI.Modules.Buoni = (function() {
                 if (result.success) {
                     ENI.UI.closeModal(modal);
                     ENI.UI.success('Ricaricati ' + ENI.UI.formatValuta(importo) + ' - Nuovo saldo: ' + ENI.UI.formatValuta(result.nuovo_saldo));
-                    _loadClientiPortale();
+                    var searchVal = document.getElementById('clienti-portale-search');
+                    _loadClientiPortale(searchVal ? searchVal.value.trim() : '');
                 } else {
                     ENI.UI.error(result.error || 'Errore ricarica');
                 }
@@ -1159,7 +1161,8 @@ ENI.Modules.Buoni = (function() {
                 if (result.success) {
                     ENI.UI.closeModal(modal);
                     ENI.UI.success('Scalati ' + ENI.UI.formatValuta(importo) + ' - Nuovo saldo: ' + ENI.UI.formatValuta(result.nuovo_saldo));
-                    _loadClientiPortale();
+                    var searchVal = document.getElementById('clienti-portale-search');
+                    _loadClientiPortale(searchVal ? searchVal.value.trim() : '');
                 } else {
                     ENI.UI.error(result.error || 'Errore deduzione');
                 }
