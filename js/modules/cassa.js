@@ -112,126 +112,155 @@ ENI.Modules.Cassa = (function() {
             '</div>' +
 
             (isChiusa
-                ? '<div class="stock-alert mb-4">\u{1F512} Cassa gi\u00E0 chiusa per questa data. Dati in sola lettura.</div>'
+                ? '<div class="stock-alert mb-4" style="display:flex; justify-content:space-between; align-items:center;">' +
+                    '<span>\u{1F512} Cassa chiusa per questa data. Dati in sola lettura.</span>' +
+                    '<button type="button" class="btn btn-sm" id="btn-sblocca-cassa" ' +
+                        'style="background:none; border:1px solid var(--color-primary); color:var(--color-primary);">' +
+                        '\u270F\uFE0F Modifica' +
+                    '</button>' +
+                  '</div>'
                 : '') +
 
-            '<form id="form-cassa">' +
+            '<form id="form-cassa" class="cassa-compact">' +
 
-                // Fondo cassa
+                // Fondo cassa (solo informativo) — fullwidth
                 _section('\u{1F4C5} Informazioni Giornata',
                     '<div class="cassa-grid">' +
-                        _cassaInput('Fondo Cassa', 'fondo_cassa', c.fondo_cassa, 'number') +
+                        _cassaInput('Fondo Cassa Fisso', 'fondo_cassa', c.fondo_cassa || 720, 'number') +
                     '</div>' +
-                    '<div class="text-sm text-muted mt-2">Importo iniziale nel cassetto (viene sottratto dal conteggio contanti)</div>'
+                    '<div class="text-sm text-muted mt-2">Importo fondo cassa fisso \u2014 solo informativo, <strong>non incide</strong> sul calcolo incassato</div>'
                 ) +
 
-                // Venduto Carburante — tabella ottimizzata
-                _section('\u26FD Venduto Carburante',
-                    _renderCarburanteTable(c) +
-                    '<div class="cassa-subtotal text-right mt-3">Totale Carburante: <span id="tot-carburante">\u20AC 0,00</span></div>'
-                ) +
+                // ═══════════ LAYOUT 2 COLONNE ═══════════
+                '<div class="cassa-two-col">' +
 
-                // Venduto Altro
-                _section('\u{1F6D2} Venduto Altro' +
-                    (_posTotals && _posTotals.numVendite > 0
-                        ? ' <span class="badge badge-success" style="font-size:0.75rem; margin-left:8px;">' +
-                            _posTotals.numVendite + ' vendite POS: ' + ENI.UI.formatValuta(_posTotals.totaleVendite) +
-                          '</span>'
-                        : ''),
-                    '<div class="cassa-grid">' +
-                        _cassaInputPOS('Bar', 'venduto_bar', c.venduto_bar, 'Bar') +
-                        _cassaInputPOS('Oli e lubrificanti', 'venduto_olio', c.venduto_olio, 'Oli e lubrificanti') +
-                        _cassaInputPOS('Accessori', 'venduto_accessori', c.venduto_accessori, 'Accessori') +
-                        _cassaInputPOS('AdBlue', 'venduto_adblue', c.venduto_adblue, 'AdBlue') +
-                        _cassaInput('Lavaggi', 'venduto_lavaggi', c.venduto_lavaggi, 'number') +
-                        _cassaInput('Buoni', 'venduto_buoni', c.venduto_buoni, 'number') +
-                        _cassaInputPOS('Tergicristalli', 'venduto_tergicristalli', c.venduto_tergicristalli, 'Tergicristalli') +
-                        _cassaInputPOS('Catene', 'venduto_catene', c.venduto_catene, 'Catene') +
-                        _cassaInputPOS('Profumatori', 'venduto_profumatori', c.venduto_profumatori, 'Profumatori') +
-                        _cassaInputPOS('Detailing', 'venduto_detailing', c.venduto_detailing, 'Detailing') +
-                        _cassaInputPOS('Uso interno', 'venduto_uso_interno', c.venduto_uso_interno, 'Uso interno') +
+                    // ──── COLONNA SINISTRA: VENDUTO ────
+                    '<div>' +
+
+                        // Venduto Carburante
+                        _section('\u26FD Venduto Carburante',
+                            _renderCarburanteTable(c) +
+                            '<div class="cassa-subtotal text-right mt-3">Totale Carburante: <span id="tot-carburante">\u20AC 0,00</span></div>'
+                        ) +
+
+                        // Venduto Altro
+                        _section('\u{1F6D2} Venduto Altro' +
+                            (_posTotals && _posTotals.numVendite > 0
+                                ? ' <span class="badge badge-success" style="font-size:0.75rem; margin-left:8px;">' +
+                                    _posTotals.numVendite + ' vendite POS: ' + ENI.UI.formatValuta(_posTotals.totaleVendite) +
+                                  '</span>'
+                                : ''),
+                            '<div class="cassa-grid">' +
+                                _cassaInputPOS('Bar', 'venduto_bar', c.venduto_bar, 'Bar') +
+                                _cassaInputPOS('Oli e lubrificanti', 'venduto_olio', c.venduto_olio, 'Oli e lubrificanti') +
+                                _cassaInputPOS('Accessori', 'venduto_accessori', c.venduto_accessori, 'Accessori') +
+                                _cassaInputPOS('AdBlue', 'venduto_adblue', c.venduto_adblue, 'AdBlue') +
+                                _cassaInputPOS('Lavaggi', 'venduto_lavaggi', c.venduto_lavaggi, 'Lavaggi') +
+                                _cassaInput('Buoni', 'venduto_buoni', c.venduto_buoni, 'number') +
+                                _cassaInputPOS('Tergicristalli', 'venduto_tergicristalli', c.venduto_tergicristalli, 'Tergicristalli') +
+                                _cassaInputPOS('Catene', 'venduto_catene', c.venduto_catene, 'Catene') +
+                                _cassaInputPOS('Profumatori', 'venduto_profumatori', c.venduto_profumatori, 'Profumatori') +
+                                _cassaInputPOS('Detailing', 'venduto_detailing', c.venduto_detailing, 'Detailing') +
+                                _cassaInputPOS('Uso interno', 'venduto_uso_interno', c.venduto_uso_interno, 'Uso interno') +
+                            '</div>' +
+                            '<div class="cassa-subtotal text-right mt-2">Totale Altro: <span id="tot-altro">\u20AC 0,00</span></div>'
+                        ) +
+
+                        // TOTALE VENDUTO
+                        '<div class="cassa-totale">' +
+                            '<div class="cassa-totale-label">\u{1F4B0} TOTALE VENDUTO</div>' +
+                            '<div class="cassa-totale-value" id="tot-venduto">\u20AC 0,00</div>' +
+                        '</div>' +
+
                     '</div>' +
-                    '<div class="cassa-subtotal text-right mt-2">Totale Altro: <span id="tot-altro">\u20AC 0,00</span></div>'
-                ) +
 
-                // TOTALE VENDUTO
-                '<div class="cassa-totale">' +
-                    '<div class="cassa-totale-label">\u{1F4B0} TOTALE VENDUTO</div>' +
-                    '<div class="cassa-totale-value" id="tot-venduto">\u20AC 0,00</div>' +
+                    // ──── COLONNA DESTRA: INCASSATO ────
+                    '<div>' +
+
+                        // Contanti
+                        _section('\u{1F4B5} Contanti',
+                            '<div class="cassa-grid">' +
+                                _cassaInput('Banconote', 'contanti_banconote', c.contanti_banconote, 'number') +
+                                _cassaInput('Monete', 'contanti_monete', c.contanti_monete, 'number') +
+                            '</div>' +
+                            '<div class="mt-3" style="display:flex; flex-direction:column; gap:4px; font-size:var(--font-size-sm);">' +
+                                '<div class="cassa-subtotal text-right">Contanti lordi: <span id="tot-contanti-lordi">\u20AC 0,00</span></div>' +
+                                '<div class="cassa-subtotal text-right" style="color:var(--color-danger);">(+) Spese: <span id="sub-spese">' + ENI.UI.formatValuta(totSpese) + '</span></div>' +
+                                '<div class="cassa-subtotal text-right" style="font-weight:700; color:var(--color-secondary);">= Contanti netti: <span id="tot-contanti">\u20AC 0,00</span></div>' +
+                                '<div class="cassa-subtotal text-right mt-2" style="color:var(--color-gray-500); font-style:italic;">Verifica fondo: Lordi &minus; Fondo = <span id="verifica-fondo">\u20AC 0,00</span></div>' +
+                            '</div>'
+                        ) +
+
+                        // POS BSI — Carburante (collassabile)
+                        _sectionCollapsible('\u{1F4B3} POS BSI \u2014 Carburante',
+                            _renderPosDinamico('pos-bsi-carburante', c.pos_bsi_carburante, isChiusa) +
+                            '<div class="cassa-subtotal text-right mt-2">Totale BSI Carburante: <span id="tot-bsi-carburante">\u20AC 0,00</span></div>',
+                            'bsi-carb'
+                        ) +
+
+                        // POS BSI — Lavaggi (collassabile)
+                        _sectionCollapsible('\u{1F4B3} POS BSI \u2014 Lavaggi',
+                            _renderPosDinamico('pos-bsi-lavaggi', c.pos_bsi_lavaggi, isChiusa) +
+                            '<div class="cassa-subtotal text-right mt-2">Totale BSI Lavaggi: <span id="tot-bsi-lavaggi">\u20AC 0,00</span></div>',
+                            'bsi-lav'
+                        ) +
+
+                        // POS BSI — Accessori (collassabile)
+                        _sectionCollapsible('\u{1F4B3} POS BSI \u2014 Accessori',
+                            _renderPosDinamico('pos-bsi-accessori', c.pos_bsi_accessori, isChiusa) +
+                            '<div class="cassa-subtotal text-right mt-2">Totale BSI Accessori: <span id="tot-bsi-accessori">\u20AC 0,00</span></div>',
+                            'bsi-acc'
+                        ) +
+
+                        // POS Carisp (collassabile)
+                        _sectionCollapsible('\u{1F4B3} POS Carisp \u2014 Carburante',
+                            _renderPosDinamico('pos-carisp', c.pos_carisp, isChiusa) +
+                            '<div class="cassa-subtotal text-right mt-2">Totale Carisp: <span id="tot-carisp">\u20AC 0,00</span></div>',
+                            'carisp'
+                        ) +
+
+                        // Carta Azzurra (collassabile)
+                        _sectionCollapsible('\u{1F4B3} Carta Azzurra',
+                            _renderPosDinamico('carta-azzurra', c.carta_azzurra, isChiusa) +
+                            '<div class="cassa-subtotal text-right mt-2">Totale Carta Azzurra: <span id="tot-carta-azzurra">\u20AC 0,00</span></div>',
+                            'carta-azz'
+                        ) +
+
+                        // Altri Pagamenti (collassabile)
+                        _sectionCollapsible('\u{1F4B3} Altri Pagamenti con Carta',
+                            _renderPosDinamico('altri-pagamenti-carta', c.altri_pagamenti_carta, isChiusa) +
+                            '<div class="cassa-subtotal text-right mt-2">Totale Altri Pagamenti: <span id="tot-altri-pagamenti">\u20AC 0,00</span></div>',
+                            'altri-pag'
+                        ) +
+
+                        // Altro Incassato
+                        _section('\u{1F3E6} Altro Incassato',
+                            '<div class="cassa-grid">' +
+                                _cassaInput('Assegni', 'assegni', c.assegni, 'number') +
+                                _cassaInput('Bonifici', 'bonifici', c.bonifici, 'number') +
+                            '</div>'
+                        ) +
+
+                        // Buoni Incassati (nostri cartacei + wallet digitale)
+                        _section('\u{1F3AB} Buoni Incassati (nostri)',
+                            '<div class="text-sm text-muted mb-2">Buoni emessi da noi utilizzati come pagamento</div>' +
+                            '<div class="cassa-grid">' +
+                                _cassaInputBuoni('Buoni Cartacei (nostri)', 'incasso_buoni_cartacei', c.incasso_buoni_cartacei, 'buono') +
+                                _cassaInputBuoni('Wallet Digitale (nostro)', 'incasso_wallet_digitale', c.incasso_wallet_digitale, 'wallet') +
+                            '</div>' +
+                            '<div class="cassa-subtotal text-right mt-2">Totale Buoni Incassati: <span id="tot-buoni-incassati">\u20AC 0,00</span></div>'
+                        ) +
+
+                        // TOTALE INCASSATO
+                        '<div class="cassa-totale">' +
+                            '<div class="cassa-totale-label">\u{1F4B5} TOTALE INCASSATO</div>' +
+                            '<div class="cassa-totale-value" id="tot-incassato">\u20AC 0,00</div>' +
+                        '</div>' +
+
+                    '</div>' +
+
                 '</div>' +
-
-                // Contanti
-                _section('\u{1F4B5} Contanti',
-                    '<div class="cassa-grid">' +
-                        _cassaInput('Banconote', 'contanti_banconote', c.contanti_banconote, 'number') +
-                        _cassaInput('Monete', 'contanti_monete', c.contanti_monete, 'number') +
-                    '</div>' +
-                    '<div class="mt-3" style="display:flex; flex-direction:column; gap:4px; font-size:var(--font-size-sm);">' +
-                        '<div class="cassa-subtotal text-right">Contanti lordi: <span id="tot-contanti-lordi">\u20AC 0,00</span></div>' +
-                        '<div class="cassa-subtotal text-right" style="color:var(--color-gray-500);">(&minus;) Fondo cassa: <span id="sub-fondo-cassa">\u20AC 0,00</span></div>' +
-                        '<div class="cassa-subtotal text-right" style="color:var(--color-danger);">(+) Spese: <span id="sub-spese">' + ENI.UI.formatValuta(totSpese) + '</span></div>' +
-                        '<div class="cassa-subtotal text-right" style="font-weight:700; color:var(--color-secondary);">= Contanti netti: <span id="tot-contanti">\u20AC 0,00</span></div>' +
-                    '</div>'
-                ) +
-
-                // POS BSI — Carburante
-                _section('\u{1F4B3} POS BSI \u2014 Carburante',
-                    _renderPosDinamico('pos-bsi-carburante', c.pos_bsi_carburante, isChiusa) +
-                    '<div class="cassa-subtotal text-right mt-2">Totale BSI Carburante: <span id="tot-bsi-carburante">\u20AC 0,00</span></div>'
-                ) +
-
-                // POS BSI — Lavaggi
-                _section('\u{1F4B3} POS BSI \u2014 Lavaggi',
-                    _renderPosDinamico('pos-bsi-lavaggi', c.pos_bsi_lavaggi, isChiusa) +
-                    '<div class="cassa-subtotal text-right mt-2">Totale BSI Lavaggi: <span id="tot-bsi-lavaggi">\u20AC 0,00</span></div>'
-                ) +
-
-                // POS BSI — Accessori
-                _section('\u{1F4B3} POS BSI \u2014 Accessori',
-                    _renderPosDinamico('pos-bsi-accessori', c.pos_bsi_accessori, isChiusa) +
-                    '<div class="cassa-subtotal text-right mt-2">Totale BSI Accessori: <span id="tot-bsi-accessori">\u20AC 0,00</span></div>'
-                ) +
-
-                // POS Carisp — Carburante
-                _section('\u{1F4B3} POS Carisp \u2014 Carburante',
-                    _renderPosDinamico('pos-carisp', c.pos_carisp, isChiusa) +
-                    '<div class="cassa-subtotal text-right mt-2">Totale Carisp: <span id="tot-carisp">\u20AC 0,00</span></div>'
-                ) +
-
-                // Carta Azzurra
-                _section('\u{1F4B3} Carta Azzurra',
-                    _renderPosDinamico('carta-azzurra', c.carta_azzurra, isChiusa) +
-                    '<div class="cassa-subtotal text-right mt-2">Totale Carta Azzurra: <span id="tot-carta-azzurra">\u20AC 0,00</span></div>'
-                ) +
-
-                // Altri Pagamenti con Carta
-                _section('\u{1F4B3} Altri Pagamenti con Carta',
-                    _renderPosDinamico('altri-pagamenti-carta', c.altri_pagamenti_carta, isChiusa) +
-                    '<div class="cassa-subtotal text-right mt-2">Totale Altri Pagamenti: <span id="tot-altri-pagamenti">\u20AC 0,00</span></div>'
-                ) +
-
-                // Altro Incassato
-                _section('\u{1F3E6} Altro Incassato',
-                    '<div class="cassa-grid">' +
-                        _cassaInput('Assegni', 'assegni', c.assegni, 'number') +
-                        _cassaInput('Bonifici', 'bonifici', c.bonifici, 'number') +
-                    '</div>'
-                ) +
-
-                // Buoni Incassati (Titanwash cartacei + wallet digitale)
-                _section('\u{1F3AB} Buoni Incassati',
-                    '<div class="cassa-grid">' +
-                        _cassaInputBuoni('Buoni Cartacei', 'incasso_buoni_cartacei', c.incasso_buoni_cartacei, 'buono') +
-                        _cassaInputBuoni('Wallet Digitale', 'incasso_wallet_digitale', c.incasso_wallet_digitale, 'wallet') +
-                    '</div>' +
-                    '<div class="cassa-subtotal text-right mt-2">Totale Buoni: <span id="tot-buoni-incassati">\u20AC 0,00</span></div>'
-                ) +
-
-                // TOTALE INCASSATO
-                '<div class="cassa-totale">' +
-                    '<div class="cassa-totale-label">\u{1F4B5} TOTALE INCASSATO</div>' +
-                    '<div class="cassa-totale-value" id="tot-incassato">\u20AC 0,00</div>' +
-                '</div>' +
+                // ═══════════ FINE 2 COLONNE ═══════════
 
                 // Self Notturno — solo tracciamento, NON nel calcolo
                 '<div class="cassa-info-box mb-4">' +
@@ -239,7 +268,7 @@ ENI.Modules.Cassa = (function() {
                     '<div class="cassa-grid">' +
                         _cassaInput('Self Nott. Contanti', 'self_notturno_contanti', c.self_notturno_contanti, 'number') +
                     '</div>' +
-                    '<div class="text-sm text-muted mt-2">\u26A0\uFE0F Questo importo \u00E8 tracciato per il rendiconto mensile ma <strong>non viene incluso</strong> nel totale incassato</div>' +
+                    '<div class="text-sm text-muted mt-2">\u26A0\uFE0F Tracciato per rendiconto mensile, <strong>non incluso</strong> nel totale incassato</div>' +
                 '</div>' +
 
                 // Spese in contanti (caricate da modulo Spese)
@@ -250,15 +279,35 @@ ENI.Modules.Cassa = (function() {
                     '<div class="cassa-grid">' +
                         _cassaInput('Pagher\u00F2 Spese Cassa', 'crediti_paghero', c.crediti_paghero, 'number') +
                         _cassaInput('Mobile Payment', 'crediti_mobile_payment', c.crediti_mobile_payment, 'number') +
-                        _cassaInput('Buoni Cartacei ENI', 'crediti_buoni_eni', c.crediti_buoni_eni, 'number') +
+                        _cassaInput('Buoni ENI Carburante', 'crediti_buoni_eni', c.crediti_buoni_eni, 'number') +
+                        '<div class="cassa-row" style="grid-column: 1 / -1;">' +
+                            '<span class="cassa-row-label">Desc. Buoni ENI</span>' +
+                            '<div class="cassa-row-input" style="max-width:280px;">' +
+                                '<input type="text" class="form-input cassa-field" ' +
+                                    'data-field="crediti_buoni_eni_desc" value="' + ENI.UI.escapeHtml(c.crediti_buoni_eni_desc || '') + '" ' +
+                                    'placeholder="es. Buono carburante cliente X">' +
+                            '</div>' +
+                        '</div>' +
                         _cassaInput('Voucher', 'crediti_voucher', c.crediti_voucher, 'number') +
                         _cassaInput('Bollette/Green Money', 'crediti_bollette', c.crediti_bollette, 'number') +
                     '</div>' +
-                    '<div class="cassa-subtotal text-right mt-2">Totale Crediti: <span id="tot-crediti">\u20AC 0,00</span></div>'
+                    '<div class="cassa-subtotal text-right mt-2">Totale Crediti (senza 4TSCARD): <span id="tot-crediti-base">\u20AC 0,00</span></div>'
                 ) +
 
-                // DIFFERENZA
-                '<div class="cassa-differenza ok" id="cassa-diff-box">' +
+                // 4TSCARD — Addebiti Fidelity
+                _section('\u{1F4B3} 4TSCARD \u2014 Addebiti Fidelity',
+                    '<div class="text-sm text-muted mb-2">Addebiti clienti con tessere fidelity (vanno nei crediti)</div>' +
+                    _renderPosDinamico('crediti-4tscard', c.crediti_4tscard, isChiusa) +
+                    '<div class="cassa-subtotal text-right mt-2">Totale 4TSCARD: <span id="tot-4tscard">\u20AC 0,00</span></div>'
+                ) +
+
+                // Totale crediti complessivo
+                '<div class="cassa-subtotal text-right mb-4" style="font-weight:700; color:var(--color-secondary); font-size:var(--font-size-base);">' +
+                    'TOTALE CREDITI: <span id="tot-crediti">\u20AC 0,00</span>' +
+                '</div>' +
+
+                // DIFFERENZA (sticky)
+                '<div class="cassa-differenza ok cassa-totale-sticky" id="cassa-diff-box">' +
                     '<div style="font-size:0.875rem; opacity:0.8;">\u2696\uFE0F DIFFERENZA CASSA</div>' +
                     '<div style="font-size:2rem; font-weight:700;" id="tot-differenza">\u20AC 0,00</div>' +
                     '<div class="text-sm" id="diff-formula">Venduto \u2212 Incassato \u2212 Crediti</div>' +
@@ -306,10 +355,52 @@ ENI.Modules.Cassa = (function() {
             _setupPosDinamico(contentEl);
         }
 
+        // Setup sezioni collassabili
+        contentEl.querySelectorAll('.cassa-collapsible-header').forEach(function(header) {
+            header.addEventListener('click', function() {
+                var targetId = this.dataset.toggle;
+                var body = document.getElementById('collapse-' + targetId);
+                if (body) {
+                    this.classList.toggle('collapsed');
+                    body.classList.toggle('collapsed');
+                }
+            });
+        });
+
         // Setup salvataggio
         if (!isChiusa) {
             var btnSalva = contentEl.querySelector('#btn-salva-cassa');
             if (btnSalva) btnSalva.addEventListener('click', _salvaCassa);
+        }
+
+        // Sblocca cassa chiusa per modifica
+        var btnSblocca = contentEl.querySelector('#btn-sblocca-cassa');
+        if (btnSblocca) {
+            btnSblocca.addEventListener('click', function() {
+                // Sblocca tutti i campi
+                contentEl.querySelectorAll(
+                    '.cassa-field, .pos-nome, .pos-importo, #cassa-note'
+                ).forEach(function(el) {
+                    el.removeAttribute('disabled');
+                });
+                // Attiva POS dinamici
+                _setupPosDinamico(contentEl);
+                // Mostra pulsante salva
+                var formEl = document.getElementById('form-cassa');
+                if (formEl && !formEl.querySelector('#btn-salva-cassa')) {
+                    formEl.insertAdjacentHTML('beforeend',
+                        '<button type="button" class="btn btn-primary btn-block btn-lg mt-4" id="btn-salva-cassa">' +
+                            '\u{1F4BE} Salva Modifiche' +
+                        '</button>'
+                    );
+                    formEl.querySelector('#btn-salva-cassa').addEventListener('click', _salvaCassa);
+                }
+                // Aggiorna messaggio
+                btnSblocca.parentNode.innerHTML =
+                    '<div class="stock-alert mb-4" style="background:#DBEAFE; border-left-color:#3B82F6;">' +
+                        '\u270F\uFE0F Modalit\u00E0 modifica attiva. Le modifiche verranno registrate nel log.' +
+                    '</div>';
+            });
         }
     }
 
@@ -321,6 +412,18 @@ ENI.Modules.Cassa = (function() {
         return '<div class="cassa-section">' +
             '<div class="cassa-section-title">' + title + '</div>' +
             content +
+        '</div>';
+    }
+
+    function _sectionCollapsible(title, content, groupId) {
+        return '<div class="cassa-section">' +
+            '<div class="cassa-collapsible-header" data-toggle="' + groupId + '">' +
+                '<div class="cassa-section-title" style="margin-bottom:0;">' + title + '</div>' +
+                '<span class="cassa-chevron">\u25BC</span>' +
+            '</div>' +
+            '<div class="cassa-collapsible-body" id="collapse-' + groupId + '">' +
+                content +
+            '</div>' +
         '</div>';
     }
 
@@ -514,10 +617,11 @@ ENI.Modules.Cassa = (function() {
 
         var totVenduto = totCarburante + totAltro;
 
-        // Contanti netti = lordi - fondo cassa + spese
+        // Contanti netti = lordi + spese (fondo cassa solo informativo, NON sottratto)
         var fondoCassa = val('fondo_cassa');
         var contantiBruti = val('contanti_banconote') + val('contanti_monete');
-        var contantiNetti = contantiBruti - fondoCassa + totSpese;
+        var contantiNetti = contantiBruti + totSpese;
+        var verificaFondo = contantiBruti - fondoCassa;
 
         // POS dinamici
         var totBsiCarb   = _getPosGroupTotal('pos-bsi-carburante');
@@ -537,10 +641,12 @@ ENI.Modules.Cassa = (function() {
         var totIncassato = contantiNetti + totBsiCarb + totBsiLav + totBsiAcc +
             totCarisp + totCazz + totAltriPag + totAltroInc + totBuoniInc;
 
-        // Crediti
-        var totCrediti =
+        // Crediti (base + 4TSCARD)
+        var totCreditiBase =
             val('crediti_paghero') + val('crediti_mobile_payment') +
             val('crediti_buoni_eni') + val('crediti_voucher') + val('crediti_bollette');
+        var tot4tscard = _getPosGroupTotal('crediti-4tscard');
+        var totCrediti = totCreditiBase + tot4tscard;
 
         var differenza = totVenduto - totIncassato - totCrediti;
 
@@ -549,8 +655,8 @@ ENI.Modules.Cassa = (function() {
         _setText('tot-altro',         ENI.UI.formatValuta(totAltro));
         _setText('tot-venduto',       ENI.UI.formatValuta(totVenduto));
         _setText('tot-contanti-lordi',ENI.UI.formatValuta(contantiBruti));
-        _setText('sub-fondo-cassa',   ENI.UI.formatValuta(fondoCassa));
         _setText('sub-spese',         ENI.UI.formatValuta(totSpese));
+        _setText('verifica-fondo',    ENI.UI.formatValuta(verificaFondo));
         _setText('tot-contanti',      ENI.UI.formatValuta(contantiNetti));
         _setText('tot-bsi-carburante',ENI.UI.formatValuta(totBsiCarb));
         _setText('tot-bsi-lavaggi',   ENI.UI.formatValuta(totBsiLav));
@@ -560,6 +666,8 @@ ENI.Modules.Cassa = (function() {
         _setText('tot-altri-pagamenti',ENI.UI.formatValuta(totAltriPag));
         _setText('tot-buoni-incassati',ENI.UI.formatValuta(totBuoniInc));
         _setText('tot-incassato',     ENI.UI.formatValuta(totIncassato));
+        _setText('tot-crediti-base',  ENI.UI.formatValuta(totCreditiBase));
+        _setText('tot-4tscard',       ENI.UI.formatValuta(tot4tscard));
         _setText('tot-crediti',       ENI.UI.formatValuta(totCrediti));
         _setText('tot-differenza',    ENI.UI.formatValuta(differenza));
 
@@ -607,6 +715,8 @@ ENI.Modules.Cassa = (function() {
     // ============================================================
 
     function _setupPosDinamico(container) {
+        var _addingRow = false;
+
         container.addEventListener('click', function(e) {
             // Rimuovi riga
             if (e.target.classList.contains('pos-remove-btn')) {
@@ -616,12 +726,40 @@ ENI.Modules.Cassa = (function() {
                 }, 0));
                 return;
             }
-            // Aggiungi riga
+            // Aggiungi riga (con debounce)
             if (e.target.classList.contains('pos-add-btn')) {
+                e.preventDefault();
+                if (_addingRow) return;
+                _addingRow = true;
                 var groupId = e.target.dataset.group;
                 var group = document.getElementById(groupId);
                 if (group) {
                     group.insertAdjacentHTML('beforeend', _posRowHtml('', '', false));
+                    var newRows = group.querySelectorAll('.pos-row');
+                    var lastRow = newRows[newRows.length - 1];
+                    if (lastRow) {
+                        var importoInput = lastRow.querySelector('.pos-importo');
+                        if (importoInput) importoInput.focus();
+                    }
+                }
+                setTimeout(function() { _addingRow = false; }, 200);
+            }
+        });
+
+        // Enter su pos-importo aggiunge nuova riga nello stesso gruppo
+        container.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && e.target.classList.contains('pos-importo')) {
+                e.preventDefault();
+                var posRow = e.target.closest('.pos-row');
+                var group = posRow ? posRow.closest('.pos-group') : null;
+                if (group) {
+                    group.insertAdjacentHTML('beforeend', _posRowHtml('', '', false));
+                    var newRows = group.querySelectorAll('.pos-row');
+                    var lastRow = newRows[newRows.length - 1];
+                    if (lastRow) {
+                        var nomeInput = lastRow.querySelector('.pos-nome');
+                        if (nomeInput) nomeInput.focus();
+                    }
                 }
             }
         });
@@ -659,7 +797,7 @@ ENI.Modules.Cassa = (function() {
 
         var fondoCassa = val('fondo_cassa');
         var contantiBruti = val('contanti_banconote') + val('contanti_monete');
-        var contantiNetti = contantiBruti - fondoCassa + totSpese;
+        var contantiNetti = contantiBruti + totSpese; // Fondo NON sottratto (v2)
 
         var totBsiCarb   = _getPosGroupTotal('pos-bsi-carburante');
         var totBsiLav    = _getPosGroupTotal('pos-bsi-lavaggi');
@@ -672,9 +810,11 @@ ENI.Modules.Cassa = (function() {
         var totIncassato = contantiNetti + totBsiCarb + totBsiLav + totBsiAcc +
             totCarisp + totCazz + totAltriPag + totAltroInc + totBuoniInc;
 
+        var tot4tscard = _getPosGroupTotal('crediti-4tscard');
         var totCrediti =
             val('crediti_paghero') + val('crediti_mobile_payment') +
-            val('crediti_buoni_eni') + val('crediti_voucher') + val('crediti_bollette');
+            val('crediti_buoni_eni') + val('crediti_voucher') + val('crediti_bollette') +
+            tot4tscard;
 
         // Raccogli righe POS
         function collectPosGroup(groupId) {
@@ -727,8 +867,10 @@ ENI.Modules.Cassa = (function() {
             crediti_paghero:         val('crediti_paghero'),
             crediti_mobile_payment:  val('crediti_mobile_payment'),
             crediti_buoni_eni:       val('crediti_buoni_eni'),
+            crediti_buoni_eni_desc:  (document.querySelector('[data-field="crediti_buoni_eni_desc"]') || {}).value || null,
             crediti_voucher:         val('crediti_voucher'),
             crediti_bollette:        val('crediti_bollette'),
+            crediti_4tscard:         collectPosGroup('crediti-4tscard'),
             totale_venduto:   totVenduto,
             totale_incassato: totIncassato,
             totale_crediti:   totCrediti,
@@ -736,11 +878,32 @@ ENI.Modules.Cassa = (function() {
             differenza:       totVenduto - totIncassato - totCrediti,
             note:             (document.getElementById('cassa-note') || {}).value || null,
             stato:            'chiusa',
-            utente_chiusura:  ENI.State.getUserId()
+            utente_chiusura:  ENI.State.getUserId(),
+            formula_versione: 2
         };
 
         try {
             ENI.UI.showLoading();
+
+            // Audit trail: se stiamo modificando un record gia chiuso, logga le differenze
+            if (_cassa && _cassa.stato === 'chiusa') {
+                var cambiamenti = [];
+                var campiTracciati = ['totale_venduto', 'totale_incassato', 'totale_crediti', 'differenza'];
+                campiTracciati.forEach(function(campo) {
+                    var vecchio = Number(_cassa[campo] || 0);
+                    var nuovo = Number(dati[campo] || 0);
+                    if (Math.abs(vecchio - nuovo) > 0.01) {
+                        cambiamenti.push(campo + ': ' + ENI.UI.formatValuta(vecchio) + ' \u2192 ' + ENI.UI.formatValuta(nuovo));
+                    }
+                });
+                if (cambiamenti.length > 0) {
+                    try {
+                        await ENI.API.scriviLog('Modifica Cassa', 'Cassa',
+                            'Data: ' + dati.data + ' | ' + cambiamenti.join(', '));
+                    } catch(logErr) { /* non bloccare il salvataggio */ }
+                }
+            }
+
             await ENI.API.salvaCassa(dati);
             ENI.UI.hideLoading();
             ENI.UI.success('Chiusura cassa salvata con successo');
@@ -838,7 +1001,7 @@ ENI.Modules.Cassa = (function() {
                         ? 'color:#92400E;'
                         : 'color:#991B1B;';
 
-                html += '<tr>' +
+                html += '<tr class="storico-row" data-data="' + r.data + '" style="cursor:pointer;" title="Clicca per aprire">' +
                     '<td>' + ENI.UI.formatDataCompleta(r.data) + '</td>' +
                     '<td>' + ENI.UI.formatValuta(r.totale_venduto) + '</td>' +
                     '<td>' + ENI.UI.formatValuta(r.totale_incassato) + '</td>' +
@@ -864,6 +1027,19 @@ ENI.Modules.Cassa = (function() {
                 '</table></div>';
 
             listaEl.innerHTML = html;
+
+            // Click su riga storico -> apri nel form chiusura
+            listaEl.querySelectorAll('.storico-row').forEach(function(row) {
+                row.addEventListener('click', function() {
+                    var data = this.dataset.data;
+                    _dataSelezionata = data;
+                    // Switcha al tab chiusura
+                    var tabs = document.querySelectorAll('.cassa-tab');
+                    tabs.forEach(function(t) { t.classList.remove('active'); });
+                    if (tabs[0]) tabs[0].classList.add('active');
+                    _loadAndRenderCassa();
+                });
+            });
 
         } catch(e) {
             listaEl.innerHTML =

@@ -763,6 +763,70 @@
     color: #1E40AF;
 }
 
+/* --- Cassa: Layout 2 colonne desktop --- */
+.cassa-two-col {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+}
+
+/* --- Cassa: Sezioni collassabili POS --- */
+.cassa-collapsible-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.cassa-collapsible-header .cassa-chevron {
+    transition: transform 0.2s;
+    font-size: 0.8rem;
+}
+
+.cassa-collapsible-header.collapsed .cassa-chevron {
+    transform: rotate(-90deg);
+}
+
+.cassa-collapsible-body {
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.cassa-collapsible-body.collapsed {
+    max-height: 0 !important;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+/* --- Cassa: Differenza sticky --- */
+.cassa-totale-sticky {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
+}
+
+/* --- Cassa: Compatta --- */
+.cassa-compact .cassa-section {
+    padding: var(--space-3);
+    margin-bottom: var(--space-2);
+}
+
+.cassa-compact .cassa-section-title {
+    margin-bottom: var(--space-2);
+    font-size: var(--font-size-sm);
+}
+
+.cassa-compact .cassa-grid {
+    gap: var(--space-2);
+}
+
+/* --- Cassa: Storico righe cliccabili --- */
+.storico-row:hover {
+    background-color: var(--color-gray-50);
+}
+
 /* --- Responsive cassa --- */
 @media (min-width: 480px) {
     .cassa-grid {
@@ -777,6 +841,13 @@
 
     .cliente-stats {
         grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (min-width: 1024px) {
+    .cassa-two-col {
+        grid-template-columns: 1fr 1fr;
+        align-items: start;
     }
 }
 
