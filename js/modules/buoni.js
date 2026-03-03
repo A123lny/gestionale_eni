@@ -9,6 +9,7 @@ ENI.Modules.Buoni = (function() {
     var _activeTab = 'genera';
     var _filtroStato = 'tutti';
     var _filtroPrenotazioni = 'in_attesa';
+    var _filtroClientiAttivo = 'attivo';
     var _clientiPortale = [];
     var _searchTimeout = null;
 
@@ -836,6 +837,11 @@ ENI.Modules.Buoni = (function() {
                     '<div class="form-group" style="margin-bottom: var(--space-3);">' +
                         '<input type="text" class="form-input" id="clienti-portale-search" placeholder="Cerca per nome o email...">' +
                     '</div>' +
+                    '<div class="filter-chips" style="margin-bottom: var(--space-3);">' +
+                        '<button class="chip' + (_filtroClientiAttivo === 'attivo' ? ' active' : '') + '" data-filtro-clienti="attivo">Attivi</button>' +
+                        '<button class="chip' + (_filtroClientiAttivo === 'disattivato' ? ' active' : '') + '" data-filtro-clienti="disattivato">Disattivati</button>' +
+                        '<button class="chip' + (_filtroClientiAttivo === 'tutti' ? ' active' : '') + '" data-filtro-clienti="tutti">Tutti</button>' +
+                    '</div>' +
                     '<div id="clienti-portale-lista"><div class="flex justify-center" style="padding: 2rem;"><div class="spinner"></div></div></div>' +
                 '</div>' +
             '</div>';
@@ -848,6 +854,16 @@ ENI.Modules.Buoni = (function() {
         container.addEventListener('click', function(e) {
             if (e.target.closest('#btn-nuovo-cliente-portale')) {
                 _mostraNuovoClienteModal();
+            }
+            var chip = e.target.closest('[data-filtro-clienti]');
+            if (chip) {
+                _filtroClientiAttivo = chip.dataset.filtroClienti;
+                container.querySelectorAll('[data-filtro-clienti]').forEach(function(c) {
+                    c.classList.toggle('active', c.dataset.filtroClienti === _filtroClientiAttivo);
+                });
+                var searchVal = container.querySelector('#clienti-portale-search');
+                _loadClientiPortale(searchVal ? searchVal.value.trim() : '');
+                return;
             }
             var btnRicarica = e.target.closest('[data-ricarica-cliente]');
             if (btnRicarica) {
@@ -864,6 +880,22 @@ ENI.Modules.Buoni = (function() {
                     btnScala.dataset.nome,
                     parseFloat(btnScala.dataset.saldo)
                 );
+            }
+            var btnDisattiva = e.target.closest('[data-disattiva-cliente]');
+            if (btnDisattiva) {
+                _disattivaCliente(btnDisattiva.dataset.disattivaCliente, btnDisattiva.dataset.nome, parseFloat(btnDisattiva.dataset.saldo || 0));
+            }
+            var btnRiattiva = e.target.closest('[data-riattiva-cliente]');
+            if (btnRiattiva) {
+                _riattivaCliente(btnRiattiva.dataset.riattivaCliente, btnRiattiva.dataset.nome);
+            }
+            var btnModifica = e.target.closest('[data-modifica-cliente]');
+            if (btnModifica) {
+                _mostraModificaClienteModal(btnModifica.dataset.modificaCliente);
+            }
+            var btnResetPwd = e.target.closest('[data-reset-pwd-cliente]');
+            if (btnResetPwd) {
+                _mostraResetPasswordModal(btnResetPwd.dataset.resetPwdCliente, btnResetPwd.dataset.nome);
             }
         });
 
@@ -882,12 +914,13 @@ ENI.Modules.Buoni = (function() {
         var listaEl = document.getElementById('clienti-portale-lista');
         if (!listaEl) return;
 
-        // Check ruolo per bottone Scala
         var ruolo = ENI.State.getUserRole ? ENI.State.getUserRole() : '';
-        var canScala = ['Admin', 'Cassiere'].indexOf(ruolo) !== -1;
+        var canAdmin = ['Admin', 'Cassiere'].indexOf(ruolo) !== -1;
 
         try {
-            var filtri = { attivo: true };
+            var filtri = {};
+            if (_filtroClientiAttivo === 'attivo') filtri.attivo = true;
+            else if (_filtroClientiAttivo === 'disattivato') filtri.attivo = false;
             if (search) filtri.search = search;
             _clientiPortale = await ENI.API.getClientiPortale(filtri);
 
@@ -899,25 +932,51 @@ ENI.Modules.Buoni = (function() {
                 return;
             }
 
+            var showStato = _filtroClientiAttivo === 'tutti';
             var html = '<div class="table-wrapper"><table class="table"><thead><tr>' +
-                '<th>Nome</th><th>Email</th><th>Saldo</th><th>Ultimo accesso</th><th>Azioni</th>' +
+                '<th>Nome</th><th>Email</th><th>Saldo</th>' +
+                (showStato ? '<th>Stato</th>' : '') +
+                '<th>Ultimo accesso</th><th>Azioni</th>' +
                 '</tr></thead><tbody>';
 
             _clientiPortale.forEach(function(c) {
                 var ultimoAccesso = c.ultimo_accesso ? ENI.UI.formatData(c.ultimo_accesso) : 'Mai';
                 var saldoClass = c.saldo > 0 ? 'color: var(--color-success); font-weight: 600;' : '';
+                var nomeEsc = ENI.UI.escapeHtml(c.nome_display);
+
+                var azioniHtml = '';
+                if (c.attivo) {
+                    azioniHtml =
+                        '<button class="btn btn-sm btn-primary" data-ricarica-cliente="' + c.id + '" data-nome="' + nomeEsc + '" style="margin-right: 4px;">Ricarica</button>' +
+                        (canAdmin && c.saldo > 0 ?
+                            '<button class="btn btn-sm btn-danger" data-scala-cliente="' + c.id + '" data-nome="' + nomeEsc + '" data-saldo="' + c.saldo + '" style="margin-right: 4px;">Scala</button>'
+                        : '') +
+                        '<button class="btn btn-sm btn-outline" data-storico-cliente="' + c.id + '" data-nome="' + nomeEsc + '" style="margin-right: 4px;">Storico</button>' +
+                        (canAdmin ?
+                            '<button class="btn btn-sm btn-outline" data-modifica-cliente="' + c.id + '" style="margin-right: 4px;">Modifica</button>' +
+                            '<button class="btn btn-sm btn-outline" data-reset-pwd-cliente="' + c.id + '" data-nome="' + nomeEsc + '" style="margin-right: 4px;">Reset PWD</button>' +
+                            '<button class="btn btn-sm btn-danger" data-disattiva-cliente="' + c.id + '" data-nome="' + nomeEsc + '" data-saldo="' + c.saldo + '">Disattiva</button>'
+                        : '');
+                } else {
+                    azioniHtml =
+                        (canAdmin ?
+                            '<button class="btn btn-sm btn-success" data-riattiva-cliente="' + c.id + '" data-nome="' + nomeEsc + '" style="margin-right: 4px;">Riattiva</button>'
+                        : '') +
+                        '<button class="btn btn-sm btn-outline" data-storico-cliente="' + c.id + '" data-nome="' + nomeEsc + '">Storico</button>';
+                }
+
                 html += '<tr>' +
-                    '<td><strong>' + ENI.UI.escapeHtml(c.nome_display) + '</strong></td>' +
+                    '<td><strong>' + nomeEsc + '</strong></td>' +
                     '<td>' + ENI.UI.escapeHtml(c.email) + '</td>' +
                     '<td style="' + saldoClass + '">' + ENI.UI.formatValuta(c.saldo) + '</td>' +
+                    (showStato ?
+                        '<td>' + (c.attivo ?
+                            '<span class="badge badge-success">Attivo</span>' :
+                            '<span class="badge badge-danger">Disattivato</span>') +
+                        '</td>'
+                    : '') +
                     '<td>' + ultimoAccesso + '</td>' +
-                    '<td>' +
-                        '<button class="btn btn-sm btn-primary" data-ricarica-cliente="' + c.id + '" data-nome="' + ENI.UI.escapeHtml(c.nome_display) + '" style="margin-right: 4px;">Ricarica</button>' +
-                        (canScala && c.saldo > 0 ?
-                            '<button class="btn btn-sm btn-danger" data-scala-cliente="' + c.id + '" data-nome="' + ENI.UI.escapeHtml(c.nome_display) + '" data-saldo="' + c.saldo + '" style="margin-right: 4px;">Scala</button>'
-                        : '') +
-                        '<button class="btn btn-sm btn-outline" data-storico-cliente="' + c.id + '" data-nome="' + ENI.UI.escapeHtml(c.nome_display) + '">Storico</button>' +
-                    '</td>' +
+                    '<td>' + azioniHtml + '</td>' +
                 '</tr>';
             });
 
@@ -989,7 +1048,8 @@ ENI.Modules.Buoni = (function() {
                 if (result.success) {
                     ENI.UI.closeModal(modal);
                     ENI.UI.success('Account creato per ' + nome);
-                    _loadClientiPortale();
+                    var searchVal = document.getElementById('clienti-portale-search');
+                    _loadClientiPortale(searchVal ? searchVal.value.trim() : '');
                 } else {
                     ENI.UI.error(result.error || 'Errore creazione account');
                 }
@@ -1039,7 +1099,8 @@ ENI.Modules.Buoni = (function() {
                 if (result.success) {
                     ENI.UI.closeModal(modal);
                     ENI.UI.success('Ricaricati ' + ENI.UI.formatValuta(importo) + ' - Nuovo saldo: ' + ENI.UI.formatValuta(result.nuovo_saldo));
-                    _loadClientiPortale();
+                    var searchVal = document.getElementById('clienti-portale-search');
+                    _loadClientiPortale(searchVal ? searchVal.value.trim() : '');
                 } else {
                     ENI.UI.error(result.error || 'Errore ricarica');
                 }
@@ -1100,7 +1161,8 @@ ENI.Modules.Buoni = (function() {
                 if (result.success) {
                     ENI.UI.closeModal(modal);
                     ENI.UI.success('Scalati ' + ENI.UI.formatValuta(importo) + ' - Nuovo saldo: ' + ENI.UI.formatValuta(result.nuovo_saldo));
-                    _loadClientiPortale();
+                    var searchVal = document.getElementById('clienti-portale-search');
+                    _loadClientiPortale(searchVal ? searchVal.value.trim() : '');
                 } else {
                     ENI.UI.error(result.error || 'Errore deduzione');
                 }
@@ -1286,6 +1348,169 @@ ENI.Modules.Buoni = (function() {
         var label = stato.replace('_', ' ');
         label = label.charAt(0).toUpperCase() + label.slice(1);
         return '<span class="' + cls + '">' + label + '</span>';
+    }
+
+    // ============================================================
+    // CLIENTI DIGITALI: Disattiva / Riattiva / Modifica / Reset PWD
+    // ============================================================
+
+    async function _disattivaCliente(clienteId, nome, saldo) {
+        var msg = 'Disattivare l\'account di "' + nome + '"?\nL\'account non sarà più accessibile ma i dati saranno conservati.';
+        if (saldo > 0) {
+            msg += '\n\nAttenzione: questo account ha un saldo residuo di ' + ENI.UI.formatValuta(saldo) + '.';
+        }
+        var conferma = await ENI.UI.confirm(msg);
+        if (!conferma) return;
+
+        try {
+            await ENI.API.aggiornaClientePortale(clienteId, { attivo: false });
+            await ENI.API.scriviLog('Disattivato_Cliente_Portale', 'Buoni', 'Nome: ' + nome + ' - ID: ' + clienteId);
+            ENI.UI.success('Account "' + nome + '" disattivato');
+            var searchVal = document.getElementById('clienti-portale-search');
+            _loadClientiPortale(searchVal ? searchVal.value.trim() : '');
+        } catch(e) {
+            ENI.UI.error('Errore: ' + e.message);
+        }
+    }
+
+    async function _riattivaCliente(clienteId, nome) {
+        var conferma = await ENI.UI.confirm('Riattivare l\'account di "' + nome + '"?');
+        if (!conferma) return;
+
+        try {
+            await ENI.API.aggiornaClientePortale(clienteId, { attivo: true });
+            await ENI.API.scriviLog('Riattivato_Cliente_Portale', 'Buoni', 'Nome: ' + nome + ' - ID: ' + clienteId);
+            ENI.UI.success('Account "' + nome + '" riattivato');
+            var searchVal = document.getElementById('clienti-portale-search');
+            _loadClientiPortale(searchVal ? searchVal.value.trim() : '');
+        } catch(e) {
+            ENI.UI.error('Errore: ' + e.message);
+        }
+    }
+
+    async function _mostraModificaClienteModal(clienteId) {
+        try {
+            var cliente = await ENI.API.getClientePortaleById(clienteId);
+            if (!cliente) {
+                ENI.UI.error('Cliente non trovato');
+                return;
+            }
+
+            var body =
+                '<div class="form-group">' +
+                    '<label class="form-label form-label-required">Nome completo</label>' +
+                    '<input type="text" class="form-input" id="edit-cp-nome" value="' + ENI.UI.escapeHtml(cliente.nome_display) + '">' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label form-label-required">Email</label>' +
+                    '<input type="email" class="form-input" id="edit-cp-email" value="' + ENI.UI.escapeHtml(cliente.email) + '">' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Collega a cliente esistente (opzionale)</label>' +
+                    '<select class="form-select" id="edit-cp-cliente-id">' +
+                        '<option value="">-- Nessun collegamento --</option>' +
+                    '</select>' +
+                '</div>';
+
+            var modal = ENI.UI.showModal({
+                title: 'Modifica Account Cliente',
+                body: body,
+                footer:
+                    '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                    '<button class="btn btn-primary" id="btn-salva-modifica-cliente">Salva Modifiche</button>'
+            });
+
+            // Popola dropdown clienti e preseleziona quello attuale
+            ENI.API.getClienti().then(function(clienti) {
+                var select = modal.querySelector('#edit-cp-cliente-id');
+                clienti.forEach(function(c) {
+                    var opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.nome_ragione_sociale + (c.targa ? ' (' + c.targa + ')' : '');
+                    if (cliente.cliente_id && c.id === cliente.cliente_id) opt.selected = true;
+                    select.appendChild(opt);
+                });
+            });
+
+            modal.querySelector('#btn-salva-modifica-cliente').addEventListener('click', async function() {
+                var nome = modal.querySelector('#edit-cp-nome').value.trim();
+                var email = modal.querySelector('#edit-cp-email').value.trim();
+                var nuovoClienteId = modal.querySelector('#edit-cp-cliente-id').value || null;
+
+                if (!nome || !email) {
+                    ENI.UI.warning('Nome e email sono obbligatori');
+                    return;
+                }
+
+                try {
+                    await ENI.API.aggiornaClientePortale(clienteId, {
+                        nome_display: nome,
+                        email: email.toLowerCase(),
+                        cliente_id: nuovoClienteId
+                    });
+                    await ENI.API.scriviLog('Modificato_Cliente_Portale', 'Buoni',
+                        'ID: ' + clienteId + ' - Nome: ' + nome + ' - Email: ' + email);
+                    ENI.UI.closeModal(modal);
+                    ENI.UI.success('Account aggiornato');
+                    var searchVal = document.getElementById('clienti-portale-search');
+                    _loadClientiPortale(searchVal ? searchVal.value.trim() : '');
+                } catch(e) {
+                    var errMsg = e.message || '';
+                    if (errMsg.indexOf('duplicate') !== -1 || errMsg.indexOf('unique') !== -1) {
+                        ENI.UI.error('Email già in uso da un altro account');
+                    } else {
+                        ENI.UI.error('Errore: ' + errMsg);
+                    }
+                }
+            });
+        } catch(e) {
+            ENI.UI.error('Errore caricamento dati: ' + e.message);
+        }
+    }
+
+    function _mostraResetPasswordModal(clienteId, nome) {
+        var body =
+            '<div style="text-align: center; margin-bottom: var(--space-3);">' +
+                '<div class="text-sm text-muted">Reset password per</div>' +
+                '<div style="font-size: 1.25rem; font-weight: 600;">' + ENI.UI.escapeHtml(nome) + '</div>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label form-label-required">Nuova password</label>' +
+                '<input type="text" class="form-input" id="reset-pwd-nuova" placeholder="Minimo 6 caratteri">' +
+            '</div>' +
+            '<p class="text-sm text-muted">La password è visibile per permetterti di comunicarla al cliente.</p>';
+
+        var modal = ENI.UI.showModal({
+            title: 'Reset Password',
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-primary" id="btn-conferma-reset-pwd">Imposta Password</button>'
+        });
+
+        var inputPwd = modal.querySelector('#reset-pwd-nuova');
+        if (inputPwd) inputPwd.focus();
+
+        modal.querySelector('#btn-conferma-reset-pwd').addEventListener('click', async function() {
+            var nuovaPassword = modal.querySelector('#reset-pwd-nuova').value;
+
+            if (!nuovaPassword || nuovaPassword.length < 6) {
+                ENI.UI.warning('La password deve avere almeno 6 caratteri');
+                return;
+            }
+
+            try {
+                var result = await ENI.API.resetPasswordClienteAdmin(clienteId, nuovaPassword);
+                if (result && result.success) {
+                    ENI.UI.closeModal(modal);
+                    ENI.UI.success('Password reimpostata per "' + nome + '"');
+                } else {
+                    ENI.UI.error((result && result.error) || 'Errore reset password');
+                }
+            } catch(e) {
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
     }
 
     // API pubblica
