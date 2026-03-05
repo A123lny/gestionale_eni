@@ -114,8 +114,23 @@ function buildReceipt(data) {
     buf += CMD.BOLD_ON + CMD.DOUBLE_HEIGHT_ON;
     buf += (layout.nome_negozio || 'TITANWASH') + CMD.FEED;
     buf += CMD.DOUBLE_HEIGHT_OFF + CMD.BOLD_OFF;
+    if (layout.sottotitolo) {
+        buf += layout.sottotitolo + CMD.FEED;
+    }
     if (layout.indirizzo) {
         buf += layout.indirizzo + CMD.FEED;
+    }
+    if (layout.telefono) {
+        buf += 'Tel: ' + layout.telefono + CMD.FEED;
+    }
+    if (layout.partita_iva) {
+        buf += 'P.IVA: ' + layout.partita_iva + CMD.FEED;
+    }
+    if (layout.email) {
+        buf += layout.email + CMD.FEED;
+    }
+    if (layout.sito_web) {
+        buf += layout.sito_web + CMD.FEED;
     }
     if (layout.mostra_data_ora !== false) {
         buf += data.data + ' ' + data.ora + CMD.FEED;
@@ -179,10 +194,18 @@ function buildReceipt(data) {
     // === FOOTER (centrato) ===
     buf += CMD.ALIGN_CENTER;
     buf += CMD.FEED;
-    buf += (layout.footer || 'Grazie e arrivederci!') + CMD.FEED;
-    buf += CMD.FONT_SMALL;
-    buf += (data.codice || '') + CMD.FEED;
-    buf += CMD.FONT_NORMAL;
+    buf += (layout.footer_riga1 || layout.footer || 'Grazie e arrivederci!') + CMD.FEED;
+    if (layout.footer_riga2) {
+        buf += layout.footer_riga2 + CMD.FEED;
+    }
+    if (layout.footer_riga3) {
+        buf += layout.footer_riga3 + CMD.FEED;
+    }
+    if (layout.mostra_codice !== false) {
+        buf += CMD.FONT_SMALL;
+        buf += (data.codice || '') + CMD.FEED;
+        buf += CMD.FONT_NORMAL;
+    }
 
     // Feed + Cut
     var feedLines = layout.righe_prima_taglio || 3;
