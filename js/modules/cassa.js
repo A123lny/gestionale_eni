@@ -112,12 +112,18 @@ ENI.Modules.Cassa = (function() {
             '</div>' +
 
             (isChiusa
-                ? '<div class="stock-alert mb-4" style="display:flex; justify-content:space-between; align-items:center;">' +
+                ? '<div class="stock-alert mb-4" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
                     '<span>\u{1F512} Cassa chiusa per questa data. Dati in sola lettura.</span>' +
-                    '<button type="button" class="btn btn-sm" id="btn-sblocca-cassa" ' +
-                        'style="background:none; border:1px solid var(--color-primary); color:var(--color-primary);">' +
-                        '\u270F\uFE0F Modifica' +
-                    '</button>' +
+                    '<div style="display:flex; gap:8px;">' +
+                        '<button type="button" class="btn btn-sm" id="btn-sblocca-cassa" ' +
+                            'style="background:none; border:1px solid var(--color-primary); color:var(--color-primary);">' +
+                            '\u270F\uFE0F Modifica' +
+                        '</button>' +
+                        '<button type="button" class="btn btn-sm" id="btn-sposta-data" ' +
+                            'style="background:none; border:1px solid #D97706; color:#D97706;">' +
+                            '\u{1F4C5} Sposta data' +
+                        '</button>' +
+                    '</div>' +
                   '</div>'
                 : '') +
 
@@ -132,7 +138,7 @@ ENI.Modules.Cassa = (function() {
                 ) +
 
                 // ═══════════ LAYOUT 2 COLONNE ═══════════
-                '<div class="cassa-two-col">' +
+                '<div class="' + (isChiusa ? 'cassa-two-col' : '') + '">' +
 
                     // ──── COLONNA SINISTRA: VENDUTO ────
                     '<div>' +
@@ -396,10 +402,76 @@ ENI.Modules.Cassa = (function() {
                     formEl.querySelector('#btn-salva-cassa').addEventListener('click', _salvaCassa);
                 }
                 // Aggiorna messaggio
-                btnSblocca.parentNode.innerHTML =
+                btnSblocca.parentNode.parentNode.innerHTML =
                     '<div class="stock-alert mb-4" style="background:#DBEAFE; border-left-color:#3B82F6;">' +
                         '\u270F\uFE0F Modalit\u00E0 modifica attiva. Le modifiche verranno registrate nel log.' +
                     '</div>';
+            });
+        }
+
+        // Sposta cassa a data diversa
+        var btnSposta = contentEl.querySelector('#btn-sposta-data');
+        if (btnSposta) {
+            btnSposta.addEventListener('click', async function() {
+                // Mostra dialog con date picker
+                var nuovaData = prompt('Inserisci la nuova data (formato YYYY-MM-DD):', _dataSelezionata);
+                if (!nuovaData || nuovaData === _dataSelezionata) return;
+
+                // Valida formato data
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(nuovaData)) {
+                    ENI.UI.error('Formato data non valido. Usa YYYY-MM-DD (es. 2026-03-04)');
+                    return;
+                }
+
+                // Verifica che la nuova data non abbia gia una cassa
+                try {
+                    var esistente = await ENI.API.getCassaPerData(nuovaData);
+                    if (esistente) {
+                        ENI.UI.error('Esiste gi\u00E0 una chiusura cassa per il ' + ENI.UI.formatDataCompleta(nuovaData) + '. Elimina o modifica quella prima.');
+                        return;
+                    }
+                } catch(e) { /* ok, non esiste */ }
+
+                // Conferma
+                var ok = await ENI.UI.confirm({
+                    title: '\u{1F4C5} Sposta Chiusura Cassa',
+                    message: 'Vuoi spostare la cassa dal ' + ENI.UI.formatDataCompleta(_dataSelezionata) +
+                        ' al ' + ENI.UI.formatDataCompleta(nuovaData) + '?',
+                    confirmText: 'Sposta',
+                    cancelText: 'Annulla'
+                });
+                if (!ok) return;
+
+                try {
+                    ENI.UI.showLoading();
+                    // Copia tutti i dati della cassa corrente
+                    var datiSpostati = Object.assign({}, _cassa);
+                    var vecchioId = datiSpostati.id;
+                    var vecchiaData = datiSpostati.data;
+                    // Rimuovi id e aggiorna data
+                    delete datiSpostati.id;
+                    delete datiSpostati.created_at;
+                    delete datiSpostati.updated_at;
+                    datiSpostati.data = nuovaData;
+
+                    // Elimina il vecchio record
+                    await ENI.API.eliminaCassa(vecchioId, vecchiaData);
+                    // Salva sulla nuova data
+                    await ENI.API.salvaCassa(datiSpostati);
+                    // Log spostamento
+                    await ENI.API.scriviLog('Spostamento_Cassa', 'Cassa',
+                        'Spostata da ' + vecchiaData + ' a ' + nuovaData);
+
+                    ENI.UI.hideLoading();
+                    ENI.UI.success('Cassa spostata al ' + ENI.UI.formatDataCompleta(nuovaData));
+
+                    // Ricarica sulla nuova data
+                    _dataSelezionata = nuovaData;
+                    await _loadAndRenderCassa();
+                } catch(e) {
+                    ENI.UI.hideLoading();
+                    ENI.UI.error('Errore spostamento: ' + e.message);
+                }
             });
         }
     }

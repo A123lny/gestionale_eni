@@ -425,6 +425,12 @@ ENI.API = (function() {
         return record;
     }
 
+    async function eliminaCassa(id, data) {
+        await remove('cassa', id);
+        await scriviLog('Eliminata_Cassa', 'Cassa', 'Data: ' + data);
+        return true;
+    }
+
     // --- Spese Cassa ---
 
     async function getSpeseCassa(data) {
@@ -1100,6 +1106,7 @@ ENI.API = (function() {
         getCassaOggi: getCassaOggi,
         getCassaMese: getCassaMese,
         salvaCassa: salvaCassa,
+        eliminaCassa: eliminaCassa,
         getSpeseCassa: getSpeseCassa,
         salvaSpesa: salvaSpesa,
         eliminaSpesa: eliminaSpesa,
