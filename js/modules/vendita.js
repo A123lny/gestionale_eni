@@ -1324,94 +1324,56 @@ ENI.Modules.Vendita = (function() {
     function _stampaScontrino(record, vendita, dettagli, resto) {
         var now = new Date();
 
-        var html =
-            '<div class="receipt-header">' +
-                '<div class="receipt-title">TITANWASH</div>' +
-                '<div>Borgo Maggiore - San Marino</div>' +
-                '<div>' + now.toLocaleDateString('it-IT') + ' ' + now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) + '</div>' +
-                '<div>Op: ' + (ENI.State.getUserName() || '-') + '</div>' +
-            '</div>' +
-            '<div class="receipt-divider"></div>';
+        // Prepara dati per il print server ESC/POS
+        var printData = {
+            nome_negozio: ENI.Config.STATION_NAME || 'TITANWASH',
+            indirizzo: 'Borgo Maggiore - San Marino',
+            data: now.toLocaleDateString('it-IT'),
+            ora: now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+            operatore: ENI.State.getUserName() || '-',
+            righe: dettagli.map(function(d) {
+                return {
+                    nome: d.nome_prodotto,
+                    quantita: d.quantita,
+                    prezzo_unitario: d.prezzo_unitario,
+                    sconto: d.sconto,
+                    sconto_tipo: d.sconto_tipo,
+                    totale_riga: d.totale_riga
+                };
+            }),
+            subtotale: vendita.subtotale,
+            sconto_globale: vendita.sconto_globale,
+            sconto_globale_tipo: vendita.sconto_globale_tipo,
+            totale: vendita.totale,
+            metodo_pagamento: vendita.metodo_pagamento,
+            importo_contanti: vendita.importo_contanti,
+            importo_pos: vendita.importo_pos,
+            resto: resto,
+            codice: record.codice,
+            printer_ip: ENI.Config.PRINTER_IP,
+            printer_port: ENI.Config.PRINTER_PORT
+        };
 
-        // Righe articoli
-        dettagli.forEach(function(d) {
-            html += '<div class="receipt-item">' +
-                '<div>' + d.nome_prodotto + '</div>' +
-                '<div class="receipt-item-detail">' +
-                    d.quantita + ' x ' + Number(d.prezzo_unitario).toFixed(2);
-            if (d.sconto > 0) {
-                html += ' sc.' + (d.sconto_tipo === 'percentuale' ? d.sconto + '%' : Number(d.sconto).toFixed(2));
+        var serverUrl = ENI.Config.PRINT_SERVER_URL || 'http://localhost:3333';
+
+        fetch(serverUrl + '/print', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(printData)
+        })
+        .then(function(response) {
+            return response.json();
+        })
+        .then(function(result) {
+            if (result.success) {
+                ENI.UI.toast('Scontrino stampato', 'success');
+            } else {
+                ENI.UI.toast('Errore stampa: ' + (result.message || 'Sconosciuto'), 'error');
             }
-            html += '<span style="float: right;">' + Number(d.totale_riga).toFixed(2) + '</span>' +
-                '</div>' +
-            '</div>';
+        })
+        .catch(function() {
+            ENI.UI.toast('Server stampa non attivo. Avvia print-server/start.bat', 'error');
         });
-
-        html += '<div class="receipt-divider"></div>';
-
-        // Totali
-        html += '<div class="receipt-totals">';
-        if (vendita.sconto_globale > 0) {
-            html += '<div>Subtotale: ' + Number(vendita.subtotale).toFixed(2) + '</div>';
-            html += '<div>Sconto: -' + Number(vendita.sconto_globale).toFixed(2) +
-                (vendita.sconto_globale_tipo === 'percentuale' ? '%' : '') + '</div>';
-        }
-        html += '<div class="receipt-total">TOTALE EUR ' + Number(vendita.totale).toFixed(2) + '</div>';
-
-        // Pagamento
-        var metodoLabel = { contanti: 'Contanti', pos: 'POS/Carta', misto: 'Misto' };
-        html += '<div>Pagamento: ' + (metodoLabel[vendita.metodo_pagamento] || vendita.metodo_pagamento) + '</div>';
-        if (vendita.metodo_pagamento === 'contanti' || vendita.metodo_pagamento === 'misto') {
-            if (vendita.importo_contanti > 0) html += '<div>Contanti: ' + Number(vendita.importo_contanti).toFixed(2) + '</div>';
-            if (vendita.importo_pos > 0) html += '<div>POS: ' + Number(vendita.importo_pos).toFixed(2) + '</div>';
-            if (resto > 0) html += '<div>Resto: ' + Number(resto).toFixed(2) + '</div>';
-        }
-        html += '</div>';
-
-        html += '<div class="receipt-divider"></div>' +
-            '<div class="receipt-footer">' +
-                '<div>Grazie e arrivederci!</div>' +
-                '<div>' + record.codice + '</div>' +
-            '</div>';
-
-        // Stampa tramite iframe isolato per stampante termica 80mm
-        var printStyles =
-            '@page { size: 80mm auto; margin: 0; }' +
-            '* { margin: 0; padding: 0; box-sizing: border-box; }' +
-            'body { width: 72mm; padding: 2mm; font-family: "Courier New", monospace; font-size: 10px; line-height: 1.3; color: #000; background: #fff; }' +
-            '.receipt-header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }' +
-            '.receipt-title { font-size: 14px; font-weight: bold; }' +
-            '.receipt-divider { border-top: 1px dashed #000; margin: 4px 0; }' +
-            '.receipt-item { margin-bottom: 2px; }' +
-            '.receipt-item-detail { font-size: 9px; }' +
-            '.receipt-totals { padding-top: 4px; }' +
-            '.receipt-total { font-size: 14px; font-weight: bold; border-top: 2px solid #000; padding-top: 2px; margin-top: 2px; }' +
-            '.receipt-footer { text-align: center; border-top: 1px dashed #000; padding-top: 4px; margin-top: 4px; font-size: 9px; }';
-
-        var iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;';
-        document.body.appendChild(iframe);
-
-        var doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open();
-        doc.write('<!DOCTYPE html><html><head><style>' + printStyles + '</style></head><body>' + html + '</body></html>');
-        doc.close();
-
-        iframe.contentWindow.addEventListener('afterprint', function() {
-            document.body.removeChild(iframe);
-        });
-
-        setTimeout(function() {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-        }, 250);
-
-        // Fallback: rimuovi iframe dopo 60 secondi se afterprint non scatta
-        setTimeout(function() {
-            if (iframe.parentNode) {
-                document.body.removeChild(iframe);
-            }
-        }, 60000);
     }
 
     // ============================================================

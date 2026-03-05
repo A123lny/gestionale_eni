@@ -1,0 +1,13 @@
+{
+  "name": "titanwash-print-server",
+  "version": "1.0.0",
+  "description": "Server ESC/POS per stampante termica Epson 80mm",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5"
+  }
+}

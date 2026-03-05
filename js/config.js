@@ -118,6 +118,11 @@ ENI.Config = {
         { nome: 'Lavaggio zona motore (idro-asciugata-lucido)', prezzo: 5 }
     ],
 
+    // Stampante termica ESC/POS
+    PRINT_SERVER_URL: 'http://localhost:3333',
+    PRINTER_IP: '192.168.1.100',   // Cambiare con IP reale della Epson
+    PRINTER_PORT: 9100,
+
     // Durata cache dati (millisecondi)
     CACHE_TTL: 5 * 60 * 1000,   // 5 minuti
 
