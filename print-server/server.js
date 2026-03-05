@@ -6,13 +6,47 @@
 var express = require('express');
 var cors = require('cors');
 var net = require('net');
+var fs = require('fs');
+var path = require('path');
 
 var app = express();
 var PORT = 3333;
 
 // Configurazione stampante (modificare con IP reale)
-var PRINTER_IP = process.env.PRINTER_IP || '192.168.1.100';
+var PRINTER_IP = process.env.PRINTER_IP || '192.168.1.130';
 var PRINTER_PORT = parseInt(process.env.PRINTER_PORT) || 9100;
+
+// File configurazione layout
+var LAYOUT_FILE = path.join(__dirname, 'layout.json');
+
+// Layout default
+var DEFAULT_LAYOUT = {
+    nome_negozio: 'TITANWASH',
+    indirizzo: 'Borgo Maggiore - San Marino',
+    footer: 'Grazie e arrivederci!',
+    mostra_operatore: true,
+    mostra_data_ora: true,
+    tipo_taglio: 'parziale',
+    righe_prima_taglio: 3,
+    printer_ip: PRINTER_IP,
+    printer_port: PRINTER_PORT
+};
+
+function loadLayout() {
+    try {
+        if (fs.existsSync(LAYOUT_FILE)) {
+            var data = JSON.parse(fs.readFileSync(LAYOUT_FILE, 'utf8'));
+            return Object.assign({}, DEFAULT_LAYOUT, data);
+        }
+    } catch (e) {
+        console.error('[CONFIG] Errore lettura layout.json:', e.message);
+    }
+    return Object.assign({}, DEFAULT_LAYOUT);
+}
+
+function saveLayout(layout) {
+    fs.writeFileSync(LAYOUT_FILE, JSON.stringify(layout, null, 2), 'utf8');
+}
 
 app.use(cors());
 app.use(express.json());
@@ -64,6 +98,12 @@ function centerText(text) {
 // Genera buffer ESC/POS dallo scontrino
 // ============================================================
 function buildReceipt(data) {
+    var layout = loadLayout();
+    // Sovrascrivi con layout dal frontend se fornito
+    if (data.layout) {
+        Object.assign(layout, data.layout);
+    }
+
     var buf = '';
 
     // Init
@@ -72,11 +112,17 @@ function buildReceipt(data) {
     // === INTESTAZIONE (centrata) ===
     buf += CMD.ALIGN_CENTER;
     buf += CMD.BOLD_ON + CMD.DOUBLE_HEIGHT_ON;
-    buf += (data.nome_negozio || 'TITANWASH') + CMD.FEED;
+    buf += (layout.nome_negozio || 'TITANWASH') + CMD.FEED;
     buf += CMD.DOUBLE_HEIGHT_OFF + CMD.BOLD_OFF;
-    buf += (data.indirizzo || 'Borgo Maggiore - San Marino') + CMD.FEED;
-    buf += data.data + ' ' + data.ora + CMD.FEED;
-    buf += 'Op: ' + (data.operatore || '-') + CMD.FEED;
+    if (layout.indirizzo) {
+        buf += layout.indirizzo + CMD.FEED;
+    }
+    if (layout.mostra_data_ora !== false) {
+        buf += data.data + ' ' + data.ora + CMD.FEED;
+    }
+    if (layout.mostra_operatore !== false) {
+        buf += 'Op: ' + (data.operatore || '-') + CMD.FEED;
+    }
 
     // Separatore
     buf += CMD.ALIGN_LEFT;
@@ -133,14 +179,21 @@ function buildReceipt(data) {
     // === FOOTER (centrato) ===
     buf += CMD.ALIGN_CENTER;
     buf += CMD.FEED;
-    buf += 'Grazie e arrivederci!' + CMD.FEED;
+    buf += (layout.footer || 'Grazie e arrivederci!') + CMD.FEED;
     buf += CMD.FONT_SMALL;
     buf += (data.codice || '') + CMD.FEED;
     buf += CMD.FONT_NORMAL;
 
     // Feed + Cut
-    buf += CMD.FEED + CMD.FEED + CMD.FEED;
-    buf += CMD.CUT;
+    var feedLines = layout.righe_prima_taglio || 3;
+    for (var i = 0; i < feedLines; i++) {
+        buf += CMD.FEED;
+    }
+    if (layout.tipo_taglio === 'completo') {
+        buf += GS + '\x56\x00'; // Taglio completo
+    } else {
+        buf += CMD.CUT; // Taglio parziale (default)
+    }
 
     return buf;
 }
@@ -230,6 +283,27 @@ app.post('/print', function(req, res) {
             console.error('[PRINT] Errore:', err.message);
             res.status(500).json({ success: false, message: err.message });
         });
+});
+
+// Leggi configurazione layout
+app.get('/config', function(req, res) {
+    res.json(loadLayout());
+});
+
+// Salva configurazione layout
+app.post('/config', function(req, res) {
+    var newLayout = req.body;
+    if (!newLayout) {
+        return res.status(400).json({ success: false, message: 'Dati mancanti' });
+    }
+
+    // Aggiorna IP/porta stampante se cambiati
+    if (newLayout.printer_ip) PRINTER_IP = newLayout.printer_ip;
+    if (newLayout.printer_port) PRINTER_PORT = parseInt(newLayout.printer_port);
+
+    saveLayout(newLayout);
+    console.log('[CONFIG] Layout aggiornato');
+    res.json({ success: true, message: 'Configurazione salvata' });
 });
 
 // ============================================================

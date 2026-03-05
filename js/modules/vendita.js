@@ -1324,10 +1324,15 @@ ENI.Modules.Vendita = (function() {
     function _stampaScontrino(record, vendita, dettagli, resto) {
         var now = new Date();
 
+        // Leggi layout salvato dalle impostazioni
+        var savedLayout = null;
+        try {
+            var raw = localStorage.getItem('titanwash_print_layout');
+            if (raw) savedLayout = JSON.parse(raw);
+        } catch (e) {}
+
         // Prepara dati per il print server ESC/POS
         var printData = {
-            nome_negozio: ENI.Config.STATION_NAME || 'TITANWASH',
-            indirizzo: 'Borgo Maggiore - San Marino',
             data: now.toLocaleDateString('it-IT'),
             ora: now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
             operatore: ENI.State.getUserName() || '-',
@@ -1350,8 +1355,9 @@ ENI.Modules.Vendita = (function() {
             importo_pos: vendita.importo_pos,
             resto: resto,
             codice: record.codice,
-            printer_ip: ENI.Config.PRINTER_IP,
-            printer_port: ENI.Config.PRINTER_PORT
+            printer_ip: savedLayout ? savedLayout.printer_ip : ENI.Config.PRINTER_IP,
+            printer_port: savedLayout ? savedLayout.printer_port : ENI.Config.PRINTER_PORT,
+            layout: savedLayout || null
         };
 
         var serverUrl = ENI.Config.PRINT_SERVER_URL || 'http://localhost:3333';

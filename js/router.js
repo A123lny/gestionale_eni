@@ -24,7 +24,8 @@ ENI.Router = (function() {
         'buoni':        { module: 'Buoni',        id: 'buoni' },
         'personale':    { module: 'Personale',    id: 'personale' },
         'manutenzioni': { module: 'Manutenzioni', id: 'manutenzioni' },
-        'log':          { module: 'Log',          id: 'log' }
+        'log':          { module: 'Log',          id: 'log' },
+        'impostazioni': { module: 'Impostazioni', id: 'impostazioni' }
     };
 
     // --- Init ---

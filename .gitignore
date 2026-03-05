@@ -1,2 +1,6 @@
 # Local Netlify folder
 .netlify
+
+# Node.js
+print-server/node_modules/
+print-server/layout.json
