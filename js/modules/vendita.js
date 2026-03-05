@@ -1322,9 +1322,6 @@ ENI.Modules.Vendita = (function() {
     // ============================================================
 
     function _stampaScontrino(record, vendita, dettagli, resto) {
-        var receiptEl = document.getElementById('receipt-print');
-        if (!receiptEl) return;
-
         var now = new Date();
 
         var html =
@@ -1377,14 +1374,44 @@ ENI.Modules.Vendita = (function() {
                 '<div>' + record.codice + '</div>' +
             '</div>';
 
-        receiptEl.innerHTML = html;
-        receiptEl.style.display = 'block';
+        // Stampa tramite iframe isolato per stampante termica 80mm
+        var printStyles =
+            '@page { size: 80mm auto; margin: 0; }' +
+            '* { margin: 0; padding: 0; box-sizing: border-box; }' +
+            'body { width: 72mm; padding: 2mm; font-family: "Courier New", monospace; font-size: 10px; line-height: 1.3; color: #000; background: #fff; }' +
+            '.receipt-header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }' +
+            '.receipt-title { font-size: 14px; font-weight: bold; }' +
+            '.receipt-divider { border-top: 1px dashed #000; margin: 4px 0; }' +
+            '.receipt-item { margin-bottom: 2px; }' +
+            '.receipt-item-detail { font-size: 9px; }' +
+            '.receipt-totals { padding-top: 4px; }' +
+            '.receipt-total { font-size: 14px; font-weight: bold; border-top: 2px solid #000; padding-top: 2px; margin-top: 2px; }' +
+            '.receipt-footer { text-align: center; border-top: 1px dashed #000; padding-top: 4px; margin-top: 4px; font-size: 9px; }';
 
-        window.print();
+        var iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;';
+        document.body.appendChild(iframe);
+
+        var doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write('<!DOCTYPE html><html><head><style>' + printStyles + '</style></head><body>' + html + '</body></html>');
+        doc.close();
+
+        iframe.contentWindow.addEventListener('afterprint', function() {
+            document.body.removeChild(iframe);
+        });
 
         setTimeout(function() {
-            receiptEl.style.display = 'none';
-        }, 1000);
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        }, 250);
+
+        // Fallback: rimuovi iframe dopo 60 secondi se afterprint non scatta
+        setTimeout(function() {
+            if (iframe.parentNode) {
+                document.body.removeChild(iframe);
+            }
+        }, 60000);
     }
 
     // ============================================================
