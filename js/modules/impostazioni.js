@@ -273,11 +273,11 @@ ENI.Modules.Impostazioni = (function() {
             }
         });
 
-        // Aggiorna anteprima in tempo reale
-        var inputs = container.querySelectorAll('.cfg-input');
-        for (var i = 0; i < inputs.length; i++) {
-            inputs[i].addEventListener('input', _aggiornaAnteprima);
-            inputs[i].addEventListener('change', _aggiornaAnteprima);
+        // Aggiorna anteprima in tempo reale su TUTTI i campi
+        var allInputs = container.querySelectorAll('.cfg-input, #cfg-mostra-operatore, #cfg-mostra-data, #cfg-mostra-codice, #cfg-mostra-subtotale, #cfg-tipo-taglio, #cfg-righe-taglio, #cfg-printer-ip, #cfg-printer-port');
+        for (var i = 0; i < allInputs.length; i++) {
+            allInputs[i].addEventListener('input', _aggiornaAnteprima);
+            allInputs[i].addEventListener('change', _aggiornaAnteprima);
         }
 
         // Carica configurazione
@@ -426,28 +426,38 @@ ENI.Modules.Impostazioni = (function() {
         if (el) el.checked = val;
     }
 
+    function _getVal(id) {
+        var el = document.getElementById(id);
+        return el ? el.value : '';
+    }
+
+    function _getChecked(id) {
+        var el = document.getElementById(id);
+        return el ? el.checked : true;
+    }
+
     function _readForm() {
         return {
-            printer_ip: (document.getElementById('cfg-printer-ip') || {}).value || '192.168.1.130',
-            printer_port: parseInt((document.getElementById('cfg-printer-port') || {}).value) || 9100,
-            nome_negozio: (document.getElementById('cfg-nome-negozio') || {}).value || 'TITANWASH',
-            sottotitolo: (document.getElementById('cfg-sottotitolo') || {}).value || '',
-            indirizzo: (document.getElementById('cfg-indirizzo') || {}).value || '',
-            telefono: (document.getElementById('cfg-telefono') || {}).value || '',
-            partita_iva: (document.getElementById('cfg-partita-iva') || {}).value || '',
-            email: (document.getElementById('cfg-email') || {}).value || '',
-            sito_web: (document.getElementById('cfg-sito-web') || {}).value || '',
-            separatore_intestazione: (document.getElementById('cfg-separatore-intestazione') || {}).value || '',
-            footer_riga1: (document.getElementById('cfg-footer-riga1') || {}).value || '',
-            footer_riga2: (document.getElementById('cfg-footer-riga2') || {}).value || '',
-            footer_riga3: (document.getElementById('cfg-footer-riga3') || {}).value || '',
-            separatore_footer: (document.getElementById('cfg-separatore-footer') || {}).value || '',
-            mostra_operatore: (document.getElementById('cfg-mostra-operatore') || {}).checked !== false,
-            mostra_data_ora: (document.getElementById('cfg-mostra-data') || {}).checked !== false,
-            mostra_codice: (document.getElementById('cfg-mostra-codice') || {}).checked !== false,
-            mostra_subtotale: (document.getElementById('cfg-mostra-subtotale') || {}).checked !== false,
-            tipo_taglio: (document.getElementById('cfg-tipo-taglio') || {}).value || 'parziale',
-            righe_prima_taglio: parseInt((document.getElementById('cfg-righe-taglio') || {}).value) || 3,
+            printer_ip: _getVal('cfg-printer-ip') || '192.168.1.130',
+            printer_port: parseInt(_getVal('cfg-printer-port')) || 9100,
+            nome_negozio: _getVal('cfg-nome-negozio') || 'TITANWASH',
+            sottotitolo: _getVal('cfg-sottotitolo'),
+            indirizzo: _getVal('cfg-indirizzo'),
+            telefono: _getVal('cfg-telefono'),
+            partita_iva: _getVal('cfg-partita-iva'),
+            email: _getVal('cfg-email'),
+            sito_web: _getVal('cfg-sito-web'),
+            separatore_intestazione: _getVal('cfg-separatore-intestazione'),
+            footer_riga1: _getVal('cfg-footer-riga1'),
+            footer_riga2: _getVal('cfg-footer-riga2'),
+            footer_riga3: _getVal('cfg-footer-riga3'),
+            separatore_footer: _getVal('cfg-separatore-footer'),
+            mostra_operatore: _getChecked('cfg-mostra-operatore'),
+            mostra_data_ora: _getChecked('cfg-mostra-data'),
+            mostra_codice: _getChecked('cfg-mostra-codice'),
+            mostra_subtotale: _getChecked('cfg-mostra-subtotale'),
+            tipo_taglio: _getVal('cfg-tipo-taglio') || 'parziale',
+            righe_prima_taglio: parseInt(_getVal('cfg-righe-taglio')) || 3,
             logo_base64: _layout.logo_base64 || ''
         };
     }
@@ -547,9 +557,10 @@ ENI.Modules.Impostazioni = (function() {
         var html = '';
 
         // Logo
-        if (cfg.logo_base64) {
+        var logoSrc = cfg.logo_base64 || _layout.logo_base64;
+        if (logoSrc) {
             html += '<div style="text-align:center; margin-bottom:6px;">';
-            html += '<img src="' + cfg.logo_base64 + '" style="max-width:160px; max-height:50px; filter:contrast(1.5);">';
+            html += '<img src="' + logoSrc + '" style="max-width:160px; max-height:50px; filter:contrast(1.5);">';
             html += '</div>';
         }
 
@@ -557,7 +568,8 @@ ENI.Modules.Impostazioni = (function() {
 
         // Intestazione
         lines.push('<b style="font-size:14px;">' + centerEsc(cfg.nome_negozio || 'TITANWASH') + '</b>');
-        if (cfg.sottotitolo) lines.push('<span style="font-size:10px;">' + centerEsc(cfg.sottotitolo) + '</span>');
+        var sottotitolo = cfg.sottotitolo || '';
+        if (sottotitolo) lines.push('<span style="font-size:10px;">' + centerEsc(sottotitolo) + '</span>');
         if (cfg.indirizzo) lines.push(centerEsc(cfg.indirizzo));
         if (cfg.telefono) lines.push(centerEsc('Tel: ' + cfg.telefono));
         if (cfg.partita_iva) lines.push(centerEsc('P.IVA: ' + cfg.partita_iva));
