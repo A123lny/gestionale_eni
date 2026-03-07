@@ -1,9 +1,9 @@
 // ============================================================
 // TITANWASH - Service Worker
-// Cache-first per assets statici, network-first per API
+// Network-first per JS/CSS, cache-first per assets statici
 // ============================================================
 
-const CACHE_NAME = 'titanwash-v19';
+const CACHE_NAME = 'titanwash-v20';
 const BASE = self.registration.scope;
 const STATIC_ASSETS = [
     BASE,
@@ -49,7 +49,7 @@ self.addEventListener('install', function(event) {
     self.skipWaiting();
 });
 
-// Activate: clean old caches
+// Activate: clean ALL old caches
 self.addEventListener('activate', function(event) {
     event.waitUntil(
         caches.keys().then(function(cacheNames) {
@@ -63,9 +63,12 @@ self.addEventListener('activate', function(event) {
     self.clients.claim();
 });
 
-// Fetch: cache-first for static, network-first for API
+// Fetch: network-first for same-origin (JS/CSS/HTML), cache-first for external
 self.addEventListener('fetch', function(event) {
     var url = new URL(event.request.url);
+
+    // Skip non-GET requests
+    if (event.request.method !== 'GET') return;
 
     // Network-first for Supabase API calls
     if (url.hostname.includes('supabase')) {
@@ -77,14 +80,31 @@ self.addEventListener('fetch', function(event) {
         return;
     }
 
-    // Cache-first for static assets
+    // Network-first for same-origin (our JS/CSS/HTML files)
+    // This ensures updates are always picked up immediately
+    if (url.origin === self.location.origin) {
+        event.respondWith(
+            fetch(event.request).then(function(networkResponse) {
+                // Update cache with fresh response
+                var responseClone = networkResponse.clone();
+                caches.open(CACHE_NAME).then(function(cache) {
+                    cache.put(event.request, responseClone);
+                });
+                return networkResponse;
+            }).catch(function() {
+                // Offline: serve from cache
+                return caches.match(event.request);
+            })
+        );
+        return;
+    }
+
+    // Cache-first for external resources (fonts, CDN libraries)
     event.respondWith(
         caches.match(event.request).then(function(response) {
             return response || fetch(event.request).then(function(fetchResponse) {
                 return caches.open(CACHE_NAME).then(function(cache) {
-                    if (event.request.method === 'GET') {
-                        cache.put(event.request, fetchResponse.clone());
-                    }
+                    cache.put(event.request, fetchResponse.clone());
                     return fetchResponse;
                 });
             });
