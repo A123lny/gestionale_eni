@@ -13,6 +13,15 @@ ENI.Modules.Impostazioni = (function() {
     var _layout = {};
     var STORAGE_KEY = 'titanwash_print_layout';
 
+    // Caratteri speciali disponibili per lo scontrino
+    var SPECIAL_CHARS = [
+        { group: 'Decorativi', chars: '\u2605 \u2606 \u2665 \u2666 \u2663 \u2660 \u25CF \u25CB \u25A0 \u25A1 \u25B2 \u25BC \u25C6 \u25C7 \u2756 \u2055' },
+        { group: 'Linee', chars: '\u2500 \u2501 \u2550 \u2502 \u2503 \u2551 \u253C \u256C \u2510 \u250C \u2514 \u2518 \u2554 \u2557 \u255A \u255D' },
+        { group: 'Frecce', chars: '\u2190 \u2191 \u2192 \u2193 \u2194 \u2195 \u25B6 \u25C0 \u25B7 \u25C1 \u27A4 \u279C' },
+        { group: 'Simboli', chars: '\u00A9 \u00AE \u2122 \u20AC \u00A3 \u00A5 \u2030 \u00B0 \u221E \u2713 \u2717 \u260E \u2709 \u2302' },
+        { group: 'Ornamenti', chars: '\u2702 \u2708 \u270E \u2764 \u266A \u266B \u263A \u2639 \u2620 \u269B \u2618 \u2740 \u273F \u2741 \u2742 \u2743' }
+    ];
+
     var DEFAULT_LAYOUT = {
         nome_negozio: 'TITANWASH',
         sottotitolo: 'Autolavaggio & Stazione di Servizio',
@@ -21,9 +30,11 @@ ENI.Modules.Impostazioni = (function() {
         partita_iva: '',
         email: '',
         sito_web: '',
+        separatore_intestazione: '',
         footer_riga1: 'Grazie e arrivederci!',
         footer_riga2: '',
         footer_riga3: '',
+        separatore_footer: '',
         mostra_operatore: true,
         mostra_data_ora: true,
         mostra_codice: true,
@@ -35,10 +46,50 @@ ENI.Modules.Impostazioni = (function() {
         logo_base64: ''
     };
 
+    // Timeout fetch sicuro (compatibile con tutti i browser)
+    function _fetchWithTimeout(url, options, ms) {
+        ms = ms || 3000;
+        options = options || {};
+        return new Promise(function(resolve, reject) {
+            var timer = setTimeout(function() {
+                reject(new Error('Timeout'));
+            }, ms);
+            fetch(url, options).then(function(res) {
+                clearTimeout(timer);
+                resolve(res);
+            }).catch(function(err) {
+                clearTimeout(timer);
+                reject(err);
+            });
+        });
+    }
+
     async function render(container) {
         _serverUrl = ENI.Config.PRINT_SERVER_URL || 'http://localhost:3333';
 
+        // Costruisci la palette caratteri speciali
+        var charPaletteHtml =
+            '<div id="char-palette" style="display:none; position:fixed; z-index:9999; background:var(--bg-primary); border:1px solid var(--border); border-radius:var(--radius-md); box-shadow:0 8px 32px rgba(0,0,0,0.3); padding:12px; max-width:360px;">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
+                    '<b style="font-size:13px;">Inserisci Carattere Speciale</b>' +
+                    '<button id="btn-close-palette" style="background:none; border:none; cursor:pointer; font-size:18px; color:var(--text-secondary);">\u2715</button>' +
+                '</div>';
+
+        for (var g = 0; g < SPECIAL_CHARS.length; g++) {
+            var group = SPECIAL_CHARS[g];
+            charPaletteHtml += '<div style="margin-bottom:6px;"><span style="font-size:10px; color:var(--text-secondary); text-transform:uppercase;">' + group.group + '</span></div>';
+            charPaletteHtml += '<div style="display:flex; flex-wrap:wrap; gap:2px; margin-bottom:8px;">';
+            var chars = group.chars.split(' ');
+            for (var c = 0; c < chars.length; c++) {
+                charPaletteHtml += '<button class="char-btn" data-char="' + chars[c] + '" style="width:30px; height:30px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border); border-radius:4px; background:var(--bg-secondary); cursor:pointer; font-size:16px; transition:all 0.15s;">' + chars[c] + '</button>';
+            }
+            charPaletteHtml += '</div>';
+        }
+        charPaletteHtml += '</div>';
+
         container.innerHTML =
+            charPaletteHtml +
+
             '<div class="page-header">' +
                 '<h1 class="page-title">Impostazioni</h1>' +
             '</div>' +
@@ -84,38 +135,30 @@ ENI.Modules.Impostazioni = (function() {
                                     '<img id="logo-preview-img" style="max-width:200px; max-height:80px; background:#fff; padding:4px; border:1px solid var(--border); border-radius:var(--radius-sm);">' +
                                 '</div>' +
                             '</div>' +
-                            '<div class="form-group">' +
-                                '<label class="form-label">Nome Negozio</label>' +
-                                '<input type="text" class="form-input" id="cfg-nome-negozio" placeholder="TITANWASH">' +
-                            '</div>' +
-                            '<div class="form-group">' +
-                                '<label class="form-label">Sottotitolo</label>' +
-                                '<input type="text" class="form-input" id="cfg-sottotitolo" placeholder="Autolavaggio & Stazione di Servizio">' +
-                            '</div>' +
-                            '<div class="form-group">' +
-                                '<label class="form-label">Indirizzo</label>' +
-                                '<input type="text" class="form-input" id="cfg-indirizzo" placeholder="Borgo Maggiore - San Marino">' +
-                            '</div>' +
+                            _fieldWithChars('Nome Negozio', 'cfg-nome-negozio', 'TITANWASH') +
+                            _fieldWithChars('Sottotitolo', 'cfg-sottotitolo', 'Autolavaggio & Stazione di Servizio') +
+                            _fieldWithChars('Indirizzo', 'cfg-indirizzo', 'Borgo Maggiore - San Marino') +
                             '<div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--space-3);">' +
                                 '<div class="form-group">' +
                                     '<label class="form-label">Telefono</label>' +
-                                    '<input type="text" class="form-input" id="cfg-telefono" placeholder="+39 0549 123456">' +
+                                    '<input type="text" class="form-input cfg-input" id="cfg-telefono" placeholder="+39 0549 123456">' +
                                 '</div>' +
                                 '<div class="form-group">' +
                                     '<label class="form-label">P.IVA / COE</label>' +
-                                    '<input type="text" class="form-input" id="cfg-partita-iva" placeholder="SM12345">' +
+                                    '<input type="text" class="form-input cfg-input" id="cfg-partita-iva" placeholder="SM12345">' +
                                 '</div>' +
                             '</div>' +
                             '<div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--space-3);">' +
                                 '<div class="form-group">' +
                                     '<label class="form-label">Email</label>' +
-                                    '<input type="text" class="form-input" id="cfg-email" placeholder="info@titanwash.sm">' +
+                                    '<input type="text" class="form-input cfg-input" id="cfg-email" placeholder="info@titanwash.sm">' +
                                 '</div>' +
                                 '<div class="form-group">' +
                                     '<label class="form-label">Sito Web</label>' +
-                                    '<input type="text" class="form-input" id="cfg-sito-web" placeholder="www.titanwash.sm">' +
+                                    '<input type="text" class="form-input cfg-input" id="cfg-sito-web" placeholder="www.titanwash.sm">' +
                                 '</div>' +
                             '</div>' +
+                            _fieldWithChars('Separatore Intestazione (opzionale)', 'cfg-separatore-intestazione', '\u2605 \u2605 \u2605 \u2605 \u2605') +
                         '</div>' +
                     '</div>' +
 
@@ -123,18 +166,10 @@ ENI.Modules.Impostazioni = (function() {
                     '<div class="card mb-4">' +
                         '<div class="card-header"><h3 class="card-title">Footer Scontrino</h3></div>' +
                         '<div class="card-body">' +
-                            '<div class="form-group">' +
-                                '<label class="form-label">Riga 1</label>' +
-                                '<input type="text" class="form-input" id="cfg-footer-riga1" placeholder="Grazie e arrivederci!">' +
-                            '</div>' +
-                            '<div class="form-group">' +
-                                '<label class="form-label">Riga 2 (opzionale)</label>' +
-                                '<input type="text" class="form-input" id="cfg-footer-riga2" placeholder="Seguici su Instagram @titanwash">' +
-                            '</div>' +
-                            '<div class="form-group">' +
-                                '<label class="form-label">Riga 3 (opzionale)</label>' +
-                                '<input type="text" class="form-input" id="cfg-footer-riga3" placeholder="">' +
-                            '</div>' +
+                            _fieldWithChars('Riga 1', 'cfg-footer-riga1', 'Grazie e arrivederci!') +
+                            _fieldWithChars('Riga 2 (opzionale)', 'cfg-footer-riga2', 'Seguici su Instagram @titanwash') +
+                            _fieldWithChars('Riga 3 (opzionale)', 'cfg-footer-riga3', '') +
+                            _fieldWithChars('Separatore Footer (opzionale)', 'cfg-separatore-footer', '\u2665 \u2665 \u2665') +
                         '</div>' +
                     '</div>' +
 
@@ -214,14 +249,32 @@ ENI.Modules.Impostazioni = (function() {
         container.querySelector('#btn-reset-layout').addEventListener('click', _resetLayout);
         container.querySelector('#cfg-logo-file').addEventListener('change', _onLogoSelected);
         container.querySelector('#btn-rimuovi-logo').addEventListener('click', _rimuoviLogo);
+        container.querySelector('#btn-close-palette').addEventListener('click', _closePalette);
+
+        // Pulsanti carattere speciale (apri palette)
+        var charBtns = container.querySelectorAll('.btn-open-chars');
+        for (var b = 0; b < charBtns.length; b++) {
+            charBtns[b].addEventListener('click', _openPalette);
+        }
+
+        // Click su carattere nella palette
+        var charItems = container.querySelectorAll('.char-btn');
+        for (var ci = 0; ci < charItems.length; ci++) {
+            charItems[ci].addEventListener('click', _insertChar);
+        }
+
+        // Chiudi palette cliccando fuori
+        document.addEventListener('click', function(e) {
+            var palette = document.getElementById('char-palette');
+            if (palette && palette.style.display !== 'none') {
+                if (!palette.contains(e.target) && !e.target.classList.contains('btn-open-chars')) {
+                    palette.style.display = 'none';
+                }
+            }
+        });
 
         // Aggiorna anteprima in tempo reale
-        var inputs = container.querySelectorAll(
-            '#cfg-nome-negozio, #cfg-sottotitolo, #cfg-indirizzo, #cfg-telefono, #cfg-partita-iva, ' +
-            '#cfg-email, #cfg-sito-web, #cfg-footer-riga1, #cfg-footer-riga2, #cfg-footer-riga3, ' +
-            '#cfg-mostra-operatore, #cfg-mostra-data, #cfg-mostra-codice, #cfg-mostra-subtotale, ' +
-            '#cfg-tipo-taglio, #cfg-righe-taglio'
-        );
+        var inputs = container.querySelectorAll('.cfg-input');
         for (var i = 0; i < inputs.length; i++) {
             inputs[i].addEventListener('input', _aggiornaAnteprima);
             inputs[i].addEventListener('change', _aggiornaAnteprima);
@@ -229,6 +282,57 @@ ENI.Modules.Impostazioni = (function() {
 
         // Carica configurazione
         await _caricaConfig();
+    }
+
+    // Helper: campo con pulsante caratteri speciali
+    function _fieldWithChars(label, id, placeholder) {
+        return '<div class="form-group">' +
+            '<label class="form-label">' + label + '</label>' +
+            '<div style="display:flex; gap:4px;">' +
+                '<input type="text" class="form-input cfg-input" id="' + id + '" placeholder="' + (placeholder || '') + '" style="flex:1;">' +
+                '<button type="button" class="btn btn-outline btn-sm btn-open-chars" data-target="' + id + '" style="padding:4px 8px; font-size:16px;" title="Inserisci carattere speciale">\u2606</button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    // Palette caratteri speciali
+    var _activeCharTarget = null;
+
+    function _openPalette(e) {
+        e.stopPropagation();
+        var btn = e.currentTarget;
+        _activeCharTarget = btn.getAttribute('data-target');
+        var palette = document.getElementById('char-palette');
+        if (!palette) return;
+
+        // Posiziona vicino al pulsante
+        var rect = btn.getBoundingClientRect();
+        palette.style.display = 'block';
+        palette.style.top = (rect.bottom + 4) + 'px';
+        palette.style.left = Math.min(rect.left, window.innerWidth - 380) + 'px';
+    }
+
+    function _closePalette() {
+        var palette = document.getElementById('char-palette');
+        if (palette) palette.style.display = 'none';
+        _activeCharTarget = null;
+    }
+
+    function _insertChar(e) {
+        var ch = e.currentTarget.getAttribute('data-char');
+        if (!ch || !_activeCharTarget) return;
+
+        var input = document.getElementById(_activeCharTarget);
+        if (!input) return;
+
+        // Inserisci alla posizione del cursore
+        var start = input.selectionStart || input.value.length;
+        var end = input.selectionEnd || input.value.length;
+        input.value = input.value.substring(0, start) + ch + input.value.substring(end);
+        input.focus();
+        input.setSelectionRange(start + ch.length, start + ch.length);
+
+        _aggiornaAnteprima();
     }
 
     async function _caricaConfig() {
@@ -239,24 +343,32 @@ ENI.Modules.Impostazioni = (function() {
             if (raw) saved = JSON.parse(raw);
         } catch (e) {}
 
-        // Poi prova il print server (se online, sovrascrive)
-        try {
-            var res = await fetch(_serverUrl + '/config', { signal: AbortSignal.timeout(3000) });
-            if (res.ok) {
-                var serverLayout = await res.json();
-                _layout = Object.assign({}, DEFAULT_LAYOUT, saved || {}, serverLayout);
-                _setServerStatus(true);
-            } else {
-                _layout = Object.assign({}, DEFAULT_LAYOUT, saved || {});
-                _setServerStatus(false);
-            }
-        } catch (e) {
-            _layout = Object.assign({}, DEFAULT_LAYOUT, saved || {});
-            _setServerStatus(false);
+        // Se abbiamo dati salvati, usali subito
+        if (saved) {
+            _layout = Object.assign({}, DEFAULT_LAYOUT, saved);
+        } else {
+            _layout = Object.assign({}, DEFAULT_LAYOUT);
         }
+
+        // Poi prova il print server in background (non blocca)
+        _checkServerStatus();
 
         _populateForm(_layout);
         _aggiornaAnteprima();
+    }
+
+    function _checkServerStatus() {
+        _fetchWithTimeout(_serverUrl + '/status', {}, 3000)
+            .then(function(res) {
+                if (res.ok) {
+                    _setServerStatus(true);
+                } else {
+                    _setServerStatus(false);
+                }
+            })
+            .catch(function() {
+                _setServerStatus(false);
+            });
     }
 
     function _setServerStatus(online) {
@@ -281,9 +393,11 @@ ENI.Modules.Impostazioni = (function() {
         _setVal('cfg-partita-iva', layout.partita_iva);
         _setVal('cfg-email', layout.email);
         _setVal('cfg-sito-web', layout.sito_web);
+        _setVal('cfg-separatore-intestazione', layout.separatore_intestazione);
         _setVal('cfg-footer-riga1', layout.footer_riga1);
         _setVal('cfg-footer-riga2', layout.footer_riga2);
         _setVal('cfg-footer-riga3', layout.footer_riga3);
+        _setVal('cfg-separatore-footer', layout.separatore_footer);
         _setChecked('cfg-mostra-operatore', layout.mostra_operatore !== false);
         _setChecked('cfg-mostra-data', layout.mostra_data_ora !== false);
         _setChecked('cfg-mostra-codice', layout.mostra_codice !== false);
@@ -323,9 +437,11 @@ ENI.Modules.Impostazioni = (function() {
             partita_iva: (document.getElementById('cfg-partita-iva') || {}).value || '',
             email: (document.getElementById('cfg-email') || {}).value || '',
             sito_web: (document.getElementById('cfg-sito-web') || {}).value || '',
-            footer_riga1: (document.getElementById('cfg-footer-riga1') || {}).value || 'Grazie e arrivederci!',
+            separatore_intestazione: (document.getElementById('cfg-separatore-intestazione') || {}).value || '',
+            footer_riga1: (document.getElementById('cfg-footer-riga1') || {}).value || '',
             footer_riga2: (document.getElementById('cfg-footer-riga2') || {}).value || '',
             footer_riga3: (document.getElementById('cfg-footer-riga3') || {}).value || '',
+            separatore_footer: (document.getElementById('cfg-separatore-footer') || {}).value || '',
             mostra_operatore: (document.getElementById('cfg-mostra-operatore') || {}).checked !== false,
             mostra_data_ora: (document.getElementById('cfg-mostra-data') || {}).checked !== false,
             mostra_codice: (document.getElementById('cfg-mostra-codice') || {}).checked !== false,
@@ -401,7 +517,7 @@ ENI.Modules.Impostazioni = (function() {
     function _aggiornaAnteprima() {
         var cfg = _readForm();
         var W = 42;
-        var sep = '<span style="color:#999;">' + '\u2500'.repeat(W) + '</span>';
+        var sepLine = '<span style="color:#999;">' + '\u2500'.repeat(W) + '</span>';
         var sepBold = '<span style="color:#888;">' + '\u2550'.repeat(W) + '</span>';
         var now = new Date();
 
@@ -409,6 +525,12 @@ ENI.Modules.Impostazioni = (function() {
             return (text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
         function center(text) {
+            if (!text) return '';
+            var clean = text.replace(/<[^>]+>/g, '');
+            var p = Math.max(0, Math.floor((W - clean.length) / 2));
+            return ' '.repeat(p) + text;
+        }
+        function centerEsc(text) {
             if (!text) return '';
             text = esc(text);
             var p = Math.max(0, Math.floor((W - text.length) / 2));
@@ -434,41 +556,46 @@ ENI.Modules.Impostazioni = (function() {
         var lines = [];
 
         // Intestazione
-        lines.push('<b style="font-size:14px;">' + center(cfg.nome_negozio || 'TITANWASH') + '</b>');
-        if (cfg.sottotitolo) lines.push('<span style="font-size:10px;">' + center(cfg.sottotitolo) + '</span>');
-        if (cfg.indirizzo) lines.push(center(cfg.indirizzo));
-        if (cfg.telefono) lines.push(center('Tel: ' + cfg.telefono));
-        if (cfg.partita_iva) lines.push(center('P.IVA: ' + cfg.partita_iva));
-        if (cfg.email) lines.push('<span style="font-size:10px;">' + center(cfg.email) + '</span>');
-        if (cfg.sito_web) lines.push('<span style="font-size:10px;">' + center(cfg.sito_web) + '</span>');
+        lines.push('<b style="font-size:14px;">' + centerEsc(cfg.nome_negozio || 'TITANWASH') + '</b>');
+        if (cfg.sottotitolo) lines.push('<span style="font-size:10px;">' + centerEsc(cfg.sottotitolo) + '</span>');
+        if (cfg.indirizzo) lines.push(centerEsc(cfg.indirizzo));
+        if (cfg.telefono) lines.push(centerEsc('Tel: ' + cfg.telefono));
+        if (cfg.partita_iva) lines.push(centerEsc('P.IVA: ' + cfg.partita_iva));
+        if (cfg.email) lines.push('<span style="font-size:10px;">' + centerEsc(cfg.email) + '</span>');
+        if (cfg.sito_web) lines.push('<span style="font-size:10px;">' + centerEsc(cfg.sito_web) + '</span>');
+
+        // Separatore intestazione personalizzato
+        if (cfg.separatore_intestazione) {
+            lines.push(centerEsc(cfg.separatore_intestazione));
+        }
 
         lines.push('');
 
         // Data/ora e operatore
         if (cfg.mostra_data_ora) {
-            lines.push(center(now.toLocaleDateString('it-IT') + '  ' + now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })));
+            lines.push(centerEsc(now.toLocaleDateString('it-IT') + '  ' + now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })));
         }
         if (cfg.mostra_operatore) {
-            lines.push(center('Op: Mario Rossi'));
+            lines.push(centerEsc('Op: Mario Rossi'));
         }
 
         lines.push(sepBold);
 
         // Articoli esempio
-        lines.push('<b>Olio motore 5W40</b>');
+        lines.push('<b>' + esc('Olio motore 5W40') + '</b>');
         lines.push(pad('  1 x 25.00', '25.00'));
-        lines.push('<b>Tergicristalli Bosch</b>');
+        lines.push('<b>' + esc('Tergicristalli Bosch') + '</b>');
         lines.push(pad('  2 x 12.50', '25.00'));
-        lines.push('<b>Lavaggio Premium</b>');
+        lines.push('<b>' + esc('Lavaggio Premium') + '</b>');
         lines.push(pad('  1 x 15.00', '15.00'));
 
-        lines.push(sep);
+        lines.push(sepLine);
 
         // Subtotale
         if (cfg.mostra_subtotale) {
             lines.push(pad('Subtotale:', '65.00'));
             lines.push(pad('Sconto 10%:', '-6.50'));
-            lines.push(sep);
+            lines.push(sepLine);
         }
 
         // Totale
@@ -482,13 +609,18 @@ ENI.Modules.Impostazioni = (function() {
 
         // Footer
         lines.push('');
-        if (cfg.footer_riga1) lines.push(center(cfg.footer_riga1));
-        if (cfg.footer_riga2) lines.push('<span style="font-size:10px;">' + center(cfg.footer_riga2) + '</span>');
-        if (cfg.footer_riga3) lines.push('<span style="font-size:10px;">' + center(cfg.footer_riga3) + '</span>');
+        if (cfg.footer_riga1) lines.push(centerEsc(cfg.footer_riga1));
+        if (cfg.footer_riga2) lines.push('<span style="font-size:10px;">' + centerEsc(cfg.footer_riga2) + '</span>');
+        if (cfg.footer_riga3) lines.push('<span style="font-size:10px;">' + centerEsc(cfg.footer_riga3) + '</span>');
+
+        // Separatore footer personalizzato
+        if (cfg.separatore_footer) {
+            lines.push(centerEsc(cfg.separatore_footer));
+        }
 
         if (cfg.mostra_codice) {
             lines.push('');
-            lines.push('<span style="font-size:9px; color:#666;">' + center('VEN-20260305-001') + '</span>');
+            lines.push('<span style="font-size:9px; color:#666;">' + centerEsc('VEN-20260307-001') + '</span>');
         }
 
         html += lines.join('\n');
@@ -503,7 +635,7 @@ ENI.Modules.Impostazioni = (function() {
 
     async function _testStampa() {
         try {
-            var res = await fetch(_serverUrl + '/test', { signal: AbortSignal.timeout(5000) });
+            var res = await _fetchWithTimeout(_serverUrl + '/test', {}, 5000);
             var result = await res.json();
             if (result.success) {
                 ENI.UI.toast('Test stampa inviato!', 'success');
@@ -524,20 +656,20 @@ ENI.Modules.Impostazioni = (function() {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
             _layout = cfg;
-            ENI.UI.toast('Configurazione salvata', 'success');
         } catch (e) {
-            ENI.UI.toast('Errore salvataggio locale', 'error');
+            ENI.UI.toast('Errore salvataggio', 'error');
             return;
         }
 
-        // Prova anche a sincronizzare col print server (se attivo)
+        ENI.UI.toast('Configurazione salvata', 'success');
+
+        // Prova anche a sincronizzare col print server (se attivo, in background)
         try {
-            var res = await fetch(_serverUrl + '/config', {
+            var res = await _fetchWithTimeout(_serverUrl + '/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(cfg),
-                signal: AbortSignal.timeout(3000)
-            });
+                body: JSON.stringify(cfg)
+            }, 3000);
             var result = await res.json();
             if (result.success) {
                 _setServerStatus(true);
