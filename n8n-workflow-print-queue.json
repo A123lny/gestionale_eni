@@ -1,0 +1,259 @@
+{
+  "name": "Titanwash - Stampa Scontrino Automatica",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-1",
+      "name": "Trigger Manuale (Test)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "schedule-1",
+      "name": "Ogni 10 Secondi",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 500]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://upwkodrmfljgikmstogy.supabase.co/rest/v1/print_queue?stato=eq.pending&order=created_at.asc&limit=5",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$credentials.httpHeaderAuth.value}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer ={{$credentials.httpHeaderAuth.value}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-get-1",
+      "name": "Leggi Coda Stampa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-1",
+      "name": "Ci Sono Job?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 400]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "={{ $json }}",
+        "options": {}
+      },
+      "id": "split-1",
+      "name": "Splitta Job",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://upwkodrmfljgikmstogy.supabase.co/rest/v1/print_queue?id=eq.{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$credentials.httpHeaderAuth.value}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer ={{$credentials.httpHeaderAuth.value}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"stato\": \"processing\",\n  \"printed_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "supabase-update-1",
+      "name": "Marca In Elaborazione",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-1",
+              "name": "vendita_codice",
+              "value": "={{ $('Splitta Job').item.json.vendita_codice }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-2",
+              "name": "job_id",
+              "value": "={{ $('Splitta Job').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-3",
+              "name": "print_data",
+              "value": "={{ $('Splitta Job').item.json.print_data }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-1",
+      "name": "Prepara Dati",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1360, 300]
+    },
+    {
+      "parameters": {},
+      "id": "noop-1",
+      "name": "Nessun Job",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [920, 500]
+    }
+  ],
+  "connections": {
+    "Trigger Manuale (Test)": {
+      "main": [
+        [
+          {
+            "node": "Leggi Coda Stampa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ogni 10 Secondi": {
+      "main": [
+        [
+          {
+            "node": "Leggi Coda Stampa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leggi Coda Stampa": {
+      "main": [
+        [
+          {
+            "node": "Ci Sono Job?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ci Sono Job?": {
+      "main": [
+        [
+          {
+            "node": "Splitta Job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nessun Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Splitta Job": {
+      "main": [
+        [
+          {
+            "node": "Marca In Elaborazione",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marca In Elaborazione": {
+      "main": [
+        [
+          {
+            "node": "Prepara Dati",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "Titanwash"
+    }
+  ]
+}

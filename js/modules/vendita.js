@@ -1362,6 +1362,8 @@ ENI.Modules.Vendita = (function() {
 
         var serverUrl = ENI.Config.PRINT_SERVER_URL || 'http://localhost:3333';
 
+        // Prova stampa diretta (dal PC della stazione)
+        // Se fallisce, manda alla coda Supabase (stampa da remoto/smartphone)
         fetch(serverUrl + '/print', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1378,8 +1380,38 @@ ENI.Modules.Vendita = (function() {
             }
         })
         .catch(function() {
-            ENI.UI.toast('Server stampa non attivo. Avvia print-server/start.bat', 'error');
+            // Print server non raggiungibile (es. stampa da smartphone)
+            // Invia alla coda di stampa su Supabase
+            _inviaACodaStampa(printData);
         });
+    }
+
+    function _inviaACodaStampa(printData) {
+        ENI.UI.toast('Invio scontrino alla coda di stampa...', 'info');
+
+        var client = ENI.API.getClient ? ENI.API.getClient() : null;
+        if (!client) {
+            ENI.UI.toast('Errore: Supabase non disponibile', 'error');
+            return;
+        }
+
+        client
+            .from('print_queue')
+            .insert({
+                vendita_codice: printData.codice || 'N/A',
+                print_data: printData,
+                stato: 'pending'
+            })
+            .then(function(res) {
+                if (res.error) {
+                    ENI.UI.toast('Errore coda stampa: ' + res.error.message, 'error');
+                } else {
+                    ENI.UI.toast('Scontrino in coda - verra stampato automaticamente', 'success');
+                }
+            })
+            .catch(function(err) {
+                ENI.UI.toast('Errore coda stampa', 'error');
+            });
     }
 
     // ============================================================

@@ -19,6 +19,25 @@ var PRINTER_PORT = parseInt(process.env.PRINTER_PORT) || 9100;
 // File configurazione layout
 var LAYOUT_FILE = path.join(__dirname, 'layout.json');
 
+// ============================================================
+// Supabase - per coda stampa remota (smartphone)
+// ============================================================
+var SUPABASE_URL = 'https://upwkodrmfljgikmstogy.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwd2tvZHJtZmxqZ2lrbXN0b2d5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyNzMwMTEsImV4cCI6MjA4Njg0OTAxMX0.BVhpeBdiX75TFdlAsqpLQgWR7bG6MABCMWWt2zUkXqQ';
+var _supabase = null;
+
+function getSupabase() {
+    if (_supabase) return _supabase;
+    try {
+        var createClient = require('@supabase/supabase-js').createClient;
+        _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+        return _supabase;
+    } catch (e) {
+        console.log('[QUEUE] @supabase/supabase-js non installato. Coda stampa remota disabilitata.');
+        return null;
+    }
+}
+
 // Layout default
 var DEFAULT_LAYOUT = {
     nome_negozio: 'TITANWASH',
@@ -478,6 +497,86 @@ app.post('/config', function(req, res) {
 });
 
 // ============================================================
+// CODA STAMPA REMOTA - Polling Supabase
+// ============================================================
+var POLL_INTERVAL = 5000; // 5 secondi
+var _polling = false;
+
+async function pollPrintQueue() {
+    if (_polling) return;
+    _polling = true;
+
+    try {
+        var sb = getSupabase();
+        if (!sb) { _polling = false; return; }
+
+        var res = await sb
+            .from('print_queue')
+            .select('*')
+            .eq('stato', 'pending')
+            .order('created_at', { ascending: true })
+            .limit(5);
+
+        if (res.error) {
+            if (res.error.message && res.error.message.indexOf('does not exist') > -1) {
+                console.log('[QUEUE] Tabella print_queue non trovata. Crea la tabella su Supabase.');
+            }
+            _polling = false;
+            return;
+        }
+
+        var jobs = res.data || [];
+        for (var i = 0; i < jobs.length; i++) {
+            var job = jobs[i];
+            console.log('[QUEUE] Stampa job:', job.vendita_codice);
+
+            try {
+                var printData = job.print_data;
+                var receiptText = buildReceipt(printData);
+                var ip = printData.printer_ip || PRINTER_IP;
+                var port = printData.printer_port || PRINTER_PORT;
+
+                // Gestione logo async
+                var parts = [];
+                var logoPromise = printData._logoPromise;
+                var logoBuf = printData._logoBuf;
+
+                if (logoPromise) {
+                    try { logoBuf = await logoPromise; } catch (e) {}
+                }
+
+                if (logoBuf && Buffer.isBuffer(logoBuf)) {
+                    parts.push(Buffer.from(CMD.INIT + CMD.ALIGN_CENTER, 'binary'));
+                    parts.push(logoBuf);
+                    parts.push(Buffer.from(CMD.FEED, 'binary'));
+                    parts.push(Buffer.from(receiptText.replace(CMD.INIT, ''), 'binary'));
+                } else {
+                    parts.push(Buffer.from(receiptText, 'binary'));
+                }
+
+                var finalBuffer = Buffer.concat(parts);
+                await sendToPrinter(finalBuffer, ip, port);
+
+                // Marca come stampato
+                await sb
+                    .from('print_queue')
+                    .update({ stato: 'printed', printed_at: new Date().toISOString() })
+                    .eq('id', job.id);
+
+                console.log('[QUEUE] Stampato:', job.vendita_codice);
+            } catch (printErr) {
+                console.error('[QUEUE] Errore stampa job', job.id, ':', printErr.message);
+                // Marca come errore dopo 3 tentativi? Per ora lo lascia pending
+            }
+        }
+    } catch (e) {
+        // Silenzioso - potrebbe essere un errore di rete temporaneo
+    }
+
+    _polling = false;
+}
+
+// ============================================================
 // START SERVER
 // ============================================================
 app.listen(PORT, function() {
@@ -492,7 +591,15 @@ app.listen(PORT, function() {
     console.log('  GET  /test    - Stampa test');
     console.log('  POST /print   - Stampa scontrino');
     console.log('');
-    console.log('Per cambiare IP stampante:');
-    console.log('  set PRINTER_IP=192.168.1.XXX');
+
+    // Avvia polling coda stampa remota
+    var sb = getSupabase();
+    if (sb) {
+        console.log('Coda stampa remota: ATTIVA (polling ogni ' + (POLL_INTERVAL / 1000) + 's)');
+        setInterval(pollPrintQueue, POLL_INTERVAL);
+    } else {
+        console.log('Coda stampa remota: DISABILITATA');
+        console.log('  Per attivarla: npm install @supabase/supabase-js');
+    }
     console.log('');
 });
