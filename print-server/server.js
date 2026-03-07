@@ -95,6 +95,107 @@ function centerText(text) {
 }
 
 // ============================================================
+// Logo: converte base64 PNG/JPG in comandi ESC/POS raster
+// Usa il comando GS v 0 (raster bit image)
+// ============================================================
+function buildLogoBuffer(base64Data) {
+    try {
+        // Rimuovi header data:image/...;base64,
+        var raw = base64Data.replace(/^data:image\/\w+;base64,/, '');
+        var imgBuffer = Buffer.from(raw, 'base64');
+
+        // Decodifica PNG/JPG in pixel raw usando canvas-less approach
+        // Per semplicita, usiamo il modulo 'sharp' se disponibile, altrimenti skip
+        // Ma possiamo usare un approccio puro: decodifichiamo il PNG manualmente
+        // Usiamo un approccio alternativo: stampiamo il logo come bitmap ESC/POS
+
+        // Prova a caricare sharp per image processing
+        var sharp;
+        try {
+            sharp = require('sharp');
+        } catch (e) {
+            // sharp non disponibile, prova con jimp
+            try {
+                var Jimp = require('jimp');
+                return _buildLogoWithJimp(imgBuffer);
+            } catch (e2) {
+                console.log('[LOGO] Nessuna libreria immagini disponibile (sharp/jimp). Logo non stampato.');
+                return null;
+            }
+        }
+
+        return _buildLogoWithSharp(sharp, imgBuffer);
+    } catch (e) {
+        console.error('[LOGO] Errore conversione logo:', e.message);
+        return null;
+    }
+}
+
+function _buildLogoWithSharp(sharp, imgBuffer) {
+    // Ritorna una Promise che risolve con il buffer ESC/POS
+    return sharp(imgBuffer)
+        .resize({ width: 384, fit: 'inside' }) // 384px = larghezza stampa 80mm a 203dpi
+        .greyscale()
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+        .then(function(result) {
+            var pixels = result.data;
+            var width = result.info.width;
+            var height = result.info.height;
+            return _pixelsToEscPos(pixels, width, height);
+        });
+}
+
+function _buildLogoWithJimp(imgBuffer) {
+    var Jimp = require('jimp');
+    return Jimp.read(imgBuffer).then(function(image) {
+        image.resize(384, Jimp.AUTO).greyscale();
+        var width = image.bitmap.width;
+        var height = image.bitmap.height;
+        // Estrai pixel come array di grigi
+        var pixels = Buffer.alloc(width * height);
+        for (var y = 0; y < height; y++) {
+            for (var x = 0; x < width; x++) {
+                var idx = (y * width + x) * 4;
+                pixels[y * width + x] = image.bitmap.data[idx]; // R channel (greyscale)
+            }
+        }
+        return _pixelsToEscPos(pixels, width, height);
+    });
+}
+
+function _pixelsToEscPos(pixels, width, height) {
+    // GS v 0 - Print raster bit image
+    // Format: GS v 0 m xL xH yL yH d1...dk
+    // m = 0 (normal), 1 (double width), 2 (double height), 3 (double both)
+    var bytesPerRow = Math.ceil(width / 8);
+    var xL = bytesPerRow & 0xFF;
+    var xH = (bytesPerRow >> 8) & 0xFF;
+    var yL = height & 0xFF;
+    var yH = (height >> 8) & 0xFF;
+
+    // Header: GS v 0 0 xL xH yL yH
+    var header = Buffer.from([0x1D, 0x76, 0x30, 0x00, xL, xH, yL, yH]);
+
+    // Converti pixel in bit (1 = nero, 0 = bianco)
+    var imgData = Buffer.alloc(bytesPerRow * height);
+    for (var y = 0; y < height; y++) {
+        for (var x = 0; x < width; x++) {
+            var pixelIdx = y * width + x;
+            var gray = pixels[pixelIdx];
+            // Soglia: < 128 = nero (bit 1)
+            if (gray < 128) {
+                var byteIdx = y * bytesPerRow + Math.floor(x / 8);
+                var bitIdx = 7 - (x % 8);
+                imgData[byteIdx] |= (1 << bitIdx);
+            }
+        }
+    }
+
+    return Buffer.concat([header, imgData]);
+}
+
+// ============================================================
 // Genera buffer ESC/POS dallo scontrino
 // ============================================================
 function buildReceipt(data) {
@@ -108,6 +209,24 @@ function buildReceipt(data) {
 
     // Init
     buf += CMD.INIT;
+
+    // === LOGO (se presente, va stampato come bitmap) ===
+    // Il logo viene gestito separatamente come Buffer binario
+    var _logoBuf = null;
+    if (layout.logo_base64 && layout.logo_base64.length > 100) {
+        try {
+            var logoResult = buildLogoBuffer(layout.logo_base64);
+            if (logoResult && logoResult.then) {
+                // E' una Promise, verra' risolta nel caller
+                data._logoPromise = logoResult;
+            } else if (logoResult) {
+                _logoBuf = logoResult;
+            }
+        } catch (e) {
+            console.log('[LOGO] Skip logo:', e.message);
+        }
+    }
+    data._logoBuf = _logoBuf;
 
     // === INTESTAZIONE (centrata) ===
     buf += CMD.ALIGN_CENTER;
@@ -237,7 +356,9 @@ function sendToPrinter(data, printerIp, printerPort) {
 
         client.connect(port, ip, function() {
             clearTimeout(timeout);
-            client.write(Buffer.from(data, 'binary'), function() {
+            // Supporta sia stringhe che Buffer
+            var buf = Buffer.isBuffer(data) ? data : Buffer.from(data, 'binary');
+            client.write(buf, function() {
                 client.end();
                 resolve({ success: true, message: 'Scontrino inviato a ' + ip + ':' + port });
             });
@@ -284,28 +405,55 @@ app.get('/test', function(req, res) {
 });
 
 // Stampa scontrino
-app.post('/print', function(req, res) {
+app.post('/print', async function(req, res) {
     var data = req.body;
 
     if (!data || !data.totale) {
         return res.status(400).json({ success: false, message: 'Dati scontrino mancanti' });
     }
 
-    var receiptBuffer = buildReceipt(data);
+    var receiptText = buildReceipt(data);
 
     // Usa IP/porta dal body se forniti, altrimenti default
     var ip = data.printer_ip || PRINTER_IP;
     var port = data.printer_port || PRINTER_PORT;
 
-    sendToPrinter(receiptBuffer, ip, port)
-        .then(function(result) {
-            console.log('[PRINT] Scontrino inviato:', data.codice || 'N/A');
-            res.json(result);
-        })
-        .catch(function(err) {
-            console.error('[PRINT] Errore:', err.message);
-            res.status(500).json({ success: false, message: err.message });
-        });
+    try {
+        // Costruisci buffer finale: INIT + LOGO (se presente) + TESTO
+        var parts = [];
+
+        // Logo bitmap (se presente)
+        var logoPromise = data._logoPromise;
+        var logoBuf = data._logoBuf;
+
+        if (logoPromise) {
+            try {
+                logoBuf = await logoPromise;
+            } catch (e) {
+                console.log('[LOGO] Errore rendering logo:', e.message);
+            }
+        }
+
+        if (logoBuf && Buffer.isBuffer(logoBuf)) {
+            // INIT + ALIGN_CENTER + logo bitmap + newline
+            parts.push(Buffer.from(CMD.INIT + CMD.ALIGN_CENTER, 'binary'));
+            parts.push(logoBuf);
+            parts.push(Buffer.from(CMD.FEED, 'binary'));
+            // Il resto del receipt (senza il CMD.INIT iniziale che e' gia' nel logo)
+            var textWithoutInit = receiptText.replace(CMD.INIT, '');
+            parts.push(Buffer.from(textWithoutInit, 'binary'));
+        } else {
+            parts.push(Buffer.from(receiptText, 'binary'));
+        }
+
+        var finalBuffer = Buffer.concat(parts);
+        var result = await sendToPrinter(finalBuffer, ip, port);
+        console.log('[PRINT] Scontrino inviato:', data.codice || 'N/A');
+        res.json(result);
+    } catch (err) {
+        console.error('[PRINT] Errore:', err.message);
+        res.status(500).json({ success: false, message: err.message });
+    }
 });
 
 // Leggi configurazione layout
