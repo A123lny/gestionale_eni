@@ -482,19 +482,52 @@ ENI.Modules.Lavaggi = (function() {
         var clienteInfo = modal.querySelector('#lav-cliente-info');
         var cellulareInput = modal.querySelector('#lav-cellulare');
 
-        // Auto-prezzo da listino
-        function _aggiornaPrezzo() {
+        // Cache prezzi cliente per sessione form
+        var _prezziClienteCache = {};
+
+        // Auto-prezzo da listino o da prezzi_cliente
+        async function _aggiornaPrezzo() {
             var tipoOpt = tipoSelect.options[tipoSelect.selectedIndex];
             if (!tipoOpt || !tipoOpt.value) return;
 
             var prezzoStandard = parseFloat(tipoOpt.dataset.prezzo);
             var clienteOpt = clienteSelect.options[clienteSelect.selectedIndex];
-            var listinoCliente = clienteOpt && clienteOpt.dataset.listino ? JSON.parse(clienteOpt.dataset.listino) : null;
+            var clienteId = clienteOpt ? clienteOpt.value : '';
 
-            if (listinoCliente && listinoCliente[tipoOpt.value] !== undefined) {
-                prezzoInput.value = listinoCliente[tipoOpt.value];
-                prezzoInfo.textContent = 'Standard: ' + ENI.UI.formatValuta(prezzoStandard) + ' \u2192 Personalizzato';
-            } else {
+            var trovato = false;
+
+            // Cerca prezzo personalizzato nella tabella prezzi_cliente
+            if (clienteId) {
+                try {
+                    if (!_prezziClienteCache[clienteId]) {
+                        _prezziClienteCache[clienteId] = await ENI.API.getPrezziClientePerCliente(clienteId);
+                    }
+                    var prezziCliente = _prezziClienteCache[clienteId];
+                    // Cerca articolo magazzino con nome uguale al tipo_lavaggio
+                    var match = prezziCliente.find(function(pc) {
+                        return pc.magazzino && pc.magazzino.nome_prodotto === tipoOpt.value;
+                    });
+                    if (match) {
+                        prezzoInput.value = Number(match.prezzo).toFixed(2);
+                        prezzoInfo.textContent = 'Standard: ' + ENI.UI.formatValuta(prezzoStandard) + ' \u2192 Personalizzato';
+                        trovato = true;
+                    }
+                } catch(e) {
+                    console.error('Errore caricamento prezzi cliente:', e);
+                }
+            }
+
+            // Fallback: listino_personalizzato sul cliente (retrocompatibilita)
+            if (!trovato && clienteId) {
+                var listinoCliente = clienteOpt.dataset.listino ? JSON.parse(clienteOpt.dataset.listino) : null;
+                if (listinoCliente && listinoCliente[tipoOpt.value] !== undefined) {
+                    prezzoInput.value = listinoCliente[tipoOpt.value];
+                    prezzoInfo.textContent = 'Standard: ' + ENI.UI.formatValuta(prezzoStandard) + ' \u2192 Personalizzato';
+                    trovato = true;
+                }
+            }
+
+            if (!trovato) {
                 prezzoInput.value = prezzoStandard;
                 prezzoInfo.textContent = '';
             }
@@ -764,13 +797,7 @@ ENI.Modules.Lavaggi = (function() {
 
             noteModal.querySelector('#btn-conferma-note').addEventListener('click', async function() {
                 ENI.UI.closeModal(noteModal);
-                try {
-                    await ENI.API.completaLavaggio(id, lavaggio);
-                    ENI.UI.success('Lavaggio completato');
-                    await _loadLavaggi();
-                } catch(e) {
-                    ENI.UI.error('Errore: ' + e.message);
-                }
+                await _eseguiCompletamento(id, lavaggio);
             });
             return;
         }
@@ -789,13 +816,60 @@ ENI.Modules.Lavaggi = (function() {
 
         if (!ok) return;
 
+        await _eseguiCompletamento(id, lavaggio);
+    }
+
+    async function _eseguiCompletamento(id, lavaggio) {
         try {
             await ENI.API.completaLavaggio(id, lavaggio);
             ENI.UI.success('Lavaggio completato');
             await _loadLavaggi();
+
+            // Chiedi se registrare come vendita
+            _chiediRegistraVendita(lavaggio);
         } catch(e) {
             ENI.UI.error('Errore: ' + e.message);
         }
+    }
+
+    function _chiediRegistraVendita(lavaggio) {
+        var body =
+            '<div style="text-align:center; margin-bottom: 16px;">' +
+                '<div style="font-size: 48px;">\u{1F4B0}</div>' +
+                '<p style="margin: 8px 0;">Lavaggio <strong>' + ENI.UI.escapeHtml(lavaggio.codice) + '</strong> completato.</p>' +
+                '<p><strong>' + ENI.UI.escapeHtml(lavaggio.veicolo || '') + '</strong> - ' +
+                    ENI.UI.escapeHtml(lavaggio.tipo_lavaggio) + ' - ' +
+                    '<span style="font-size: 1.2rem; font-weight: bold; color: var(--color-primary);">' + ENI.UI.formatValuta(lavaggio.prezzo) + '</span>' +
+                '</p>' +
+                (lavaggio.nome_cliente && lavaggio.nome_cliente !== 'Walk-in'
+                    ? '<p class="text-sm text-muted">Cliente: ' + ENI.UI.escapeHtml(lavaggio.nome_cliente) + '</p>'
+                    : '') +
+            '</div>' +
+            '<p style="text-align:center;">Vuoi registrare anche come <strong>vendita</strong>?</p>';
+
+        var vendModal = ENI.UI.showModal({
+            title: 'Registrare come Vendita?',
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>No, solo lavaggio</button>' +
+                '<button class="btn btn-primary" id="btn-registra-vendita">\u2705 Si, registra vendita</button>'
+        });
+
+        vendModal.querySelector('#btn-registra-vendita').addEventListener('click', async function() {
+            ENI.UI.closeModal(vendModal);
+            try {
+                // Cerca articolo magazzino corrispondente
+                var prodottiLavaggi = await ENI.API.getMagazzino('Lavaggi');
+                var prodotto = prodottiLavaggi.find(function(p) {
+                    return p.nome_prodotto === lavaggio.tipo_lavaggio;
+                });
+
+                var record = await ENI.API.salvaVenditaDaLavaggio(lavaggio, prodotto || null);
+                ENI.UI.success('Vendita ' + record.codice + ' registrata da lavaggio ' + lavaggio.codice);
+            } catch(e) {
+                ENI.UI.error('Errore registrazione vendita: ' + e.message);
+            }
+        });
     }
 
     // --- Listino Lavaggi ---
@@ -994,7 +1068,20 @@ ENI.Modules.Lavaggi = (function() {
 
         try {
             await ENI.API.annullaLavaggio(id, lavaggio);
-            ENI.UI.success('Lavaggio ' + lavaggio.codice + ' annullato');
+
+            // Annulla vendita collegata se esiste
+            try {
+                var venditaCollegata = await ENI.API.getVenditaPerLavaggio(id);
+                if (venditaCollegata) {
+                    await ENI.API.annullaVendita(venditaCollegata.id, venditaCollegata);
+                    ENI.UI.success('Lavaggio ' + lavaggio.codice + ' e vendita ' + venditaCollegata.codice + ' annullati');
+                } else {
+                    ENI.UI.success('Lavaggio ' + lavaggio.codice + ' annullato');
+                }
+            } catch(e2) {
+                ENI.UI.success('Lavaggio ' + lavaggio.codice + ' annullato');
+            }
+
             await _loadLavaggi();
         } catch(e) {
             ENI.UI.error('Errore: ' + e.message);
@@ -1210,10 +1297,21 @@ ENI.Modules.Lavaggi = (function() {
         var lavaggio = _lavaggi.find(function(l) { return l.id === id; });
         if (!lavaggio) return;
 
-        var msg = 'Il lavaggio ' + lavaggio.codice + ' verrà eliminato definitivamente dal database.\n\n' +
+        // Controlla se c'e una vendita collegata
+        var venditaCollegata = null;
+        try {
+            venditaCollegata = await ENI.API.getVenditaPerLavaggio(id);
+        } catch(e) { /* ignore */ }
+
+        var msg = 'Il lavaggio ' + lavaggio.codice + ' verr\u00E0 eliminato definitivamente dal database.\n\n' +
                   (lavaggio.veicolo || lavaggio.nome_cliente) + ' - ' +
-                  lavaggio.tipo_lavaggio + ' - ' + ENI.UI.formatValuta(lavaggio.prezzo) +
-                  '\n\nQuesta azione non può essere annullata.';
+                  lavaggio.tipo_lavaggio + ' - ' + ENI.UI.formatValuta(lavaggio.prezzo);
+
+        if (venditaCollegata) {
+            msg += '\n\nLa vendita collegata ' + venditaCollegata.codice + ' verr\u00E0 annullata.';
+        }
+
+        msg += '\n\nQuesta azione non pu\u00F2 essere annullata.';
 
         var ok = await ENI.UI.confirm({
             title: '\u{1F5D1} Elimina Definitivamente',
@@ -1226,8 +1324,14 @@ ENI.Modules.Lavaggi = (function() {
         if (!ok) return;
 
         try {
+            // Annulla vendita collegata prima di eliminare
+            if (venditaCollegata) {
+                await ENI.API.annullaVendita(venditaCollegata.id, venditaCollegata);
+            }
+
             await ENI.API.eliminaLavaggio(id, lavaggio);
-            ENI.UI.success('Lavaggio ' + lavaggio.codice + ' eliminato');
+            ENI.UI.success('Lavaggio ' + lavaggio.codice + ' eliminato' +
+                (venditaCollegata ? ' e vendita ' + venditaCollegata.codice + ' annullata' : ''));
             await _loadLavaggi();
         } catch(e) {
             ENI.UI.error('Errore: ' + e.message);

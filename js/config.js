@@ -97,7 +97,7 @@ ENI.Config = {
     ],
 
     // Categorie magazzino
-    CATEGORIE_MAGAZZINO: ['Accessori', 'Tergicristalli', 'Catene', 'Profumatori', 'Uso interno', 'Oli e lubrificanti', 'Bar', 'Detailing', 'AdBlue', 'Altro'],
+    CATEGORIE_MAGAZZINO: ['Lavaggi', 'Accessori', 'Tergicristalli', 'Catene', 'Profumatori', 'Uso interno', 'Oli e lubrificanti', 'Bar', 'Detailing', 'AdBlue', 'Altro'],
 
     // Metodi pagamento POS
     METODI_PAGAMENTO_POS: [

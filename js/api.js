@@ -488,6 +488,112 @@ ENI.API = (function() {
         return record;
     }
 
+    // --- Prezzi Cliente (per articoli Lavaggi) ---
+
+    async function getPrezziCliente(prodottoId) {
+        var result = await getClient()
+            .from('prezzi_cliente')
+            .select('*, clienti(nome_ragione_sociale, tipo)')
+            .eq('prodotto_id', prodottoId)
+            .order('created_at', { ascending: true });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getPrezziClientePerCliente(clienteId) {
+        var result = await getClient()
+            .from('prezzi_cliente')
+            .select('*, magazzino(nome_prodotto, prezzo_vendita, codice)')
+            .eq('cliente_id', clienteId);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function salvaPrezzoCliente(clienteId, prodottoId, prezzo) {
+        // Upsert: se esiste aggiorna, altrimenti inserisci
+        var result = await getClient()
+            .from('prezzi_cliente')
+            .upsert({
+                cliente_id: clienteId,
+                prodotto_id: prodottoId,
+                prezzo: prezzo
+            }, { onConflict: 'cliente_id,prodotto_id' })
+            .select()
+            .single();
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    async function eliminaPrezzoCliente(clienteId, prodottoId) {
+        var result = await getClient()
+            .from('prezzi_cliente')
+            .delete()
+            .eq('cliente_id', clienteId)
+            .eq('prodotto_id', prodottoId);
+        if (result.error) throw new Error(result.error.message);
+        return true;
+    }
+
+    // --- Vendita da Lavaggio ---
+
+    async function salvaVenditaDaLavaggio(lavaggio, prodottoMagazzino) {
+        var codice = await generaCodice('vendite', ENI.Config.PREFISSI.VENDITA);
+
+        var vendita = {
+            codice: codice,
+            data: lavaggio.data || ENI.UI.oggiISO(),
+            ora: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            subtotale: lavaggio.prezzo,
+            sconto_globale: 0,
+            sconto_globale_tipo: 'fisso',
+            totale: lavaggio.prezzo,
+            metodo_pagamento: 'contanti',
+            importo_contanti: lavaggio.prezzo,
+            importo_pos: 0,
+            importo_buono: 0,
+            importo_wallet: 0,
+            resto: 0,
+            stato: 'completata',
+            operatore_id: ENI.State.getUserId(),
+            operatore_nome: ENI.State.getUserName(),
+            lavaggio_id: lavaggio.id,
+            note_lavaggio: lavaggio.codice + ' - ' + (lavaggio.nome_cliente || 'Walk-in')
+        };
+
+        var record = await insert('vendite', vendita);
+
+        var dettaglio = {
+            vendita_id: record.id,
+            prodotto_id: prodottoMagazzino ? prodottoMagazzino.id : null,
+            codice_prodotto: prodottoMagazzino ? prodottoMagazzino.codice : lavaggio.tipo_lavaggio,
+            nome_prodotto: lavaggio.tipo_lavaggio + (lavaggio.nome_cliente !== 'Walk-in' ? ' - ' + lavaggio.nome_cliente : ''),
+            categoria: 'Lavaggi',
+            quantita: 1,
+            prezzo_unitario: lavaggio.prezzo,
+            sconto: 0,
+            sconto_tipo: 'fisso',
+            totale_riga: lavaggio.prezzo
+        };
+
+        await insert('vendite_dettaglio', dettaglio);
+
+        await scriviLog('Vendita_Da_Lavaggio', 'Vendita',
+            codice + ' - ' + lavaggio.codice + ' - ' + ENI.UI.formatValuta(lavaggio.prezzo));
+
+        return record;
+    }
+
+    async function getVenditaPerLavaggio(lavaggioId) {
+        var result = await getClient()
+            .from('vendite')
+            .select('*')
+            .eq('lavaggio_id', lavaggioId)
+            .neq('stato', 'annullata')
+            .limit(1);
+        if (result.error) throw new Error(result.error.message);
+        return (result.data && result.data.length > 0) ? result.data[0] : null;
+    }
+
     // --- Manutenzioni ---
 
     async function getManutenzioni() {
@@ -1151,6 +1257,14 @@ ENI.API = (function() {
         // Prenotazioni lavaggio
         creaPrenotazioneLavaggio: creaPrenotazioneLavaggio,
         getPrenotazioniLavaggio: getPrenotazioniLavaggio,
-        aggiornaPrenotazione: aggiornaPrenotazione
+        aggiornaPrenotazione: aggiornaPrenotazione,
+        // Prezzi cliente
+        getPrezziCliente: getPrezziCliente,
+        getPrezziClientePerCliente: getPrezziClientePerCliente,
+        salvaPrezzoCliente: salvaPrezzoCliente,
+        eliminaPrezzoCliente: eliminaPrezzoCliente,
+        // Vendita da lavaggio
+        salvaVenditaDaLavaggio: salvaVenditaDaLavaggio,
+        getVenditaPerLavaggio: getVenditaPerLavaggio
     };
 })();
