@@ -26,7 +26,7 @@ ENI.Modules.Magazzino = (function() {
                 '</div>' +
             '</div>' +
 
-            // Alert sotto scorta
+            // Alert sotto scorta (collassabile)
             '<div id="stock-alerts"></div>' +
 
             // Filtri
@@ -96,6 +96,21 @@ ENI.Modules.Magazzino = (function() {
             e.stopPropagation();
             _showPrezziCliente(el.dataset.prezziCliente);
         });
+
+        // Toggle alert sotto scorta
+        ENI.UI.delegate(container, 'click', '#toggle-stock-alert', function(e, el) {
+            var detailEl = document.getElementById('stock-alert-detail');
+            if (detailEl) {
+                var isHidden = detailEl.style.display === 'none';
+                detailEl.style.display = isHidden ? 'block' : 'none';
+                el.textContent = isHidden ? '\u25B2 Nascondi' : '\u25BC Mostra dettagli';
+            }
+        });
+
+        // Importa da listino lavaggi
+        ENI.UI.delegate(container, 'click', '#btn-importa-listino', function() {
+            _importaDaListino();
+        });
     }
 
     async function _loadProdotti() {
@@ -118,7 +133,7 @@ ENI.Modules.Magazzino = (function() {
         if (!el) return;
 
         var sottoScorta = _prodotti.filter(function(p) {
-            return !_isServizio(p) && p.giacenza < p.giacenza_minima;
+            return !_isServizio(p) && p.giacenza_minima > 0 && p.giacenza < p.giacenza_minima;
         });
 
         if (sottoScorta.length === 0) {
@@ -127,11 +142,16 @@ ENI.Modules.Magazzino = (function() {
         }
 
         el.innerHTML =
-            '<div class="stock-alert">' +
-                '\u26A0\uFE0F <strong>' + sottoScorta.length + ' prodott' + (sottoScorta.length === 1 ? 'o' : 'i') + ' sotto scorta minima:</strong> ' +
-                sottoScorta.map(function(p) {
-                    return ENI.UI.escapeHtml(p.nome_prodotto) + ' (' + p.giacenza + '/' + p.giacenza_minima + ')';
-                }).join(', ') +
+            '<div class="stock-alert" style="cursor:pointer;">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+                    '<span>\u26A0\uFE0F <strong>' + sottoScorta.length + ' prodott' + (sottoScorta.length === 1 ? 'o' : 'i') + ' sotto scorta minima</strong></span>' +
+                    '<button class="btn btn-sm btn-ghost" id="toggle-stock-alert" style="font-size:12px;">\u25BC Mostra dettagli</button>' +
+                '</div>' +
+                '<div id="stock-alert-detail" style="display:none;margin-top:8px;font-size:13px;">' +
+                    sottoScorta.map(function(p) {
+                        return ENI.UI.escapeHtml(p.nome_prodotto) + ' <span class="text-muted">(' + p.giacenza + '/' + p.giacenza_minima + ')</span>';
+                    }).join(', ') +
+                '</div>' +
             '</div>';
     }
 
@@ -147,6 +167,18 @@ ENI.Modules.Magazzino = (function() {
                 (p.barcode && p.barcode.toLowerCase().indexOf(_searchTerm) !== -1);
             return matchCat && matchSearch;
         });
+
+        // Se filtro Lavaggi e vuoto, mostra import da listino
+        if (filtered.length === 0 && _categoriaFiltro === 'Lavaggi') {
+            listEl.innerHTML =
+                '<div class="empty-state">' +
+                    '<div class="empty-state-icon">\u{1F697}</div>' +
+                    '<p class="empty-state-text">Nessun servizio lavaggio in magazzino</p>' +
+                    '<p class="text-sm text-muted" style="margin-bottom:16px;">Importa automaticamente i tipi di lavaggio dal listino esistente</p>' +
+                    '<button class="btn btn-primary" id="btn-importa-listino">\u{1F504} Importa da Listino Lavaggi</button>' +
+                '</div>';
+            return;
+        }
 
         if (filtered.length === 0) {
             listEl.innerHTML =
@@ -164,7 +196,7 @@ ENI.Modules.Magazzino = (function() {
             '<thead><tr>' +
                 '<th>Codice</th>' +
                 '<th>Nome</th>' +
-                '<th>Categoria</th>' +
+                (isLavaggiView ? '' : '<th>Categoria</th>') +
                 (!isLavaggiView ? '<th>Giacenza</th>' : '') +
                 '<th>Prezzo</th>' +
                 (canWrite ? '<th>Azioni</th>' : '') +
@@ -172,15 +204,18 @@ ENI.Modules.Magazzino = (function() {
 
         filtered.forEach(function(p) {
             var servizio = _isServizio(p);
-            var isSottoScorta = !servizio && p.giacenza < p.giacenza_minima;
+            var isSottoScorta = !servizio && p.giacenza_minima > 0 && p.giacenza < p.giacenza_minima;
 
             html +=
                 '<tr' + (isSottoScorta ? ' style="background-color: var(--color-warning-bg);"' : '') + '>' +
                     '<td class="text-sm text-muted">' + ENI.UI.escapeHtml(p.codice) + '</td>' +
                     '<td><strong>' + ENI.UI.escapeHtml(p.nome_prodotto) + '</strong>' +
-                        (servizio ? ' <span class="badge badge-info">Servizio</span>' : '') +
-                    '</td>' +
-                    '<td class="text-sm">' + ENI.UI.escapeHtml(p.categoria || '-') + '</td>';
+                        (servizio && !isLavaggiView ? ' <span class="badge badge-info">Servizio</span>' : '') +
+                    '</td>';
+
+            if (!isLavaggiView) {
+                html += '<td class="text-sm">' + ENI.UI.escapeHtml(p.categoria || '-') + '</td>';
+            }
 
             if (!isLavaggiView) {
                 if (servizio) {
@@ -212,6 +247,67 @@ ENI.Modules.Magazzino = (function() {
 
         html += '</tbody></table></div>';
         listEl.innerHTML = html;
+    }
+
+    // --- Importa da Listino Lavaggi ---
+
+    async function _importaDaListino() {
+        try {
+            var listino = await ENI.API.getListinoCompleto();
+
+            if (!listino || listino.length === 0) {
+                ENI.UI.warning('Nessun tipo di lavaggio trovato nel listino. Vai su Lavaggi \u2192 Listino per crearne.');
+                return;
+            }
+
+            // Filtra quelli gia presenti in magazzino
+            var nomiEsistenti = _prodotti.filter(_isServizio).map(function(p) { return p.nome_prodotto; });
+            var daImportare = listino.filter(function(l) {
+                return l.attivo && nomiEsistenti.indexOf(l.tipo_lavaggio) === -1;
+            });
+
+            if (daImportare.length === 0) {
+                ENI.UI.info('Tutti i tipi di lavaggio sono gia presenti in magazzino');
+                return;
+            }
+
+            var msg = 'Importare ' + daImportare.length + ' tipo/i lavaggio dal listino?\n\n' +
+                daImportare.map(function(l) {
+                    return l.tipo_lavaggio + ' - ' + ENI.UI.formatValuta(l.prezzo_standard);
+                }).join('\n');
+
+            var ok = await ENI.UI.confirm({
+                title: '\u{1F504} Importa da Listino',
+                message: msg,
+                confirmText: 'Importa',
+                cancelText: 'Annulla'
+            });
+
+            if (!ok) return;
+
+            var importati = 0;
+            for (var i = 0; i < daImportare.length; i++) {
+                var l = daImportare[i];
+                try {
+                    await ENI.API.salvaProdotto({
+                        codice: 'LAV-' + String(i + 1 + nomiEsistenti.length).padStart(3, '0'),
+                        nome_prodotto: l.tipo_lavaggio,
+                        categoria: 'Lavaggi',
+                        prezzo_vendita: l.prezzo_standard,
+                        giacenza: 0,
+                        giacenza_minima: 0
+                    });
+                    importati++;
+                } catch(e) {
+                    console.error('Errore import:', l.tipo_lavaggio, e);
+                }
+            }
+
+            ENI.UI.success(importati + ' servizi lavaggio importati');
+            await _loadProdotti();
+        } catch(e) {
+            ENI.UI.error('Errore importazione: ' + e.message);
+        }
     }
 
     // --- Modifica Giacenza ---
