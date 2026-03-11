@@ -286,20 +286,24 @@ ENI.Modules.Magazzino = (function() {
             if (!ok) return;
 
             var importati = 0;
+            var timestamp = Date.now().toString(36);
             for (var i = 0; i < daImportare.length; i++) {
                 var l = daImportare[i];
                 try {
                     await ENI.API.salvaProdotto({
-                        codice: 'LAV-' + String(i + 1 + nomiEsistenti.length).padStart(3, '0'),
+                        codice: 'SRV-' + timestamp + '-' + (i + 1),
                         nome_prodotto: l.tipo_lavaggio,
                         categoria: 'Lavaggi',
                         prezzo_vendita: l.prezzo_standard,
+                        prezzo_acquisto: 0,
                         giacenza: 0,
-                        giacenza_minima: 0
+                        giacenza_minima: 0,
+                        attivo: true
                     });
                     importati++;
                 } catch(e) {
                     console.error('Errore import:', l.tipo_lavaggio, e);
+                    ENI.UI.warning('Errore importazione "' + l.tipo_lavaggio + '": ' + e.message);
                 }
             }
 
@@ -560,10 +564,11 @@ ENI.Modules.Magazzino = (function() {
                 barcode: modal.querySelector('#prod-barcode').value.trim() || null,
                 categoria: categoria,
                 fornitore: modal.querySelector('#prod-fornitore').value.trim() || null,
-                prezzo_acquisto: parseFloat(modal.querySelector('#prod-prezzo-acquisto').value) || null,
+                prezzo_acquisto: parseFloat(modal.querySelector('#prod-prezzo-acquisto').value) || 0,
                 prezzo_vendita: prezzoVendita,
                 giacenza: isLavaggi ? 0 : (parseInt(modal.querySelector('#prod-giacenza').value, 10) || 0),
-                giacenza_minima: isLavaggi ? 0 : (parseInt(modal.querySelector('#prod-scorta').value, 10) || 5)
+                giacenza_minima: isLavaggi ? 0 : (parseInt(modal.querySelector('#prod-scorta').value, 10) || 5),
+                attivo: true
             };
 
             try {
