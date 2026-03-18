@@ -83,16 +83,38 @@ ENI.App = (function() {
         });
     }
 
+    // --- Get Section Items for Role ---
+
+    function _getSectionItemsForRole(ruolo) {
+        var config = ENI.Config.RUOLI[ruolo];
+        if (!config) return [];
+
+        return (ENI.Config.NAV_SECTION_ITEMS || []).filter(function(item) {
+            return config.moduli.indexOf(item.id) !== -1;
+        });
+    }
+
     // --- Render Sidebar Navigation ---
 
     function _renderSidebarNav(items) {
+        var sectionItems = _getSectionItemsForRole(ENI.State.getUser() ? ENI.State.getUser().ruolo : '');
+        var sectionItemMap = {};
+        sectionItems.forEach(function(item) { sectionItemMap[item.id] = item; });
+
+        var sections = ENI.Config.NAV_SECTIONS || [];
+
         var html = '<div class="sidebar-brand">' +
                        '<img src="assets/logo_ritagliato.png" alt="Titanwash" class="sidebar-brand-img">' +
                    '</div>' +
                    '<div class="nav-divider"></div>';
+
         items.forEach(function(item, i) {
-            // Divider prima di personale/manutenzioni/log
+            // Divider prima di personale
             if (item.id === 'personale' && i > 0) {
+                // Prima del divider di personale, renderizza le sezioni collassabili
+                sections.forEach(function(section) {
+                    html += _renderNavSection(section, sectionItemMap);
+                });
                 html += '<div class="nav-divider"></div>';
             }
 
@@ -104,6 +126,52 @@ ENI.App = (function() {
                     '<span>' + item.label + '</span>' +
                 '</a>';
         });
+
+        // Se non c'è personale (ruolo senza accesso), renderizza sezioni alla fine
+        var hasPersonale = items.some(function(item) { return item.id === 'personale'; });
+        if (!hasPersonale && sections.length > 0) {
+            html += '<div class="nav-divider"></div>';
+            sections.forEach(function(section) {
+                html += _renderNavSection(section, sectionItemMap);
+            });
+        }
+
+        return html;
+    }
+
+    // --- Render Nav Section (collapsible) ---
+
+    function _renderNavSection(section, sectionItemMap) {
+        var visibleChildren = section.children.filter(function(id) { return sectionItemMap[id]; });
+        if (visibleChildren.length === 0) return '';
+
+        var savedState = localStorage.getItem('nav-section-' + section.id);
+        var isOpen = savedState === 'open';
+
+        var html = '';
+        if (section.dividerBefore) {
+            html += '<div class="nav-divider"></div>';
+        }
+
+        html +=
+            '<div class="nav-section" data-section="' + section.id + '">' +
+                '<button class="nav-section-toggle' + (isOpen ? ' open' : '') + '" data-section-toggle="' + section.id + '">' +
+                    '<span class="nav-item-icon">' + section.icon + '</span>' +
+                    '<span class="nav-section-label">' + section.label + '</span>' +
+                    '<span class="nav-section-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>' +
+                '</button>' +
+                '<div class="nav-section-children' + (isOpen ? ' open' : '') + '">';
+
+        visibleChildren.forEach(function(childId) {
+            var child = sectionItemMap[childId];
+            html +=
+                '<a class="nav-item nav-item-child" data-route="' + child.id + '" href="' + child.route + '">' +
+                    '<span class="nav-item-icon">' + child.icon + '</span>' +
+                    '<span>' + child.label + '</span>' +
+                '</a>';
+        });
+
+        html += '</div></div>';
         return html;
     }
 
@@ -175,6 +243,18 @@ ENI.App = (function() {
                 ENI.Auth.logout();
             });
         }
+
+        // Sidebar section toggles
+        document.querySelectorAll('.nav-section-toggle').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                var sectionId = btn.dataset.sectionToggle;
+                var children = btn.parentElement.querySelector('.nav-section-children');
+                var isOpen = btn.classList.toggle('open');
+                children.classList.toggle('open', isOpen);
+                localStorage.setItem('nav-section-' + sectionId, isOpen ? 'open' : 'closed');
+            });
+        });
 
         // More menu toggle
         var btnMore = document.getElementById('btn-more-menu');

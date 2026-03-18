@@ -137,6 +137,69 @@
     margin: var(--space-3) var(--space-4);
 }
 
+/* --- Sidebar Collapsible Sections --- */
+.nav-section {
+    margin: 0;
+}
+
+.nav-section-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-5);
+    width: 100%;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-align: left;
+    border-left: 3px solid transparent;
+    font-family: inherit;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.nav-section-toggle:hover {
+    background-color: var(--color-gray-50);
+    color: var(--text-primary);
+}
+
+.nav-section-toggle.open {
+    color: var(--text-primary);
+}
+
+.nav-section-label {
+    flex: 1;
+}
+
+.nav-section-chevron {
+    display: flex;
+    align-items: center;
+    transition: transform 0.25s ease;
+}
+
+.nav-section-toggle.open .nav-section-chevron {
+    transform: rotate(180deg);
+}
+
+.nav-section-children {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.nav-section-children.open {
+    max-height: 500px;
+}
+
+.nav-item.nav-item-child {
+    padding-left: calc(var(--space-5) + 12px);
+    font-size: calc(var(--font-size-sm) - 0.5px);
+}
+
 /* --- Main Content --- */
 .app-main {
     flex: 1;
