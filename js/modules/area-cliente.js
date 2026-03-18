@@ -240,7 +240,7 @@ ENI.Modules.AreaCliente = (function() {
                 ENI.State.setCliente(cliente);
             }
 
-            var movimenti = await ENI.API.getMovimentiSaldo(cliente.id, { limit: 100 });
+            var movimenti = await ENI.API.getMovimentiSaldo(cliente.id, { limit: ENI.Config.CONSTANTS.MAX_TRANSAZIONI_PORTALE });
 
             var movHtml = '';
             if (movimenti.length === 0) {

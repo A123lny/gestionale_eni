@@ -3,6 +3,8 @@
 // Server locale per stampa su stampante termica Epson 80mm
 // ============================================================
 
+require('dotenv').config();
+
 var express = require('express');
 var cors = require('cors');
 var net = require('net');
@@ -21,9 +23,10 @@ var LAYOUT_FILE = path.join(__dirname, 'layout.json');
 
 // ============================================================
 // Supabase - per coda stampa remota (smartphone)
+// Le credenziali vengono lette da variabili d'ambiente (.env)
 // ============================================================
-var SUPABASE_URL = 'https://upwkodrmfljgikmstogy.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwd2tvZHJtZmxqZ2lrbXN0b2d5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyNzMwMTEsImV4cCI6MjA4Njg0OTAxMX0.BVhpeBdiX75TFdlAsqpLQgWR7bG6MABCMWWt2zUkXqQ';
+var SUPABASE_URL = process.env.SUPABASE_URL || '';
+var SUPABASE_KEY = process.env.SUPABASE_KEY || '';
 var _supabase = null;
 
 function getSupabase() {

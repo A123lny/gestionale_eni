@@ -131,5 +131,30 @@ ENI.Config = {
     DASHBOARD_REFRESH: 5 * 60 * 1000,  // 5 minuti
 
     // Scadenza crediti default (giorni)
-    CREDITO_SCADENZA_GIORNI: 30
+    CREDITO_SCADENZA_GIORNI: 30,
+
+    // Costanti di sistema (magic numbers centralizzati)
+    CONSTANTS: {
+        // Timeline lavaggi
+        ORARIO_APERTURA: 7,
+        ORARIO_CHIUSURA: 21,
+        TIMELINE_SOGLIA_CORTA: 8,   // % sotto cui la barra non mostra testo
+
+        // Ricerca
+        SEARCH_MIN_CHARS: 2,
+        SEARCH_DEBOUNCE_MS: 300,
+        MAX_CLIENTI_RICERCA: 15,
+
+        // Area cliente / portale
+        MAX_TRANSAZIONI_PORTALE: 100,
+
+        // Magazzino
+        BATCH_SIZE_CSV: 50,
+
+        // Stock
+        PREZZO_MIN: 0,
+        PREZZO_MAX: 9999,
+        QUANTITA_MIN: 0,
+        QUANTITA_MAX: 99999
+    }
 };

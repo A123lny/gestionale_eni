@@ -67,67 +67,6 @@ ENI.Modules.Buoni = (function() {
         }
     }
 
-    // ============================================================
-    // UTILITA: RICERCA CLIENTI (usata da Tab 1 e Tab 2)
-    // ============================================================
-
-    function _setupClienteSearch(inputId, resultsId, onSelect) {
-        var searchInput = document.getElementById(inputId);
-        var resultsEl = document.getElementById(resultsId);
-        if (!searchInput || !resultsEl) return;
-
-        var debounce = null;
-
-        searchInput.addEventListener('input', function() {
-            clearTimeout(debounce);
-            var term = searchInput.value.trim();
-            if (term.length < 2) { resultsEl.style.display = 'none'; return; }
-
-            debounce = setTimeout(async function() {
-                try {
-                    var clienti = await ENI.API.cercaClienti(term);
-                    if (clienti.length === 0) {
-                        resultsEl.innerHTML = '<div class="pos-search-item"><span class="text-muted">Nessun cliente trovato</span></div>';
-                    } else {
-                        resultsEl.innerHTML = clienti.map(function(c) {
-                            return '<div class="pos-search-item buoni-search-result" data-sel-id="' + c.id + '">' +
-                                '<div>' +
-                                    '<span class="pos-search-item-name">' + ENI.UI.escapeHtml(c.nome_ragione_sociale) + '</span>' +
-                                    (c.targa ? '<br><span class="pos-search-item-code">' + ENI.UI.escapeHtml(c.targa) + '</span>' : '') +
-                                    (c.p_iva_coe ? '<br><span class="pos-search-item-code">P.IVA: ' + ENI.UI.escapeHtml(c.p_iva_coe) + '</span>' : '') +
-                                '</div>' +
-                                '<span class="text-xs text-muted">' + ENI.UI.escapeHtml(c.tipo) + '</span>' +
-                            '</div>';
-                        }).join('');
-                    }
-                    resultsEl.style.display = 'block';
-
-                    resultsEl.querySelectorAll('[data-sel-id]').forEach(function(item) {
-                        item.addEventListener('click', function() {
-                            var cId = item.dataset.selId;
-                            var found = clienti.find(function(c) { return c.id === cId; });
-                            if (found) {
-                                onSelect(found);
-                                searchInput.value = '';
-                                resultsEl.style.display = 'none';
-                            }
-                        });
-                    });
-                } catch(e) {
-                    resultsEl.innerHTML = '<div class="pos-search-item text-danger">Errore ricerca</div>';
-                    resultsEl.style.display = 'block';
-                }
-            }, 300);
-        });
-
-        // Chiudi dropdown cliccando fuori
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('#' + inputId) && !e.target.closest('#' + resultsId)) {
-                resultsEl.style.display = 'none';
-            }
-        });
-    }
-
     function _renderClienteBadge(cliente, containerId, onRemove) {
         var el = document.getElementById(containerId);
         if (!el || !cliente) return;
@@ -203,12 +142,16 @@ ENI.Modules.Buoni = (function() {
             '</div>';
 
         // Setup ricerca cliente
-        _setupClienteSearch('genera-cerca-cliente', 'genera-clienti-results', function(cliente) {
-            _selectedCliente = cliente;
-            _renderClienteBadge(cliente, 'genera-cliente-selected', function() {
-                _selectedCliente = null;
-            });
-        });
+        ENI.Utils.setupClienteSearch(
+            document.getElementById('genera-cerca-cliente'),
+            document.getElementById('genera-clienti-results'),
+            { onSelect: function(cliente) {
+                _selectedCliente = cliente;
+                _renderClienteBadge(cliente, 'genera-cliente-selected', function() {
+                    _selectedCliente = null;
+                });
+            }}
+        );
 
         // Ripristina se gia selezionato
         if (_selectedCliente) {
@@ -658,18 +601,22 @@ ENI.Modules.Buoni = (function() {
             '</div>';
 
         // Setup ricerca cliente
-        _setupClienteSearch('gestione-cerca-cliente', 'gestione-clienti-results', function(cliente) {
-            _gestioneCliente = cliente;
-            _renderClienteBadge(cliente, 'gestione-cliente-selected', function() {
-                _gestioneCliente = null;
-                document.getElementById('gestione-filtri').style.display = 'none';
-                document.getElementById('gestione-riepilogo').style.display = 'none';
-                document.getElementById('buoni-lista').innerHTML =
-                    '<div class="empty-state"><p class="empty-state-text">Seleziona un cliente per visualizzare i suoi buoni</p></div>';
-            });
-            document.getElementById('gestione-filtri').style.display = 'block';
-            _loadBuoni();
-        });
+        ENI.Utils.setupClienteSearch(
+            document.getElementById('gestione-cerca-cliente'),
+            document.getElementById('gestione-clienti-results'),
+            { onSelect: function(cliente) {
+                _gestioneCliente = cliente;
+                _renderClienteBadge(cliente, 'gestione-cliente-selected', function() {
+                    _gestioneCliente = null;
+                    document.getElementById('gestione-filtri').style.display = 'none';
+                    document.getElementById('gestione-riepilogo').style.display = 'none';
+                    document.getElementById('buoni-lista').innerHTML =
+                        '<div class="empty-state"><p class="empty-state-text">Seleziona un cliente per visualizzare i suoi buoni</p></div>';
+                });
+                document.getElementById('gestione-filtri').style.display = 'block';
+                _loadBuoni();
+            }}
+        );
 
         // Ripristina se gia selezionato
         if (_gestioneCliente) {
