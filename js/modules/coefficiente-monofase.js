@@ -12,8 +12,8 @@ ENI.Modules.CoefficienteMonofase = (function() {
     // Costanti
     var TABELLA_FATTURE = 'fatture_acquisto_gasolio';
     var TABELLA_COEFFICIENTI = 'coefficiente_monofase_mensile';
-    var ALIQUOTA_IVA = 0.21;
-    var ACCISA_DEFAULT = 0.59320;
+    var ALIQUOTA_IVA = ENI.Config.ALIQUOTA_IVA_MONOFASE || 0.21;
+    var ACCISA_DEFAULT = ENI.Config.ACCISA_GASOLIO || 0.59320;
     var MAX_FATTURE = 25;
 
     // Nomi mesi italiani

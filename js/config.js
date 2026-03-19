@@ -140,6 +140,10 @@ ENI.Config = {
     PRINTER_IP: '192.168.1.130',   // Epson EPSON367B6A
     PRINTER_PORT: 9100,
 
+    // Coefficiente Monofase - parametri
+    ACCISA_GASOLIO: 0.64870,     // €/litro - valore nazionale, aggiornare quando cambia
+    ALIQUOTA_IVA_MONOFASE: 0.21, // 21% - aliquota IVA applicata
+
     // Durata cache dati (millisecondi)
     CACHE_TTL: 5 * 60 * 1000,   // 5 minuti
 
