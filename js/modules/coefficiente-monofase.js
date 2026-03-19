@@ -412,7 +412,7 @@ ENI.Modules.CoefficienteMonofase = (function() {
         // Numero progressivo
         var numProg;
         if (_editingId) {
-            var existing = _fatture.find(function(f) { return f.id === _editingId; });
+            var existing = _fatture.find(function(f) { return String(f.id) === String(_editingId); });
             numProg = existing ? existing.numero_progressivo : _fatture.length + 1;
         } else {
             numProg = _fatture.length + 1;
@@ -597,15 +597,22 @@ ENI.Modules.CoefficienteMonofase = (function() {
         if (!isChiuso) {
             document.querySelectorAll('.cm-btn-edit').forEach(function(btn) {
                 btn.addEventListener('click', function() {
-                    var id = parseInt(this.dataset.id);
-                    var fattura = _fatture.find(function(f) { return f.id === id; });
+                    var id = btn.getAttribute('data-id');
+                    var fattura = _fatture.find(function(f) { return String(f.id) === String(id); });
                     if (fattura) _showForm(fattura);
+                });
+                // Impedisce al click sull'SVG di non propagare il data-id
+                btn.querySelectorAll('svg, path, polyline, rect, line, circle').forEach(function(el) {
+                    el.style.pointerEvents = 'none';
                 });
             });
 
             document.querySelectorAll('.cm-btn-delete').forEach(function(btn) {
                 btn.addEventListener('click', function() {
-                    _handleElimina(parseInt(this.dataset.id));
+                    _handleElimina(btn.getAttribute('data-id'));
+                });
+                btn.querySelectorAll('svg, path, polyline, rect, line, circle').forEach(function(el) {
+                    el.style.pointerEvents = 'none';
                 });
             });
         }
