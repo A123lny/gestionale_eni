@@ -38,18 +38,37 @@ ENI.Modules.CoefficienteMonofase = (function() {
         var oggi = new Date();
         _meseCorrente = new Date(oggi.getFullYear(), oggi.getMonth(), 1);
 
+        var oggi = new Date();
+        var meseOggi = oggi.getMonth() + 1;
+        var annoOggi = oggi.getFullYear();
+
         container.innerHTML =
             '<div class="page-header">' +
                 '<h1 class="page-title">Coefficiente Monofase</h1>' +
-                '<div class="page-header-actions">' +
-                    '<select id="cm-mese-select" class="form-select" style="min-width:180px;"></select>' +
+                '<div class="page-header-actions" style="display:flex; gap:var(--space-2); align-items:center;">' +
+                    '<select id="cm-mese-select" class="form-select" style="min-width:140px;"></select>' +
+                    '<select id="cm-anno-select" class="form-select" style="min-width:100px;"></select>' +
+                    '<button class="btn btn-primary" id="cm-btn-carica" style="white-space:nowrap;">Carica</button>' +
                 '</div>' +
             '</div>' +
             '<div id="cm-content">' +
                 '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>' +
             '</div>';
 
-        _renderMeseSelector();
+        // Popola selettore mese
+        var selMese = document.getElementById('cm-mese-select');
+        for (var m = 0; m < 12; m++) {
+            var sel = (m + 1 === meseOggi) ? ' selected' : '';
+            selMese.innerHTML += '<option value="' + (m + 1) + '"' + sel + '>' + MESI[m] + '</option>';
+        }
+
+        // Popola selettore anno (da 2024 a anno corrente + 1)
+        var selAnno = document.getElementById('cm-anno-select');
+        for (var a = 2024; a <= annoOggi + 1; a++) {
+            var sel2 = (a === annoOggi) ? ' selected' : '';
+            selAnno.innerHTML += '<option value="' + a + '"' + sel2 + '>' + a + '</option>';
+        }
+
         _setupMeseListener();
         await _loadMese();
     }
@@ -58,31 +77,20 @@ ENI.Modules.CoefficienteMonofase = (function() {
     // SELETTORE MESE
     // ============================================================
 
-    function _renderMeseSelector() {
-        var select = document.getElementById('cm-mese-select');
-        if (!select) return;
-
-        var html = '';
-        var oggi = new Date();
-        // Mostra ultimi 24 mesi + mese corrente
-        for (var i = 0; i < 24; i++) {
-            var d = new Date(oggi.getFullYear(), oggi.getMonth() - i, 1);
-            var val = d.toISOString().slice(0, 10);
-            var label = MESI[d.getMonth()] + ' ' + d.getFullYear();
-            var selected = (d.getFullYear() === _meseCorrente.getFullYear() && d.getMonth() === _meseCorrente.getMonth()) ? ' selected' : '';
-            html += '<option value="' + val + '"' + selected + '>' + label + '</option>';
-        }
-        select.innerHTML = html;
+    function _getMeseFromSelectors() {
+        var mese = parseInt(document.getElementById('cm-mese-select').value);
+        var anno = parseInt(document.getElementById('cm-anno-select').value);
+        _meseCorrente = new Date(anno, mese - 1, 1);
     }
 
     function _setupMeseListener() {
-        var select = document.getElementById('cm-mese-select');
-        if (!select) return;
-        select.addEventListener('change', function() {
-            var parts = this.value.split('-');
-            _meseCorrente = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 1);
-            _loadMese();
-        });
+        var btnCarica = document.getElementById('cm-btn-carica');
+        if (btnCarica) {
+            btnCarica.addEventListener('click', function() {
+                _getMeseFromSelectors();
+                _loadMese();
+            });
+        }
     }
 
     // ============================================================
