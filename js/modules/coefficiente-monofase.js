@@ -95,7 +95,7 @@ ENI.Modules.CoefficienteMonofase = (function() {
         content.innerHTML = '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>';
 
         try {
-            var meseRef = _meseCorrente.toISOString().slice(0, 10);
+            var meseRef = _meseRefString();
 
             // Carica fatture del mese
             _fatture = await ENI.API.getAll(TABELLA_FATTURE, {
@@ -407,7 +407,7 @@ ENI.Modules.CoefficienteMonofase = (function() {
         var totMonofase = Math.round((monofaseIvaImp + monofaseIvaAcc) * 100) / 100;
         var coeffRiga = _trunc4(totMonofase / litriComm);
 
-        var meseRef = _meseCorrente.toISOString().slice(0, 10);
+        var meseRef = _meseRefString();
 
         // Numero progressivo
         var numProg;
@@ -455,7 +455,7 @@ ENI.Modules.CoefficienteMonofase = (function() {
     // ============================================================
 
     async function _aggiornaCoeffMensile() {
-        var meseRef = _meseCorrente.toISOString().slice(0, 10);
+        var meseRef = _meseRefString();
 
         // Ricarica fatture aggiornate
         var fatture = await ENI.API.getAll(TABELLA_FATTURE, {
@@ -501,7 +501,7 @@ ENI.Modules.CoefficienteMonofase = (function() {
             await ENI.API.remove(TABELLA_FATTURE, id);
 
             // Rinumera le fatture rimanenti
-            var meseRef = _meseCorrente.toISOString().slice(0, 10);
+            var meseRef = _meseRefString();
             var fattureRes = await ENI.API.getAll(TABELLA_FATTURE, {
                 filters: [{ op: 'eq', col: 'mese_riferimento', val: meseRef }],
                 order: { col: 'numero_progressivo', asc: true }
@@ -532,7 +532,7 @@ ENI.Modules.CoefficienteMonofase = (function() {
             await _aggiornaCoeffMensile();
 
             // Ricarica per avere id aggiornato
-            var meseRef = _meseCorrente.toISOString().slice(0, 10);
+            var meseRef = _meseRefString();
             var coeffRes = await ENI.API.getAll(TABELLA_COEFFICIENTI, {
                 filters: [{ op: 'eq', col: 'mese_riferimento', val: meseRef }],
                 limit: 1
@@ -666,6 +666,18 @@ ENI.Modules.CoefficienteMonofase = (function() {
             totaleMonofase: totaleMonofase,
             coefficiente: coefficiente
         };
+    }
+
+    // ============================================================
+    // UTILITY DATE (timezone-safe)
+    // ============================================================
+
+    function _meseRefString() {
+        // Formatta come YYYY-MM-DD locale, evitando lo shift UTC di toISOString()
+        var y = _meseCorrente.getFullYear();
+        var m = String(_meseCorrente.getMonth() + 1).padStart(2, '0');
+        var d = String(_meseCorrente.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + d;
     }
 
     // ============================================================
