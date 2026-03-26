@@ -34,11 +34,12 @@ ENI.Modules.CoefficienteMonofase = (function() {
     async function render(container) {
         _container = container;
 
+        // Espandi a full-width per questa pagina
+        container.style.maxWidth = 'none';
+
         // Default: mese corrente
         var oggi = new Date();
         _meseCorrente = new Date(oggi.getFullYear(), oggi.getMonth(), 1);
-
-        var oggi = new Date();
         var meseOggi = oggi.getMonth() + 1;
         var annoOggi = oggi.getFullYear();
 
@@ -136,58 +137,38 @@ ENI.Modules.CoefficienteMonofase = (function() {
         var isChiuso = _coefficienteMese && _coefficienteMese.stato === 'chiuso';
         var totali = _calcolaTotali();
 
+        // Barra superiore compatta: info mese + coefficiente + azioni
         var html =
-            // Card intestazione
-            '<div class="card" style="margin-bottom:var(--space-4); background: linear-gradient(135deg, var(--color-primary-light), var(--bg-card));">' +
-                '<div class="card-body" style="text-align:center;">' +
-                    '<h2 style="margin:0 0 var(--space-2) 0; font-size:var(--font-size-lg);">CALCOLO DELLA MONOFASE MEDIA SUL CARBURANTE</h2>' +
-                    '<p style="margin:0; color:var(--text-secondary);">Carburante: <strong>Gasolio</strong> &mdash; Mese di: <strong>' + meseLabel + '</strong>' +
-                    (isChiuso ? ' &mdash; <span class="badge badge-success">CHIUSO</span>' : ' &mdash; <span class="badge badge-warning">APERTO</span>') +
-                    '</p>' +
+            '<div style="display:flex; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3); flex-wrap:wrap;">' +
+                '<div style="flex:1; min-width:200px;">' +
+                    '<span style="font-size:var(--font-size-sm); color:var(--text-secondary);">Gasolio &mdash; ' + meseLabel + '</span> ' +
+                    (isChiuso ? '<span class="badge badge-success">CHIUSO</span>' : '<span class="badge badge-warning">APERTO</span>') +
                 '</div>' +
-            '</div>';
-
-        // Card coefficiente risultato
-        html +=
-            '<div class="card" style="margin-bottom:var(--space-4); border: 2px solid var(--color-primary);">' +
-                '<div class="card-body" style="text-align:center; padding:var(--space-5);">' +
-                    '<div style="font-size:var(--font-size-sm); color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:var(--space-2);">Coefficiente Monofase Media del Mese</div>' +
-                    '<div style="font-size:2.5rem; font-weight:700; color:var(--color-primary);">' +
+                '<div style="display:flex; align-items:center; gap:var(--space-2); padding:var(--space-2) var(--space-4); background:var(--color-primary-light); border:2px solid var(--color-primary); border-radius:var(--radius-md);">' +
+                    '<span style="font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase;">Coeff. Mese:</span>' +
+                    '<span style="font-size:1.5rem; font-weight:700; color:var(--color-primary);">' +
                         (totali.totaleLitriComm > 0 ? _formatCoeff(totali.coefficiente) : '&mdash;') +
-                    '</div>' +
-                    '<div style="font-size:var(--font-size-sm); color:var(--text-secondary); margin-top:var(--space-1);">' +
-                        'Totale monofase / Totale litri commerciali' +
-                        (totali.totaleLitriComm > 0 ? ' = ' + _formatEuro(totali.totaleMonofase) + ' / ' + _formatNumero(totali.totaleLitriComm) : '') +
-                    '</div>' +
+                    '</span>' +
                 '</div>' +
-            '</div>';
+                '<div style="display:flex; gap:var(--space-2);">';
 
-        // Azioni
         if (!isChiuso) {
             html +=
-                '<div style="display:flex; gap:var(--space-3); margin-bottom:var(--space-4); flex-wrap:wrap;">' +
-                    '<button class="btn btn-primary" id="cm-btn-aggiungi"' + (_fatture.length >= MAX_FATTURE ? ' disabled' : '') + '>' +
-                        '+ Aggiungi Fattura' +
-                        (_fatture.length >= MAX_FATTURE ? ' (max 25)' : '') +
-                    '</button>' +
-                    '<button class="btn btn-outline" id="cm-btn-chiudi" style="margin-left:auto;"' + (_fatture.length === 0 ? ' disabled' : '') + '>' +
-                        'Chiudi Mese' +
-                    '</button>' +
-                '</div>';
+                    '<button class="btn btn-primary btn-sm" id="cm-btn-aggiungi"' + (_fatture.length >= MAX_FATTURE ? ' disabled' : '') + '>+ Aggiungi</button>' +
+                    '<button class="btn btn-outline btn-sm" id="cm-btn-chiudi"' + (_fatture.length === 0 ? ' disabled' : '') + '>Chiudi Mese</button>';
         } else {
-            html +=
-                '<div style="display:flex; gap:var(--space-3); margin-bottom:var(--space-4); flex-wrap:wrap;">' +
-                    '<button class="btn btn-outline" id="cm-btn-riapri">Riapri Mese</button>' +
-                '</div>';
+            html += '<button class="btn btn-outline btn-sm" id="cm-btn-riapri">Riapri Mese</button>';
         }
 
-        // Form aggiunta/modifica (nascosto)
-        html += '<div id="cm-form-wrapper" style="display:none; margin-bottom:var(--space-4);"></div>';
+        html += '</div></div>';
 
-        // Tabella fatture
+        // Form aggiunta/modifica (nascosto)
+        html += '<div id="cm-form-wrapper" style="display:none; margin-bottom:var(--space-3);"></div>';
+
+        // Tabella fatture compatta
         html += _renderTabella(totali);
 
-        // Riepilogo totali
+        // Stats inline compatte
         html += _renderRiepilogoTotali(totali);
 
         content.innerHTML = html;
@@ -207,8 +188,8 @@ ENI.Modules.CoefficienteMonofase = (function() {
         }
 
         var html =
-            '<div class="card"><div class="card-body" style="overflow-x:auto;">' +
-            '<table class="table" style="min-width:900px;">' +
+            '<div class="card"><div class="card-body" style="overflow-x:auto; padding:var(--space-2);">' +
+            '<table class="table cm-table-compact">' +
                 '<thead><tr>' +
                     '<th style="width:40px">#</th>' +
                     '<th>Data Ft.</th>' +
@@ -272,21 +253,21 @@ ENI.Modules.CoefficienteMonofase = (function() {
     function _renderRiepilogoTotali(totali) {
         if (_fatture.length === 0) return '';
 
-        return '<div class="stats-grid" style="margin-top:var(--space-4);">' +
+        return '<div class="cm-stats-inline">' +
             '<div class="stat-card">' +
-                '<div class="stat-label">Fatture inserite</div>' +
-                '<div class="stat-value">' + _fatture.length + ' / ' + MAX_FATTURE + '</div>' +
+                '<div class="stat-label">Fatture</div>' +
+                '<div class="stat-value">' + _fatture.length + '/' + MAX_FATTURE + '</div>' +
             '</div>' +
             '<div class="stat-card">' +
-                '<div class="stat-label">Totale imponibile</div>' +
+                '<div class="stat-label">Tot. imponibile</div>' +
                 '<div class="stat-value">' + _formatEuro(totali.totaleImponibile) + '</div>' +
             '</div>' +
             '<div class="stat-card">' +
-                '<div class="stat-label">Totale litri commerciali</div>' +
+                '<div class="stat-label">Tot. lt. comm.</div>' +
                 '<div class="stat-value">' + _formatNumero(totali.totaleLitriComm) + '</div>' +
             '</div>' +
             '<div class="stat-card">' +
-                '<div class="stat-label">Totale monofase</div>' +
+                '<div class="stat-label">Tot. monofase</div>' +
                 '<div class="stat-value" style="color:var(--color-primary);">' + _formatEuro(totali.totaleMonofase) + '</div>' +
             '</div>' +
         '</div>';

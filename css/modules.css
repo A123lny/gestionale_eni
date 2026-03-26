@@ -1722,3 +1722,38 @@
 .wallet-search-item:hover {
     background: var(--color-bg-hover) !important;
 }
+
+/* ============================================================
+   COEFFICIENTE MONOFASE - Layout compatto full-width
+   ============================================================ */
+.cm-table-compact th,
+.cm-table-compact td {
+    padding: var(--space-1) var(--space-2);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.cm-table-compact th {
+    font-size: 0.7rem;
+}
+
+.cm-stats-inline {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-top: var(--space-3);
+}
+
+.cm-stats-inline .stat-card {
+    flex: 1;
+    min-width: 140px;
+    padding: var(--space-2) var(--space-3);
+}
+
+.cm-stats-inline .stat-label {
+    font-size: 0.7rem;
+}
+
+.cm-stats-inline .stat-value {
+    font-size: 0.95rem;
+}
