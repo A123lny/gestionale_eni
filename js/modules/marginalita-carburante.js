@@ -1059,7 +1059,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
         var monofase = prezzoComm * aliquota;
         var prezzoCommPagato = prezzoComm + monofase;
         var costoCommerciale = litriComm * prezzoCommPagato;
-        var costoFiscale = litriFisc * accisa;
+        var costoFiscale = litriFisc * (accisa * (1 + aliquota));
         var costoTotale = costoCommerciale + costoFiscale;
 
         return {
