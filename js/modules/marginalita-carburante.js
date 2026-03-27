@@ -168,6 +168,20 @@ ENI.Modules.MarginalitaCarburante = (function() {
 
             // Carica dati correlati
             await _loadDatiPeriodo();
+
+            // Se le rimanenze iniziali sono tutte a zero, prova a copiare dal mese precedente
+            var iniziali = _rimanenze.filter(function(r) { return r.tipo === 'iniziale'; });
+            var tutteZero = iniziali.every(function(r) {
+                return (parseFloat(r.litri_commerciali) || 0) === 0 && (parseFloat(r.prezzo_commerciale) || 0) === 0;
+            });
+            if (tutteZero && iniziali.length > 0) {
+                await _copiaRimanenzeDaMesePrecedente(
+                    parseInt(document.getElementById('mc-anno-select').value),
+                    parseInt(document.getElementById('mc-mese-select').value)
+                );
+                await _loadDatiPeriodo();
+            }
+
             _renderContent(content);
         } catch(e) {
             content.innerHTML =
