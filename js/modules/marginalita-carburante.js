@@ -301,6 +301,13 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 '</div>' +
             '</div>';
 
+        // Bottone ricalcola
+        if (!isChiuso) {
+            html += '<div style="margin-bottom:var(--space-3);">' +
+                '<button class="btn btn-outline btn-sm" id="mc-btn-ricalcola" style="font-size:0.75rem;">Ricalcola Tutto (con parametri attuali)</button>' +
+            '</div>';
+        }
+
         // Tabs
         html +=
             '<div class="tabs" style="margin-bottom:var(--space-3);">' +
@@ -313,6 +320,12 @@ ENI.Modules.MarginalitaCarburante = (function() {
 
         content.innerHTML = html;
 
+        // Ricalcola tutto
+        var btnRicalcola = document.getElementById('mc-btn-ricalcola');
+        if (btnRicalcola) {
+            btnRicalcola.addEventListener('click', _handleRicalcolaTutto);
+        }
+
         // Tab switching
         content.querySelectorAll('.tab-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
@@ -324,6 +337,70 @@ ENI.Modules.MarginalitaCarburante = (function() {
         });
 
         _renderTab();
+    }
+
+    // ============================================================
+    // RICALCOLA TUTTO
+    // ============================================================
+
+    async function _handleRicalcolaTutto() {
+        if (!confirm('Ricalcolare tutte le rimanenze e i carichi di questo mese con i parametri fiscali attuali?')) return;
+
+        try {
+            await _loadParametri();
+
+            // Ricalcola tutte le rimanenze
+            for (var i = 0; i < _rimanenze.length; i++) {
+                var rim = _rimanenze[i];
+                var litriComm = parseFloat(rim.litri_commerciali) || 0;
+                var prezzo = parseFloat(rim.prezzo_commerciale) || 0;
+                var litriFisc = parseFloat(rim.litri_fiscali) || 0;
+
+                if (litriComm === 0 && prezzo === 0 && litriFisc === 0) continue;
+
+                var calc = _calcolaRigaProdotto(rim.prodotto, litriComm, prezzo, litriFisc);
+                await ENI.API.update(T_RIMANENZE, rim.id, {
+                    monofase: calc.monofase,
+                    prezzo_comm_pagato: calc.prezzoCommPagato,
+                    costo_commerciale: calc.costoCommerciale,
+                    costo_fiscale: calc.costoFiscale,
+                    costo_totale: calc.costoTotale
+                });
+            }
+
+            // Ricalcola tutti i dettagli carichi
+            for (var c = 0; c < _carichi.length; c++) {
+                var dettagli = _dettagli[_carichi[c].id] || [];
+                var totCarico = 0;
+
+                for (var d = 0; d < dettagli.length; d++) {
+                    var det = dettagli[d];
+                    var dLitriComm = parseFloat(det.litri_commerciali) || 0;
+                    var dPrezzo = parseFloat(det.prezzo_commerciale) || 0;
+                    var dLitriFisc = parseFloat(det.litri_fiscali) || 0;
+
+                    if (dLitriComm === 0 && dPrezzo === 0 && dLitriFisc === 0) continue;
+
+                    var dCalc = _calcolaRigaProdotto(det.prodotto, dLitriComm, dPrezzo, dLitriFisc);
+                    await ENI.API.update(T_DETTAGLIO, det.id, {
+                        monofase: dCalc.monofase,
+                        prezzo_comm_pagato: dCalc.prezzoCommPagato,
+                        costo_commerciale: dCalc.costoCommerciale,
+                        costo_fiscale: dCalc.costoFiscale,
+                        costo_totale_prodotto: dCalc.costoTotale
+                    });
+
+                    totCarico += dCalc.costoTotale;
+                }
+
+                await ENI.API.update(T_CARICHI, _carichi[c].id, { costo_totale_carico: totCarico });
+            }
+
+            await _ricalcolaPeriodo();
+            ENI.UI.success('Ricalcolo completato');
+        } catch(e) {
+            ENI.UI.error('Errore ricalcolo: ' + e.message);
+        }
     }
 
     // ============================================================
