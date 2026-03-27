@@ -94,10 +94,11 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 }
             });
         } catch(e) {
+            console.error('Errore caricamento parametri fiscali:', e);
             // Fallback defaults
             _parametri = {
                 aliquota_monofase: 0.21,
-                accisa_benzina: 0.852082,
+                accisa_benzina: 0.648700,
                 accisa_gasolio: 0.648700
             };
         }
@@ -347,7 +348,12 @@ ENI.Modules.MarginalitaCarburante = (function() {
         if (!confirm('Ricalcolare tutte le rimanenze e i carichi di questo mese con i parametri fiscali attuali?')) return;
 
         try {
+            // Ricarica parametri freschi dal DB
             await _loadParametri();
+            console.log('Parametri fiscali caricati:', JSON.stringify(_parametri));
+
+            var countRim = 0;
+            var countDet = 0;
 
             // Ricalcola tutte le rimanenze
             for (var i = 0; i < _rimanenze.length; i++) {
@@ -355,8 +361,6 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 var litriComm = parseFloat(rim.litri_commerciali) || 0;
                 var prezzo = parseFloat(rim.prezzo_commerciale) || 0;
                 var litriFisc = parseFloat(rim.litri_fiscali) || 0;
-
-                if (litriComm === 0 && prezzo === 0 && litriFisc === 0) continue;
 
                 var calc = _calcolaRigaProdotto(rim.prodotto, litriComm, prezzo, litriFisc);
                 await ENI.API.update(T_RIMANENZE, rim.id, {
@@ -366,6 +370,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
                     costo_fiscale: calc.costoFiscale,
                     costo_totale: calc.costoTotale
                 });
+                countRim++;
             }
 
             // Ricalcola tutti i dettagli carichi
@@ -379,8 +384,6 @@ ENI.Modules.MarginalitaCarburante = (function() {
                     var dPrezzo = parseFloat(det.prezzo_commerciale) || 0;
                     var dLitriFisc = parseFloat(det.litri_fiscali) || 0;
 
-                    if (dLitriComm === 0 && dPrezzo === 0 && dLitriFisc === 0) continue;
-
                     var dCalc = _calcolaRigaProdotto(det.prodotto, dLitriComm, dPrezzo, dLitriFisc);
                     await ENI.API.update(T_DETTAGLIO, det.id, {
                         monofase: dCalc.monofase,
@@ -389,6 +392,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
                         costo_fiscale: dCalc.costoFiscale,
                         costo_totale_prodotto: dCalc.costoTotale
                     });
+                    countDet++;
 
                     totCarico += dCalc.costoTotale;
                 }
@@ -396,9 +400,12 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 await ENI.API.update(T_CARICHI, _carichi[c].id, { costo_totale_carico: totCarico });
             }
 
+            console.log('Ricalcolate ' + countRim + ' rimanenze e ' + countDet + ' dettagli carichi');
+
             await _ricalcolaPeriodo();
-            ENI.UI.success('Ricalcolo completato');
+            ENI.UI.success('Ricalcolo completato: ' + countRim + ' rimanenze, ' + countDet + ' dettagli');
         } catch(e) {
+            console.error('Errore ricalcolo:', e);
             ENI.UI.error('Errore ricalcolo: ' + e.message);
         }
     }
