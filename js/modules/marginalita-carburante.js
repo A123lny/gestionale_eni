@@ -443,6 +443,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
         document.body.insertAdjacentHTML('beforeend', modal);
 
         var modalEl = document.getElementById('mc-modal-rim');
+        requestAnimationFrame(function() { modalEl.classList.add('active'); });
 
         // Preview in tempo reale
         function updatePreview() {
@@ -639,6 +640,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
 
         document.body.insertAdjacentHTML('beforeend', modal);
         var modalEl = document.getElementById('mc-modal-carico');
+        requestAnimationFrame(function() { modalEl.classList.add('active'); });
 
         document.getElementById('mc-carico-annulla').addEventListener('click', function() { modalEl.remove(); });
         modalEl.addEventListener('click', function(e) { if (e.target === modalEl) modalEl.remove(); });
@@ -710,6 +712,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
 
         document.body.insertAdjacentHTML('beforeend', modal);
         var modalEl = document.getElementById('mc-modal-det');
+        requestAnimationFrame(function() { modalEl.classList.add('active'); });
 
         function updatePreview() {
             var litriComm = parseFloat(document.getElementById('mc-det-litri-comm').value) || 0;
