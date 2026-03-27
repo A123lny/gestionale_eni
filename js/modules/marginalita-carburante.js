@@ -81,36 +81,69 @@ ENI.Modules.MarginalitaCarburante = (function() {
     // CARICAMENTO PARAMETRI FISCALI
     // ============================================================
 
+    // _tuttiParametri: array completo di tutti i parametri (attivi e storici)
+    var _tuttiParametri = [];
+
     async function _loadParametri() {
         try {
-            var params = await ENI.API.getAll(T_PARAMETRI, {
-                filters: [{ op: 'is', col: 'data_fine', val: null }],
+            _tuttiParametri = await ENI.API.getAll(T_PARAMETRI, {
                 order: { col: 'data_inizio', asc: false }
-            });
-            _parametri = {};
-            (params || []).forEach(function(p) {
-                if (!_parametri[p.tipo]) {
-                    _parametri[p.tipo] = parseFloat(p.valore);
-                }
-            });
+            }) || [];
         } catch(e) {
             console.error('Errore caricamento parametri fiscali:', e);
-            // Fallback defaults
-            _parametri = {
-                aliquota_monofase: 0.21,
-                accisa_benzina: 0.648700,
-                accisa_gasolio: 0.648700
-            };
+            _tuttiParametri = [];
         }
+        // Aggiorna _parametri per il periodo corrente (per compatibilità)
+        _parametri = _getParametriPerData(_getDataRiferimentoPeriodo());
+        console.log('Parametri fiscali caricati per periodo:', JSON.stringify(_parametri));
     }
 
-    function _getAccisa(prodotto) {
+    // Restituisce la data di riferimento del periodo corrente (ultimo giorno del mese)
+    function _getDataRiferimentoPeriodo() {
+        if (!_periodo) return new Date().toISOString().slice(0, 10);
+        // Ultimo giorno del mese del periodo
+        var d = new Date(_periodo.anno, _periodo.mese, 0); // giorno 0 del mese successivo = ultimo del mese
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    // Dato un tipo e una data, trova il parametro valido
+    function _getParametroPerData(tipo, data) {
+        // Cerca il parametro dove data_inizio <= data E (data_fine >= data OPPURE data_fine è null)
+        var trovato = null;
+        for (var i = 0; i < _tuttiParametri.length; i++) {
+            var p = _tuttiParametri[i];
+            if (p.tipo !== tipo) continue;
+            if (p.data_inizio > data) continue; // non ancora in vigore
+            if (p.data_fine && p.data_fine < data) continue; // già scaduto
+            // È valido — prendi il più recente (ordinati desc per data_inizio)
+            trovato = p;
+            break;
+        }
+        return trovato ? parseFloat(trovato.valore) : null;
+    }
+
+    // Restituisce un oggetto con tutti i parametri validi per una data
+    function _getParametriPerData(data) {
+        return {
+            aliquota_monofase: _getParametroPerData('aliquota_monofase', data) || 0.21,
+            accisa_benzina: _getParametroPerData('accisa_benzina', data) || 0.648700,
+            accisa_gasolio: _getParametroPerData('accisa_gasolio', data) || 0.648700
+        };
+    }
+
+    function _getAccisa(prodotto, data) {
         var prod = PRODOTTI.find(function(p) { return p.id === prodotto; });
         if (!prod) return 0;
+        if (data) {
+            return _getParametroPerData(prod.gruppoAccisa, data) || 0;
+        }
         return _parametri[prod.gruppoAccisa] || 0;
     }
 
-    function _getAliquotaMonofase() {
+    function _getAliquotaMonofase(data) {
+        if (data) {
+            return _getParametroPerData('aliquota_monofase', data) || 0.21;
+        }
         return _parametri.aliquota_monofase || 0.21;
     }
 
@@ -350,7 +383,9 @@ ENI.Modules.MarginalitaCarburante = (function() {
         try {
             // Ricarica parametri freschi dal DB
             await _loadParametri();
-            console.log('Parametri fiscali caricati:', JSON.stringify(_parametri));
+            var dataRif = _getDataRiferimentoPeriodo();
+            var paramPeriodo = _getParametriPerData(dataRif);
+            console.log('Parametri fiscali per ' + dataRif + ':', JSON.stringify(paramPeriodo));
 
             var countRim = 0;
             var countDet = 0;
@@ -362,7 +397,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 var prezzo = parseFloat(rim.prezzo_commerciale) || 0;
                 var litriFisc = parseFloat(rim.litri_fiscali) || 0;
 
-                var calc = _calcolaRigaProdotto(rim.prodotto, litriComm, prezzo, litriFisc);
+                var calc = _calcolaRigaProdotto(rim.prodotto, litriComm, prezzo, litriFisc, dataRif);
                 await ENI.API.update(T_RIMANENZE, rim.id, {
                     monofase: calc.monofase,
                     prezzo_comm_pagato: calc.prezzoCommPagato,
@@ -384,7 +419,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
                     var dPrezzo = parseFloat(det.prezzo_commerciale) || 0;
                     var dLitriFisc = parseFloat(det.litri_fiscali) || 0;
 
-                    var dCalc = _calcolaRigaProdotto(det.prodotto, dLitriComm, dPrezzo, dLitriFisc);
+                    var dCalc = _calcolaRigaProdotto(det.prodotto, dLitriComm, dPrezzo, dLitriFisc, dataRif);
                     await ENI.API.update(T_DETTAGLIO, det.id, {
                         monofase: dCalc.monofase,
                         prezzo_comm_pagato: dCalc.prezzoCommPagato,
@@ -552,7 +587,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
             var litriComm = parseFloat(document.getElementById('mc-rim-litri-comm').value) || 0;
             var prezzo = parseFloat(document.getElementById('mc-rim-prezzo').value) || 0;
             var litriFisc = parseFloat(document.getElementById('mc-rim-litri-fisc').value) || 0;
-            var calc = _calcolaRigaProdotto(rim.prodotto, litriComm, prezzo, litriFisc);
+            var calc = _calcolaRigaProdotto(rim.prodotto, litriComm, prezzo, litriFisc, _getDataRiferimentoPeriodo());
             var prev = document.getElementById('mc-rim-preview');
             prev.innerHTML =
                 'Monofase: <strong>' + _formatPrezzo5(calc.monofase) + '</strong> | ' +
@@ -576,7 +611,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
             var litriComm = parseFloat(document.getElementById('mc-rim-litri-comm').value) || 0;
             var prezzo = parseFloat(document.getElementById('mc-rim-prezzo').value) || 0;
             var litriFisc = parseFloat(document.getElementById('mc-rim-litri-fisc').value) || 0;
-            var calc = _calcolaRigaProdotto(rim.prodotto, litriComm, prezzo, litriFisc);
+            var calc = _calcolaRigaProdotto(rim.prodotto, litriComm, prezzo, litriFisc, _getDataRiferimentoPeriodo());
 
             try {
                 await ENI.API.update(T_RIMANENZE, rim.id, {
@@ -820,7 +855,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
             var litriComm = parseFloat(document.getElementById('mc-det-litri-comm').value) || 0;
             var prezzo = parseFloat(document.getElementById('mc-det-prezzo').value) || 0;
             var litriFisc = parseFloat(document.getElementById('mc-det-litri-fisc').value) || 0;
-            var calc = _calcolaRigaProdotto(det.prodotto, litriComm, prezzo, litriFisc);
+            var calc = _calcolaRigaProdotto(det.prodotto, litriComm, prezzo, litriFisc, _getDataRiferimentoPeriodo());
             var prev = document.getElementById('mc-det-preview');
             prev.innerHTML =
                 'Monofase: <strong>' + _formatPrezzo5(calc.monofase) + '</strong> | ' +
@@ -841,7 +876,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
             var litriComm = parseFloat(document.getElementById('mc-det-litri-comm').value) || 0;
             var prezzo = parseFloat(document.getElementById('mc-det-prezzo').value) || 0;
             var litriFisc = parseFloat(document.getElementById('mc-det-litri-fisc').value) || 0;
-            var calc = _calcolaRigaProdotto(det.prodotto, litriComm, prezzo, litriFisc);
+            var calc = _calcolaRigaProdotto(det.prodotto, litriComm, prezzo, litriFisc, _getDataRiferimentoPeriodo());
 
             try {
                 await ENI.API.update(T_DETTAGLIO, det.id, {
@@ -1053,9 +1088,9 @@ ENI.Modules.MarginalitaCarburante = (function() {
     // CALCOLI
     // ============================================================
 
-    function _calcolaRigaProdotto(prodotto, litriComm, prezzoComm, litriFisc) {
-        var aliquota = _getAliquotaMonofase();
-        var accisa = _getAccisa(prodotto);
+    function _calcolaRigaProdotto(prodotto, litriComm, prezzoComm, litriFisc, dataRif) {
+        var aliquota = _getAliquotaMonofase(dataRif);
+        var accisa = _getAccisa(prodotto, dataRif);
         var monofase = prezzoComm * aliquota;
         var prezzoCommPagato = prezzoComm + monofase;
         var costoCommerciale = litriComm * prezzoCommPagato;
