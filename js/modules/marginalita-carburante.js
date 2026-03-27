@@ -307,6 +307,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 '<button class="tab-btn' + (_activeTab === 'rimanenze' ? ' active' : '') + '" data-tab="rimanenze">Rimanenze</button>' +
                 '<button class="tab-btn' + (_activeTab === 'carichi' ? ' active' : '') + '" data-tab="carichi">Carichi (' + _carichi.length + ')</button>' +
                 '<button class="tab-btn' + (_activeTab === 'riepilogo' ? ' active' : '') + '" data-tab="riepilogo">Riepilogo</button>' +
+                '<button class="tab-btn' + (_activeTab === 'parametri' ? ' active' : '') + '" data-tab="parametri">Parametri Fiscali</button>' +
             '</div>' +
             '<div id="mc-tab-content"></div>';
 
@@ -342,6 +343,9 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 break;
             case 'riepilogo':
                 _renderRiepilogo(tabContent);
+                break;
+            case 'parametri':
+                _renderParametri(tabContent);
                 break;
         }
     }
@@ -1047,6 +1051,283 @@ ENI.Modules.MarginalitaCarburante = (function() {
         if (!d) return '';
         var parts = d.split('-');
         return parts[2] + '/' + parts[1] + '/' + parts[0];
+    }
+
+    // ============================================================
+    // TAB: PARAMETRI FISCALI
+    // ============================================================
+
+    var _allParametri = [];
+
+    async function _loadAllParametri() {
+        _allParametri = await ENI.API.getAll(T_PARAMETRI, {
+            order: { col: 'data_inizio', asc: false }
+        }) || [];
+    }
+
+    async function _renderParametri(container) {
+        await _loadAllParametri();
+
+        var tipiLabel = {
+            'aliquota_monofase': 'Aliquota Monofase (IVA)',
+            'accisa_benzina': 'Accisa Benzina + Blu Super',
+            'accisa_gasolio': 'Accisa Gasolio + Diesel+'
+        };
+
+        // Separa attivi e storici
+        var attivi = _allParametri.filter(function(p) { return !p.data_fine; });
+        var storici = _allParametri.filter(function(p) { return p.data_fine; });
+
+        var html =
+            '<div class="card" style="margin-bottom:var(--space-3);">' +
+                '<div class="card-body">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-3);">' +
+                        '<h3 style="margin:0;">Parametri Attivi</h3>' +
+                        '<button class="btn btn-primary btn-sm" id="mc-btn-new-param">+ Nuovo Parametro</button>' +
+                    '</div>' +
+                    '<table class="table cm-table-compact">' +
+                        '<thead><tr>' +
+                            '<th>Tipo</th>' +
+                            '<th class="text-right">Valore</th>' +
+                            '<th>Da</th>' +
+                            '<th>Note</th>' +
+                            '<th style="width:80px;"></th>' +
+                        '</tr></thead>' +
+                        '<tbody>';
+
+        if (attivi.length === 0) {
+            html += '<tr><td colspan="5" style="text-align:center; color:var(--text-secondary);">Nessun parametro attivo</td></tr>';
+        }
+
+        attivi.forEach(function(p) {
+            html +=
+                '<tr>' +
+                    '<td><strong>' + (tipiLabel[p.tipo] || p.tipo) + '</strong></td>' +
+                    '<td class="text-right" style="font-weight:700;">' + _formatValore(p) + '</td>' +
+                    '<td>' + _formatData(p.data_inizio) + '</td>' +
+                    '<td style="color:var(--text-secondary); font-size:0.8rem;">' + (p.note ? ENI.UI.escapeHtml(p.note) : '') + '</td>' +
+                    '<td class="text-right">' +
+                        '<button class="btn-icon mc-btn-chiudi-param" data-id="' + p.id + '" title="Chiudi (imposta data fine)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>' +
+                        '<button class="btn-icon mc-btn-del-param" data-id="' + p.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
+                    '</td>' +
+                '</tr>';
+        });
+
+        html += '</tbody></table></div></div>';
+
+        // Storico
+        if (storici.length > 0) {
+            html +=
+                '<div class="card">' +
+                    '<div class="card-body">' +
+                        '<h3 style="margin:0 0 var(--space-3) 0; color:var(--text-secondary);">Storico Parametri</h3>' +
+                        '<table class="table cm-table-compact">' +
+                            '<thead><tr>' +
+                                '<th>Tipo</th>' +
+                                '<th class="text-right">Valore</th>' +
+                                '<th>Da</th>' +
+                                '<th>A</th>' +
+                                '<th>Note</th>' +
+                            '</tr></thead>' +
+                            '<tbody>';
+
+            storici.forEach(function(p) {
+                html +=
+                    '<tr style="opacity:0.7;">' +
+                        '<td>' + (tipiLabel[p.tipo] || p.tipo) + '</td>' +
+                        '<td class="text-right">' + _formatValore(p) + '</td>' +
+                        '<td>' + _formatData(p.data_inizio) + '</td>' +
+                        '<td>' + _formatData(p.data_fine) + '</td>' +
+                        '<td style="color:var(--text-secondary); font-size:0.8rem;">' + (p.note ? ENI.UI.escapeHtml(p.note) : '') + '</td>' +
+                    '</tr>';
+            });
+
+            html += '</tbody></table></div></div>';
+        }
+
+        container.innerHTML = html;
+
+        // Listeners
+        document.getElementById('mc-btn-new-param').addEventListener('click', _showNewParamForm);
+
+        container.querySelectorAll('.mc-btn-chiudi-param').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                _showChiudiParamForm(btn.getAttribute('data-id'));
+            });
+        });
+
+        container.querySelectorAll('.mc-btn-del-param').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                _handleDeleteParam(btn.getAttribute('data-id'));
+            });
+        });
+    }
+
+    function _formatValore(p) {
+        if (p.tipo === 'aliquota_monofase') {
+            return (parseFloat(p.valore) * 100).toFixed(1) + '%';
+        }
+        return (parseFloat(p.valore) || 0).toFixed(6).replace('.', ',') + ' \u20AC/lt';
+    }
+
+    // ============================================================
+    // FORM: NUOVO PARAMETRO
+    // ============================================================
+
+    function _showNewParamForm() {
+        var oggi = new Date();
+        var dataDefault = oggi.getFullYear() + '-' + String(oggi.getMonth() + 1).padStart(2, '0') + '-' + String(oggi.getDate()).padStart(2, '0');
+
+        var modal =
+            '<div class="modal-backdrop" id="mc-modal-param">' +
+                '<div class="modal" style="max-width:420px;">' +
+                    '<div class="modal-header"><h3>Nuovo Parametro Fiscale</h3></div>' +
+                    '<div class="modal-body">' +
+                        '<div class="form-group">' +
+                            '<label class="form-label">Tipo</label>' +
+                            '<select class="form-select" id="mc-param-tipo">' +
+                                '<option value="accisa_benzina">Accisa Benzina + Blu Super</option>' +
+                                '<option value="accisa_gasolio">Accisa Gasolio + Diesel+</option>' +
+                                '<option value="aliquota_monofase">Aliquota Monofase (IVA)</option>' +
+                            '</select>' +
+                        '</div>' +
+                        '<div class="form-group">' +
+                            '<label class="form-label">Valore (per accise: \u20AC/litro, per IVA: decimale es. 0.21)</label>' +
+                            '<input type="number" class="form-input" id="mc-param-valore" step="0.000001" placeholder="0.648700">' +
+                        '</div>' +
+                        '<div class="form-group">' +
+                            '<label class="form-label">In vigore dal</label>' +
+                            '<input type="date" class="form-input" id="mc-param-data-inizio" value="' + dataDefault + '">' +
+                        '</div>' +
+                        '<div class="form-group">' +
+                            '<label class="form-label">In vigore fino al (lascia vuoto se ancora attivo)</label>' +
+                            '<input type="date" class="form-input" id="mc-param-data-fine" value="">' +
+                        '</div>' +
+                        '<div class="form-group">' +
+                            '<label class="form-label">Note (opzionale)</label>' +
+                            '<input type="text" class="form-input" id="mc-param-note" placeholder="Es. Decreto Legge XY">' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="modal-footer">' +
+                        '<button class="btn btn-outline" id="mc-param-annulla">Annulla</button>' +
+                        '<button class="btn btn-primary" id="mc-param-salva">Salva</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        document.body.insertAdjacentHTML('beforeend', modal);
+        var modalEl = document.getElementById('mc-modal-param');
+        requestAnimationFrame(function() { modalEl.classList.add('active'); });
+
+        document.getElementById('mc-param-annulla').addEventListener('click', function() { modalEl.remove(); });
+        modalEl.addEventListener('click', function(e) { if (e.target === modalEl) modalEl.remove(); });
+
+        document.getElementById('mc-param-salva').addEventListener('click', async function() {
+            var tipo = document.getElementById('mc-param-tipo').value;
+            var valore = parseFloat(document.getElementById('mc-param-valore').value);
+            var dataInizio = document.getElementById('mc-param-data-inizio').value;
+            var dataFine = document.getElementById('mc-param-data-fine').value || null;
+            var note = document.getElementById('mc-param-note').value.trim() || null;
+
+            if (!valore || valore <= 0) { ENI.UI.warning('Inserisci un valore valido'); return; }
+            if (!dataInizio) { ENI.UI.warning('Inserisci la data di inizio'); return; }
+
+            try {
+                // Se non ha data fine, chiudi automaticamente il parametro attivo dello stesso tipo
+                if (!dataFine) {
+                    var attiviStessoTipo = _allParametri.filter(function(p) {
+                        return p.tipo === tipo && !p.data_fine;
+                    });
+                    for (var i = 0; i < attiviStessoTipo.length; i++) {
+                        // Chiudi il giorno prima della nuova data inizio
+                        var d = new Date(dataInizio);
+                        d.setDate(d.getDate() - 1);
+                        var chiusura = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                        await ENI.API.update(T_PARAMETRI, attiviStessoTipo[i].id, { data_fine: chiusura });
+                    }
+                }
+
+                await ENI.API.insert(T_PARAMETRI, {
+                    tipo: tipo,
+                    valore: valore,
+                    data_inizio: dataInizio,
+                    data_fine: dataFine,
+                    note: note
+                });
+
+                modalEl.remove();
+                await _loadParametri();
+                _renderTab();
+                ENI.UI.success('Parametro inserito');
+            } catch(e) {
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
+    }
+
+    // ============================================================
+    // FORM: CHIUDI PARAMETRO (imposta data fine)
+    // ============================================================
+
+    function _showChiudiParamForm(id) {
+        var param = _allParametri.find(function(p) { return String(p.id) === String(id); });
+        if (!param) return;
+
+        var modal =
+            '<div class="modal-backdrop" id="mc-modal-chiudi-param">' +
+                '<div class="modal" style="max-width:350px;">' +
+                    '<div class="modal-header"><h3>Chiudi Parametro</h3></div>' +
+                    '<div class="modal-body">' +
+                        '<p>Imposta la data di fine validit\u00e0 per questo parametro.</p>' +
+                        '<div class="form-group">' +
+                            '<label class="form-label">In vigore fino al</label>' +
+                            '<input type="date" class="form-input" id="mc-chiudi-data">' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="modal-footer">' +
+                        '<button class="btn btn-outline" id="mc-chiudi-annulla">Annulla</button>' +
+                        '<button class="btn btn-primary" id="mc-chiudi-salva">Chiudi Parametro</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        document.body.insertAdjacentHTML('beforeend', modal);
+        var modalEl = document.getElementById('mc-modal-chiudi-param');
+        requestAnimationFrame(function() { modalEl.classList.add('active'); });
+
+        document.getElementById('mc-chiudi-annulla').addEventListener('click', function() { modalEl.remove(); });
+        modalEl.addEventListener('click', function(e) { if (e.target === modalEl) modalEl.remove(); });
+
+        document.getElementById('mc-chiudi-salva').addEventListener('click', async function() {
+            var dataFine = document.getElementById('mc-chiudi-data').value;
+            if (!dataFine) { ENI.UI.warning('Inserisci la data di fine'); return; }
+
+            try {
+                await ENI.API.update(T_PARAMETRI, id, { data_fine: dataFine });
+                modalEl.remove();
+                await _loadParametri();
+                _renderTab();
+                ENI.UI.success('Parametro chiuso');
+            } catch(e) {
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
+    }
+
+    // ============================================================
+    // ELIMINA PARAMETRO
+    // ============================================================
+
+    async function _handleDeleteParam(id) {
+        if (!confirm('Eliminare questo parametro?')) return;
+        try {
+            await ENI.API.remove(T_PARAMETRI, id);
+            await _loadParametri();
+            _renderTab();
+            ENI.UI.success('Parametro eliminato');
+        } catch(e) {
+            ENI.UI.error('Errore: ' + e.message);
+        }
     }
 
     // ============================================================
