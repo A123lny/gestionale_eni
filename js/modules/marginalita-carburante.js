@@ -943,8 +943,14 @@ ENI.Modules.MarginalitaCarburante = (function() {
         // Listener
         tbl.querySelectorAll('.mc-vend-edit').forEach(function(btn) {
             btn.addEventListener('click', async function() {
-                var v = await ENI.API.getById(T.VENDITE, btn.getAttribute('data-id'));
-                if (v) _showVenditaForm(v);
+                try {
+                    var id = btn.getAttribute('data-id');
+                    var v = await ENI.API.getById(T.VENDITE, id);
+                    console.log('Vendita caricata per modifica:', JSON.stringify(v));
+                    if (v) _showVenditaForm(v);
+                } catch(e) {
+                    ENI.UI.error('Errore caricamento vendita: ' + e.message);
+                }
             });
         });
         tbl.querySelectorAll('.mc-vend-del').forEach(function(btn) {
@@ -1007,21 +1013,24 @@ ENI.Modules.MarginalitaCarburante = (function() {
             if (!data) { ENI.UI.warning('Inserisci la data'); return; }
 
             try {
-                var vendita;
                 var venditaId;
                 if (isEdit) {
-                    vendita = await ENI.API.update(T.VENDITE, existing.id, {
+                    await ENI.API.update(T.VENDITE, existing.id, {
                         data_inizio: data, data_fine: dataFine, litri_totali: litri, importo_totale: importo, note: note
                     });
-                    venditaId = existing.id || (vendita && vendita.id);
+                    venditaId = existing.id;
                 } else {
-                    vendita = await ENI.API.insert(T.VENDITE, {
-                        data_inizio: data, data_fine: dataFine, litri_totali: litri, importo_totale: importo, note: note
-                    });
-                    venditaId = vendita && vendita.id;
+                    // Upsert: se esiste già una vendita per questa data, aggiornala
+                    var result = await ENI.API.getClient().from(T.VENDITE)
+                        .upsert({
+                            data_inizio: data, data_fine: dataFine, litri_totali: litri, importo_totale: importo, note: note
+                        }, { onConflict: 'data_inizio' })
+                        .select().single();
+                    if (result.error) throw new Error(result.error.message);
+                    venditaId = result.data.id;
                 }
 
-                console.log('Vendita salvata, venditaId:', venditaId, 'isEdit:', isEdit);
+                console.log('Vendita salvata, venditaId:', venditaId);
 
                 // Salva breakdown per prodotto (solo se venditaId valido e ci sono litri compilati)
                 if (venditaId) {
