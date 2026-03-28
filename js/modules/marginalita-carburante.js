@@ -1004,7 +1004,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
             var importo = parseFloat(document.getElementById('mc-vend-importo').value) || 0;
             var note = document.getElementById('mc-vend-note').value || null;
 
-            if (!data || litri <= 0) { ENI.UI.warning('Inserisci data e litri'); return; }
+            if (!data) { ENI.UI.warning('Inserisci la data'); return; }
 
             try {
                 var vendita;
