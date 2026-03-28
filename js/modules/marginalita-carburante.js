@@ -1073,7 +1073,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
 
         var html =
             '<div style="margin-bottom:var(--space-3);">' +
-                '<button class="btn btn-primary btn-sm" id="mc-btn-add-prezzo">+ Imposta Prezzo</button>' +
+                '<button class="btn btn-primary btn-sm" id="mc-btn-add-prezzo">+ Aggiorna Prezzi</button>' +
             '</div>';
 
         // Simulatore margine
@@ -1090,24 +1090,53 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 '</div>' +
             '</div>';
 
-        // Storico prezzi
-        if (prezzi.length > 0) {
-            html += '<div class="card"><div class="card-body" style="overflow-x:auto; padding:var(--space-2);">' +
-                '<table class="table cm-table-compact"><thead><tr>' +
-                    '<th>Prodotto</th><th class="text-right">Prezzo Pompa</th><th>Dal</th><th>Note</th><th></th>' +
-                '</tr></thead><tbody>';
-            prezzi.forEach(function(p) {
-                var prodNome = _prodotti.find(function(pr) { return pr.id === p.prodotto_id; });
-                html += '<tr>' +
-                    '<td><strong>' + (prodNome ? prodNome.nome : p.prodotto_id) + '</strong></td>' +
-                    '<td class="text-right"><strong>' + _fmtEuro5(p.prezzo) + '</strong></td>' +
-                    '<td>' + _fmtData(p.data_inizio) + '</td>' +
-                    '<td style="font-size:0.75rem;">' + (p.note || '') + '</td>' +
-                    '<td><button class="btn-icon mc-del-prezzo" data-id="' + p.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>' +
-                '</tr>';
-            });
-            html += '</tbody></table></div></div>';
-        }
+        // Prezzi raggruppati per prodotto
+        _prodotti.forEach(function(prod) {
+            var prezziProd = prezzi.filter(function(p) { return p.prodotto_id === prod.id; });
+            var prezzoAttuale = prezziProd.length > 0 ? prezziProd[0] : null;
+            var st = _statoProdotti[prod.id] || {};
+            var margine = prezzoAttuale ? (parseFloat(prezzoAttuale.prezzo) - (st.costo_medio || 0)) : null;
+            var colMargine = margine !== null ? (margine >= margineTarget ? 'var(--color-success)' : margine >= 0 ? '#FF9800' : 'var(--color-danger)') : 'var(--text-secondary)';
+
+            html += '<div class="card" style="margin-bottom:var(--space-2);">' +
+                '<div class="card-body" style="padding:var(--space-2);">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-1);">' +
+                        '<strong>' + prod.nome + '</strong>' +
+                        '<div style="text-align:right;">' +
+                            (prezzoAttuale
+                                ? '<span style="font-size:1.1rem; font-weight:700;">' + _fmtEuro5(prezzoAttuale.prezzo) + '</span>' +
+                                  '<span style="font-size:0.75rem; color:var(--text-secondary); margin-left:var(--space-2);">dal ' + _fmtData(prezzoAttuale.data_inizio) + '</span>' +
+                                  '<span style="font-size:0.75rem; color:' + colMargine + '; margin-left:var(--space-2);">margine: ' + (margine !== null ? margine.toFixed(4) : 'N/D') + '</span>'
+                                : '<span style="color:var(--text-secondary);">Nessun prezzo impostato</span>') +
+                        '</div>' +
+                    '</div>';
+
+            if (prezziProd.length > 1) {
+                html += '<details style="margin-top:var(--space-1);"><summary style="font-size:0.75rem; color:var(--text-secondary); cursor:pointer;">Storico (' + prezziProd.length + ' prezzi)</summary>' +
+                    '<table class="table cm-table-compact" style="margin-top:var(--space-1);"><thead><tr>' +
+                        '<th class="text-right">Prezzo</th><th>Dal</th><th>Note</th><th></th>' +
+                    '</tr></thead><tbody>';
+                prezziProd.forEach(function(p) {
+                    html += '<tr>' +
+                        '<td class="text-right"><strong>' + _fmtEuro5(p.prezzo) + '</strong></td>' +
+                        '<td>' + _fmtData(p.data_inizio) + '</td>' +
+                        '<td style="font-size:0.75rem;">' + (p.note || '') + '</td>' +
+                        '<td style="white-space:nowrap;">' +
+                            '<button class="btn-icon mc-edit-prezzo" data-id="' + p.id + '" data-prezzo="' + p.prezzo + '" data-data="' + p.data_inizio + '" data-note="' + ENI.UI.escapeHtml(p.note || '') + '" data-prod="' + p.prodotto_id + '" title="Modifica"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+                            '<button class="btn-icon mc-del-prezzo" data-id="' + p.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
+                        '</td>' +
+                    '</tr>';
+                });
+                html += '</tbody></table></details>';
+            } else if (prezziProd.length === 1) {
+                html += '<div style="text-align:right;">' +
+                    '<button class="btn-icon mc-edit-prezzo" data-id="' + prezziProd[0].id + '" data-prezzo="' + prezziProd[0].prezzo + '" data-data="' + prezziProd[0].data_inizio + '" data-note="' + ENI.UI.escapeHtml(prezziProd[0].note || '') + '" data-prod="' + prezziProd[0].prodotto_id + '" title="Modifica" style="font-size:0.75rem;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+                    '<button class="btn-icon mc-del-prezzo" data-id="' + prezziProd[0].id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
+                '</div>';
+            }
+
+            html += '</div></div>';
+        });
 
         container.innerHTML = html;
 
@@ -1132,7 +1161,18 @@ ENI.Modules.MarginalitaCarburante = (function() {
         updateSim();
 
         // Listener
-        document.getElementById('mc-btn-add-prezzo').addEventListener('click', _showPrezzoForm);
+        document.getElementById('mc-btn-add-prezzo').addEventListener('click', function() { _showPrezzoFormMulti(); });
+        container.querySelectorAll('.mc-edit-prezzo').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                _showPrezzoFormSingolo({
+                    id: btn.getAttribute('data-id'),
+                    prodotto_id: btn.getAttribute('data-prod'),
+                    prezzo: btn.getAttribute('data-prezzo'),
+                    data_inizio: btn.getAttribute('data-data'),
+                    note: btn.getAttribute('data-note')
+                });
+            });
+        });
         container.querySelectorAll('.mc-del-prezzo').forEach(function(btn) {
             btn.addEventListener('click', async function() {
                 if (!confirm('Eliminare questo prezzo?')) return;
@@ -1146,43 +1186,76 @@ ENI.Modules.MarginalitaCarburante = (function() {
         });
     }
 
-    function _showPrezzoForm() {
-        var opts = _prodotti.map(function(p) { return '<option value="' + p.id + '">' + p.nome + '</option>'; }).join('');
+    // --- Form Multi-Prodotto (aggiorna tutti i prezzi insieme) ---
+    function _showPrezzoFormMulti() {
         var margineTarget = parseFloat(_config.margine_target) || 0.05;
 
-        var body =
-            '<div class="form-group"><label class="form-label">Prodotto</label><select class="form-select" id="mc-prez-prod">' + opts + '</select></div>' +
-            _formField('Prezzo pompa (\u20AC/lt)', 'mc-prez-prezzo', 'number', '', '0.00001') +
-            _formField('In vigore dal', 'mc-prez-data', 'date', _todayStr()) +
-            _formField('Note', 'mc-prez-note', 'text', '') +
-            '<div id="mc-prez-info" style="padding:var(--space-2); background:var(--color-gray-50); border-radius:var(--radius-md); font-size:0.85rem;"></div>';
+        var body = _formField('In vigore dal', 'mc-prez-data', 'date', _todayStr()) +
+            _formField('Note (opzionale)', 'mc-prez-note', 'text', '') +
+            '<hr style="margin:var(--space-3) 0; border:none; border-top:1px solid var(--color-gray-200);">';
 
-        var modal = _modal('mc-modal-prezzo', 'Imposta Prezzo Pompa', body, 'mc-prez-salva', 'Salva');
-        _openModal(modal, 'mc-modal-prezzo');
+        _prodotti.forEach(function(prod) {
+            var st = _statoProdotti[prod.id] || {};
+            var consigliato = ((st.costo_medio || 0) + margineTarget).toFixed(5);
+            body +=
+                '<div style="display:flex; gap:var(--space-2); align-items:center; margin-bottom:var(--space-2);">' +
+                    '<span style="min-width:80px; font-weight:600; font-size:0.85rem;">' + prod.nome + '</span>' +
+                    '<input type="number" class="form-input mc-prez-multi" data-prod="' + prod.id + '" step="0.00001" placeholder="' + consigliato + '" style="flex:1;">' +
+                    '<span style="font-size:0.7rem; color:var(--text-secondary); min-width:90px;">cons. ' + consigliato + '</span>' +
+                '</div>';
+        });
 
-        function updateInfo() {
-            var prodId = document.getElementById('mc-prez-prod').value;
-            var st = _statoProdotti[prodId] || {};
-            var info = document.getElementById('mc-prez-info');
-            var consigliato = (st.costo_medio || 0) + margineTarget;
-            info.innerHTML = 'Costo medio: <strong>' + _fmtEuro5(st.costo_medio || 0) + '</strong> | ' +
-                'Consigliato (margine ' + margineTarget.toFixed(3) + '): <strong style="color:var(--color-primary);">' + _fmtEuro5(consigliato) + '</strong>';
-        }
-        updateInfo();
-        document.getElementById('mc-prez-prod').addEventListener('change', updateInfo);
+        body += '<p style="font-size:0.75rem; color:var(--text-secondary); margin-top:var(--space-2);">Lascia vuoto i prodotti che non cambiano prezzo.</p>';
 
-        document.getElementById('mc-prez-salva').addEventListener('click', async function() {
-            var prodId = document.getElementById('mc-prez-prod').value;
-            var prezzo = parseFloat(document.getElementById('mc-prez-prezzo').value);
+        var modal = _modal('mc-modal-prezzi', 'Aggiorna Prezzi Pompa', body, 'mc-prez-salva-multi', 'Salva Prezzi');
+        _openModal(modal, 'mc-modal-prezzi');
+
+        document.getElementById('mc-prez-salva-multi').addEventListener('click', async function() {
             var data = document.getElementById('mc-prez-data').value;
             var note = document.getElementById('mc-prez-note').value || null;
-            if (!prezzo || !data) { ENI.UI.warning('Inserisci prezzo e data'); return; }
+            if (!data) { ENI.UI.warning('Inserisci la data'); return; }
+
+            var count = 0;
+            var inputs = document.querySelectorAll('.mc-prez-multi');
             try {
-                await ENI.API.insert(T.PREZZI, { prodotto_id: prodId, data_inizio: data, prezzo: prezzo, note: note });
-                _closeModal('mc-modal-prezzo');
+                for (var i = 0; i < inputs.length; i++) {
+                    var prezzo = parseFloat(inputs[i].value);
+                    if (!prezzo || prezzo <= 0) continue;
+                    var prodId = inputs[i].getAttribute('data-prod');
+                    await ENI.API.insert(T.PREZZI, { prodotto_id: prodId, data_inizio: data, prezzo: prezzo, note: note });
+                    count++;
+                }
+                if (count === 0) { ENI.UI.warning('Inserisci almeno un prezzo'); return; }
+                _closeModal('mc-modal-prezzi');
                 await _ricalcolaStato();
                 _renderPage();
-                ENI.UI.success('Prezzo impostato');
+                ENI.UI.success(count + ' prezzi aggiornati');
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+        });
+    }
+
+    // --- Form Modifica Singolo Prezzo ---
+    function _showPrezzoFormSingolo(p) {
+        var prodNome = _prodotti.find(function(pr) { return pr.id === p.prodotto_id; });
+        var modal = _modal('mc-modal-edit-prezzo', 'Modifica Prezzo - ' + (prodNome ? prodNome.nome : p.prodotto_id),
+            _formField('Prezzo pompa (\u20AC/lt)', 'mc-eprez-prezzo', 'number', p.prezzo, '0.00001') +
+            _formField('In vigore dal', 'mc-eprez-data', 'date', p.data_inizio) +
+            _formField('Note', 'mc-eprez-note', 'text', p.note || ''),
+            'mc-eprez-salva', 'Salva'
+        );
+        _openModal(modal, 'mc-modal-edit-prezzo');
+
+        document.getElementById('mc-eprez-salva').addEventListener('click', async function() {
+            var prezzo = parseFloat(document.getElementById('mc-eprez-prezzo').value);
+            var data = document.getElementById('mc-eprez-data').value;
+            var note = document.getElementById('mc-eprez-note').value || null;
+            if (!prezzo || !data) { ENI.UI.warning('Inserisci prezzo e data'); return; }
+            try {
+                await ENI.API.update(T.PREZZI, p.id, { prezzo: prezzo, data_inizio: data, note: note });
+                _closeModal('mc-modal-edit-prezzo');
+                await _ricalcolaStato();
+                _renderPage();
+                ENI.UI.success('Prezzo aggiornato');
             } catch(e) { ENI.UI.error('Errore: ' + e.message); }
         });
     }
