@@ -1,6 +1,6 @@
 // ============================================================
-// TITANWASH - Modulo Marginalità Carburante
-// Calcolo utile mensile e margine medio al litro
+// TITANWASH - Gestionale Carburanti v2
+// Dashboard + Vendite + Carichi + Prezzi + Report + Conguagli + Setup
 // ============================================================
 
 var ENI = ENI || {};
@@ -10,31 +10,28 @@ ENI.Modules.MarginalitaCarburante = (function() {
     'use strict';
 
     // Tabelle
-    var T_PERIODI = 'periodi_marginalita';
-    var T_RIMANENZE = 'rimanenze';
-    var T_CARICHI = 'carichi';
-    var T_DETTAGLIO = 'dettaglio_carichi';
-    var T_PARAMETRI = 'parametri_fiscali';
+    var T = {
+        PRODOTTI: 'prodotti_carburante',
+        ACCISE: 'accise_storico',
+        GIACENZE: 'giacenze_iniziali',
+        CARICHI: 'carichi_carburante',
+        PREZZI: 'prezzi_pompa',
+        VENDITE: 'vendite_giornaliere',
+        VENDITE_PROD: 'vendite_per_prodotto',
+        CONGUAGLI: 'conguagli_eni',
+        RIMBORSI: 'rimborsi_stato',
+        CONFIG: 'config_carburanti'
+    };
 
-    // Prodotti gestiti
-    var PRODOTTI = [
-        { id: 'benzina', label: 'Benzina', gruppoAccisa: 'accisa_benzina' },
-        { id: 'gasolio', label: 'Gasolio', gruppoAccisa: 'accisa_gasolio' },
-        { id: 'blu_super', label: 'Blu Super', gruppoAccisa: 'accisa_benzina' },
-        { id: 'diesel_plus', label: 'Diesel+', gruppoAccisa: 'accisa_gasolio' }
-    ];
-
-    var MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-                'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+    var MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+                'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 
     // Stato modulo
     var _container = null;
-    var _periodo = null;
-    var _rimanenze = [];
-    var _carichi = [];
-    var _dettagli = {};       // carico_id -> [dettagli]
-    var _parametri = {};      // tipo -> valore corrente
-    var _activeTab = 'rimanenze';
+    var _activeTab = 'vendite';
+    var _prodotti = [];
+    var _config = {};
+    var _statoProdotti = {}; // id -> { giacenza, costo_medio, ... }
 
     // ============================================================
     // RENDER PRINCIPALE
@@ -44,327 +41,163 @@ ENI.Modules.MarginalitaCarburante = (function() {
         _container = container;
         container.style.maxWidth = 'none';
 
-        var oggi = new Date();
+        container.innerHTML = '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>';
 
-        container.innerHTML =
-            '<div class="page-header">' +
-                '<h1 class="page-title">Marginalit\u00e0 Carburante</h1>' +
-                '<div class="page-header-actions" style="display:flex; gap:var(--space-2); align-items:center;">' +
-                    '<select id="mc-mese-select" class="form-select" style="min-width:140px;"></select>' +
-                    '<select id="mc-anno-select" class="form-select" style="min-width:100px;"></select>' +
-                    '<button class="btn btn-primary" id="mc-btn-carica">Carica</button>' +
-                '</div>' +
-            '</div>' +
-            '<div id="mc-content">' +
-                '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>' +
-            '</div>';
-
-        // Popola selettori
-        var selMese = document.getElementById('mc-mese-select');
-        var selAnno = document.getElementById('mc-anno-select');
-        for (var m = 0; m < 12; m++) {
-            selMese.innerHTML += '<option value="' + (m + 1) + '"' + (m + 1 === oggi.getMonth() + 1 ? ' selected' : '') + '>' + MESI[m] + '</option>';
+        try {
+            await _loadBase();
+            await _ricalcolaStato();
+            _renderPage();
+        } catch(e) {
+            container.innerHTML = '<div class="empty-state"><p class="empty-state-text">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p></div>';
+            console.error('MargCarburante init error:', e);
         }
-        for (var a = 2024; a <= oggi.getFullYear() + 1; a++) {
-            selAnno.innerHTML += '<option value="' + a + '"' + (a === oggi.getFullYear() ? ' selected' : '') + '>' + a + '</option>';
-        }
-
-        document.getElementById('mc-btn-carica').addEventListener('click', function() {
-            _loadPeriodo();
-        });
-
-        await _loadParametri();
-        await _loadPeriodo();
     }
 
     // ============================================================
-    // CARICAMENTO PARAMETRI FISCALI
+    // CARICAMENTO DATI BASE
     // ============================================================
 
-    // _tuttiParametri: array completo di tutti i parametri (attivi e storici)
-    var _tuttiParametri = [];
+    async function _loadBase() {
+        _prodotti = await ENI.API.getAll(T.PRODOTTI, {
+            filters: [{ op: 'eq', col: 'attivo', val: true }],
+            order: { col: 'ordine', asc: true }
+        }) || [];
 
-    async function _loadParametri() {
-        try {
-            _tuttiParametri = await ENI.API.getAll(T_PARAMETRI, {
-                order: { col: 'data_inizio', asc: false }
+        var configRows = await ENI.API.getAll(T.CONFIG) || [];
+        _config = {};
+        configRows.forEach(function(r) { _config[r.chiave] = r.valore; });
+    }
+
+    // ============================================================
+    // RICALCOLA STATO PRODOTTI (motore costo medio ponderato)
+    // ============================================================
+
+    async function _ricalcolaStato() {
+        _statoProdotti = {};
+
+        for (var i = 0; i < _prodotti.length; i++) {
+            var prod = _prodotti[i];
+
+            // Giacenza iniziale
+            var giacenze = await ENI.API.getAll(T.GIACENZE, {
+                filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }],
+                limit: 1
+            });
+            var g = giacenze && giacenze.length > 0 ? giacenze[0] : null;
+            var giacIniz = g ? parseFloat(g.litri_fisici) || 0 : 0;
+            var costoIniz = g ? parseFloat(g.costo_medio) || 0 : 0;
+
+            // Carica tutti gli eventi
+            var carichi = await ENI.API.getAll(T.CARICHI, {
+                filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }],
+                order: { col: 'data', asc: true }
             }) || [];
-        } catch(e) {
-            console.error('Errore caricamento parametri fiscali:', e);
-            _tuttiParametri = [];
-        }
-        // Aggiorna _parametri per il periodo corrente (per compatibilità)
-        _parametri = _getParametriPerData(_getDataRiferimentoPeriodo());
-        console.log('Parametri fiscali caricati per periodo:', JSON.stringify(_parametri));
-    }
 
-    // Restituisce la data di riferimento del periodo corrente (ultimo giorno del mese)
-    function _getDataRiferimentoPeriodo() {
-        if (!_periodo) return new Date().toISOString().slice(0, 10);
-        // Ultimo giorno del mese del periodo
-        var d = new Date(_periodo.anno, _periodo.mese, 0); // giorno 0 del mese successivo = ultimo del mese
-        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    }
+            var venditeProd = await ENI.API.getAll(T.VENDITE_PROD, {
+                filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }]
+            }) || [];
 
-    // Dato un tipo e una data, trova il parametro valido
-    function _getParametroPerData(tipo, data) {
-        // Cerca il parametro dove data_inizio <= data E (data_fine >= data OPPURE data_fine è null)
-        var trovato = null;
-        for (var i = 0; i < _tuttiParametri.length; i++) {
-            var p = _tuttiParametri[i];
-            if (p.tipo !== tipo) continue;
-            if (p.data_inizio > data) continue; // non ancora in vigore
-            if (p.data_fine && p.data_fine < data) continue; // già scaduto
-            // È valido — prendi il più recente (ordinati desc per data_inizio)
-            trovato = p;
-            break;
-        }
-        return trovato ? parseFloat(trovato.valore) : null;
-    }
-
-    // Restituisce un oggetto con tutti i parametri validi per una data
-    function _getParametriPerData(data) {
-        return {
-            aliquota_monofase: _getParametroPerData('aliquota_monofase', data) || 0.21,
-            accisa_benzina: _getParametroPerData('accisa_benzina', data) || 0.648700,
-            accisa_gasolio: _getParametroPerData('accisa_gasolio', data) || 0.648700
-        };
-    }
-
-    function _getAccisa(prodotto, data) {
-        var prod = PRODOTTI.find(function(p) { return p.id === prodotto; });
-        if (!prod) return 0;
-        if (data) {
-            return _getParametroPerData(prod.gruppoAccisa, data) || 0;
-        }
-        return _parametri[prod.gruppoAccisa] || 0;
-    }
-
-    function _getAliquotaMonofase(data) {
-        if (data) {
-            return _getParametroPerData('aliquota_monofase', data) || 0.21;
-        }
-        return _parametri.aliquota_monofase || 0.21;
-    }
-
-    // ============================================================
-    // CARICAMENTO PERIODO
-    // ============================================================
-
-    async function _loadPeriodo() {
-        var content = document.getElementById('mc-content');
-        if (!content) return;
-        content.innerHTML = '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>';
-
-        var mese = parseInt(document.getElementById('mc-mese-select').value);
-        var anno = parseInt(document.getElementById('mc-anno-select').value);
-
-        try {
-            // Cerca periodo esistente
-            var periodi = await ENI.API.getAll(T_PERIODI, {
-                filters: [
-                    { op: 'eq', col: 'anno', val: anno },
-                    { op: 'eq', col: 'mese', val: mese }
-                ],
-                limit: 1
-            });
-
-            if (periodi && periodi.length > 0) {
-                _periodo = periodi[0];
-            } else {
-                // Crea nuovo periodo
-                _periodo = await ENI.API.insert(T_PERIODI, {
-                    anno: anno,
-                    mese: mese,
-                    stato: 'bozza'
-                });
-
-                // Crea rimanenze vuote (8 record: 4 prodotti x 2 tipi)
-                var rimanenzeInit = [];
-                ['iniziale', 'finale'].forEach(function(tipo) {
-                    PRODOTTI.forEach(function(prod) {
-                        rimanenzeInit.push({
-                            periodo_id: _periodo.id,
-                            tipo: tipo,
-                            prodotto: prod.id
-                        });
+            // Per le vendite servono le date dalla tabella vendite_giornaliere
+            var venditeConDate = [];
+            for (var v = 0; v < venditeProd.length; v++) {
+                var vp = venditeProd[v];
+                try {
+                    var vendita = await ENI.API.getById(T.VENDITE, vp.vendita_id);
+                    venditeConDate.push({
+                        tipo: 'vendita',
+                        data: vendita.data_inizio,
+                        litri: parseFloat(vp.litri) || 0,
+                        prezzo_pompa: parseFloat(vp.prezzo_pompa) || 0
                     });
+                } catch(e) { /* vendita non trovata */ }
+            }
+
+            var conguagli = await ENI.API.getAll(T.CONGUAGLI, {
+                filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }],
+                order: { col: 'data', asc: true }
+            }) || [];
+
+            // Costruisci array eventi ordinato
+            var eventi = [];
+            carichi.forEach(function(c) {
+                eventi.push({
+                    tipo: 'carico',
+                    data: c.data,
+                    litri_fisici: parseFloat(c.litri_fisici) || 0,
+                    litri_fiscali: parseFloat(c.litri_fiscali) || 0,
+                    prezzo_mp: parseFloat(c.prezzo_mp) || 0,
+                    accisa: parseFloat(c.accisa) || 0
                 });
-
-                // Inserisci rimanenze una alla volta (supabase insert bulk con select non va)
-                for (var i = 0; i < rimanenzeInit.length; i++) {
-                    await ENI.API.insert(T_RIMANENZE, rimanenzeInit[i]);
-                }
-
-                // Prova a copiare rimanenze finali dal mese precedente
-                await _copiaRimanenzeDaMesePrecedente(anno, mese);
-            }
-
-            // Carica dati correlati
-            await _loadDatiPeriodo();
-
-            // Se le rimanenze iniziali sono tutte a zero, prova a copiare dal mese precedente
-            var iniziali = _rimanenze.filter(function(r) { return r.tipo === 'iniziale'; });
-            var tutteZero = iniziali.every(function(r) {
-                return (parseFloat(r.litri_commerciali) || 0) === 0 && (parseFloat(r.prezzo_commerciale) || 0) === 0;
             });
-            if (tutteZero && iniziali.length > 0) {
-                await _copiaRimanenzeDaMesePrecedente(
-                    parseInt(document.getElementById('mc-anno-select').value),
-                    parseInt(document.getElementById('mc-mese-select').value)
-                );
-                await _loadDatiPeriodo();
-            }
+            venditeConDate.forEach(function(v) { eventi.push(v); });
+            conguagli.forEach(function(cg) {
+                eventi.push({
+                    tipo: 'conguaglio',
+                    data: cg.data,
+                    importo_mp: parseFloat(cg.importo_mp) || 0
+                });
+            });
 
-            _renderContent(content);
-        } catch(e) {
-            content.innerHTML =
-                '<div class="empty-state">' +
-                    '<p class="empty-state-text">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p>' +
-                '</div>';
-        }
-    }
+            eventi.sort(function(a, b) { return a.data < b.data ? -1 : a.data > b.data ? 1 : 0; });
 
-    // ============================================================
-    // COPIA RIMANENZE DA MESE PRECEDENTE
-    // ============================================================
+            // Calcola stato
+            var stato = ENI.Calcoli.calcolaStatoProdotto(
+                giacIniz, costoIniz, eventi, prod.ha_pc,
+                parseFloat(_config.margine_target) || 0.05
+            );
 
-    async function _copiaRimanenzeDaMesePrecedente(anno, mese) {
-        var prevMese = mese - 1;
-        var prevAnno = anno;
-        if (prevMese === 0) { prevMese = 12; prevAnno--; }
-
-        try {
-            var prevPeriodi = await ENI.API.getAll(T_PERIODI, {
-                filters: [
-                    { op: 'eq', col: 'anno', val: prevAnno },
-                    { op: 'eq', col: 'mese', val: prevMese }
-                ],
+            // Prezzo pompa corrente
+            var prezzi = await ENI.API.getAll(T.PREZZI, {
+                filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }],
+                order: { col: 'data_inizio', asc: false },
                 limit: 1
-            });
+            }) || [];
+            stato.prezzo_pompa = prezzi.length > 0 ? parseFloat(prezzi[0].prezzo) || 0 : 0;
+            stato.margine_corrente = stato.prezzo_pompa > 0 ? ENI.Calcoli.marginCorrente(stato.prezzo_pompa, stato.costo_medio) : null;
 
-            if (!prevPeriodi || prevPeriodi.length === 0) return;
+            // Rimborsi PC
+            var rimborsi = await ENI.API.getAll(T.RIMBORSI, {
+                filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }]
+            }) || [];
+            stato.pc_rimborsi = rimborsi.reduce(function(s, r) { return s + (parseFloat(r.importo) || 0); }, 0);
+            stato.pc_netto = stato.pc_maturato - stato.pc_rimborsi;
 
-            var prevRim = await ENI.API.getAll(T_RIMANENZE, {
-                filters: [
-                    { op: 'eq', col: 'periodo_id', val: prevPeriodi[0].id },
-                    { op: 'eq', col: 'tipo', val: 'finale' }
-                ]
-            });
-
-            if (!prevRim || prevRim.length === 0) return;
-
-            // Aggiorna le rimanenze iniziali del periodo corrente
-            var rimInizialiCorrente = await ENI.API.getAll(T_RIMANENZE, {
-                filters: [
-                    { op: 'eq', col: 'periodo_id', val: _periodo.id },
-                    { op: 'eq', col: 'tipo', val: 'iniziale' }
-                ]
-            });
-
-            for (var i = 0; i < prevRim.length; i++) {
-                var finale = prevRim[i];
-                var iniziale = rimInizialiCorrente.find(function(r) { return r.prodotto === finale.prodotto; });
-                if (iniziale) {
-                    await ENI.API.update(T_RIMANENZE, iniziale.id, {
-                        litri_commerciali: finale.litri_commerciali,
-                        prezzo_commerciale: finale.prezzo_commerciale,
-                        litri_fiscali: finale.litri_fiscali,
-                        monofase: finale.monofase,
-                        prezzo_comm_pagato: finale.prezzo_comm_pagato,
-                        costo_commerciale: finale.costo_commerciale,
-                        costo_fiscale: finale.costo_fiscale,
-                        costo_totale: finale.costo_totale
-                    });
-                }
-            }
-        } catch(e) {
-            console.error('Errore copia rimanenze mese precedente:', e);
+            _statoProdotti[prod.id] = stato;
         }
     }
 
     // ============================================================
-    // CARICAMENTO DATI PERIODO
+    // RENDER PAGINA
     // ============================================================
 
-    async function _loadDatiPeriodo() {
-        _rimanenze = await ENI.API.getAll(T_RIMANENZE, {
-            filters: [{ op: 'eq', col: 'periodo_id', val: _periodo.id }]
-        });
+    function _renderPage() {
+        var html = '';
 
-        _carichi = await ENI.API.getAll(T_CARICHI, {
-            filters: [{ op: 'eq', col: 'periodo_id', val: _periodo.id }],
-            order: { col: 'numero_progressivo', asc: true }
-        });
+        // Header
+        html += '<div class="page-header"><h1 class="page-title">Gestionale Carburanti</h1></div>';
 
-        // Carica dettagli per ogni carico
-        _dettagli = {};
-        for (var i = 0; i < _carichi.length; i++) {
-            var det = await ENI.API.getAll(T_DETTAGLIO, {
-                filters: [{ op: 'eq', col: 'carico_id', val: _carichi[i].id }]
-            });
-            _dettagli[_carichi[i].id] = det || [];
-        }
-    }
-
-    // ============================================================
-    // RENDER CONTENUTO
-    // ============================================================
-
-    function _renderContent(content) {
-        var meseLabel = MESI[_periodo.mese - 1] + ' ' + _periodo.anno;
-        var isChiuso = _periodo.stato === 'chiuso';
-        var totali = _calcolaTotali();
-
-        // Barra info + riepilogo compatto
-        var html =
-            '<div style="display:flex; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3); flex-wrap:wrap;">' +
-                '<div style="flex:1; min-width:200px;">' +
-                    '<span style="font-size:var(--font-size-sm); color:var(--text-secondary);">' + meseLabel + '</span> ' +
-                    (isChiuso ? '<span class="badge badge-success">CHIUSO</span>' : '<span class="badge badge-warning">BOZZA</span>') +
-                '</div>' +
-                '<div style="display:flex; gap:var(--space-3);">' +
-                    '<div style="text-align:center; padding:var(--space-1) var(--space-3); background:var(--color-primary-light); border-radius:var(--radius-md);">' +
-                        '<div style="font-size:0.65rem; text-transform:uppercase; color:var(--text-secondary);">Utile</div>' +
-                        '<div style="font-size:1.2rem; font-weight:700; color:' + (totali.utile >= 0 ? 'var(--color-success)' : 'var(--color-danger)') + ';">' + _formatEuro(totali.utile) + '</div>' +
-                    '</div>' +
-                    '<div style="text-align:center; padding:var(--space-1) var(--space-3); background:var(--color-primary-light); border-radius:var(--radius-md);">' +
-                        '<div style="font-size:0.65rem; text-transform:uppercase; color:var(--text-secondary);">Margine/lt</div>' +
-                        '<div style="font-size:1.2rem; font-weight:700; color:var(--color-primary);">' + (totali.margineLitro !== null ? _formatEuro4(totali.margineLitro) : 'N/D') + '</div>' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
-
-        // Bottone ricalcola
-        if (!isChiuso) {
-            html += '<div style="margin-bottom:var(--space-3);">' +
-                '<button class="btn btn-outline btn-sm" id="mc-btn-ricalcola" style="font-size:0.75rem;">Ricalcola Tutto (con parametri attuali)</button>' +
-            '</div>';
-        }
+        // Dashboard cards prodotti
+        html += _renderDashboard();
 
         // Tabs
         html +=
             '<div class="tabs" style="margin-bottom:var(--space-3);">' +
-                '<button class="tab-btn' + (_activeTab === 'rimanenze' ? ' active' : '') + '" data-tab="rimanenze">Rimanenze</button>' +
-                '<button class="tab-btn' + (_activeTab === 'carichi' ? ' active' : '') + '" data-tab="carichi">Carichi (' + _carichi.length + ')</button>' +
-                '<button class="tab-btn' + (_activeTab === 'riepilogo' ? ' active' : '') + '" data-tab="riepilogo">Riepilogo</button>' +
-                '<button class="tab-btn' + (_activeTab === 'parametri' ? ' active' : '') + '" data-tab="parametri">Parametri Fiscali</button>' +
+                _tabBtn('vendite', 'Vendite') +
+                _tabBtn('carichi', 'Carichi') +
+                _tabBtn('prezzi', 'Prezzi Pompa') +
+                _tabBtn('report', 'Report') +
+                _tabBtn('conguagli', 'Conguagli & PC') +
+                _tabBtn('setup', 'Setup') +
             '</div>' +
             '<div id="mc-tab-content"></div>';
 
-        content.innerHTML = html;
-
-        // Ricalcola tutto
-        var btnRicalcola = document.getElementById('mc-btn-ricalcola');
-        if (btnRicalcola) {
-            btnRicalcola.addEventListener('click', _handleRicalcolaTutto);
-        }
+        _container.innerHTML = html;
 
         // Tab switching
-        content.querySelectorAll('.tab-btn').forEach(function(btn) {
+        _container.querySelectorAll('.tab-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 _activeTab = this.dataset.tab;
-                content.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+                _container.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
                 this.classList.add('active');
                 _renderTab();
             });
@@ -373,269 +206,363 @@ ENI.Modules.MarginalitaCarburante = (function() {
         _renderTab();
     }
 
-    // ============================================================
-    // RICALCOLA TUTTO
-    // ============================================================
-
-    async function _handleRicalcolaTutto() {
-        if (!confirm('Ricalcolare tutte le rimanenze e i carichi di questo mese con i parametri fiscali attuali?')) return;
-
-        try {
-            // Ricarica parametri freschi dal DB
-            await _loadParametri();
-            var dataRif = _getDataRiferimentoPeriodo();
-            var paramPeriodo = _getParametriPerData(dataRif);
-            console.log('Parametri fiscali per ' + dataRif + ':', JSON.stringify(paramPeriodo));
-
-            var countRim = 0;
-            var countDet = 0;
-
-            // Ricalcola tutte le rimanenze
-            for (var i = 0; i < _rimanenze.length; i++) {
-                var rim = _rimanenze[i];
-                var litriComm = parseFloat(rim.litri_commerciali) || 0;
-                var prezzo = parseFloat(rim.prezzo_commerciale) || 0;
-                var litriFisc = parseFloat(rim.litri_fiscali) || 0;
-
-                var calc = _calcolaRigaProdotto(rim.prodotto, litriComm, prezzo, litriFisc, dataRif);
-                await ENI.API.update(T_RIMANENZE, rim.id, {
-                    monofase: calc.monofase,
-                    prezzo_comm_pagato: calc.prezzoCommPagato,
-                    costo_commerciale: calc.costoCommerciale,
-                    costo_fiscale: calc.costoFiscale,
-                    costo_totale: calc.costoTotale
-                });
-                countRim++;
-            }
-
-            // Ricalcola tutti i dettagli carichi
-            for (var c = 0; c < _carichi.length; c++) {
-                var dettagli = _dettagli[_carichi[c].id] || [];
-                var totCarico = 0;
-
-                for (var d = 0; d < dettagli.length; d++) {
-                    var det = dettagli[d];
-                    var dLitriComm = parseFloat(det.litri_commerciali) || 0;
-                    var dPrezzo = parseFloat(det.prezzo_commerciale) || 0;
-                    var dLitriFisc = parseFloat(det.litri_fiscali) || 0;
-
-                    var dCalc = _calcolaRigaProdotto(det.prodotto, dLitriComm, dPrezzo, dLitriFisc, dataRif);
-                    await ENI.API.update(T_DETTAGLIO, det.id, {
-                        monofase: dCalc.monofase,
-                        prezzo_comm_pagato: dCalc.prezzoCommPagato,
-                        costo_commerciale: dCalc.costoCommerciale,
-                        costo_fiscale: dCalc.costoFiscale,
-                        costo_totale_prodotto: dCalc.costoTotale
-                    });
-                    countDet++;
-
-                    totCarico += dCalc.costoTotale;
-                }
-
-                await ENI.API.update(T_CARICHI, _carichi[c].id, { costo_totale_carico: totCarico });
-            }
-
-            console.log('Ricalcolate ' + countRim + ' rimanenze e ' + countDet + ' dettagli carichi');
-
-            await _ricalcolaPeriodo();
-            ENI.UI.success('Ricalcolo completato: ' + countRim + ' rimanenze, ' + countDet + ' dettagli');
-        } catch(e) {
-            console.error('Errore ricalcolo:', e);
-            ENI.UI.error('Errore ricalcolo: ' + e.message);
-        }
+    function _tabBtn(id, label) {
+        return '<button class="tab-btn' + (_activeTab === id ? ' active' : '') + '" data-tab="' + id + '">' + label + '</button>';
     }
 
     // ============================================================
-    // RENDER TABS
+    // DASHBOARD (sempre visibile in alto)
+    // ============================================================
+
+    function _renderDashboard() {
+        if (_prodotti.length === 0) {
+            return '<div class="card" style="margin-bottom:var(--space-3);"><div class="card-body"><p>Nessun prodotto configurato. Vai al tab Setup.</p></div></div>';
+        }
+
+        var margineTarget = parseFloat(_config.margine_target) || 0.05;
+        var html = '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:var(--space-3); margin-bottom:var(--space-3);">';
+
+        _prodotti.forEach(function(prod) {
+            var st = _statoProdotti[prod.id] || {};
+            var margine = st.margine_corrente;
+            var colore = 'var(--text-secondary)';
+            var bgBorder = 'var(--color-gray-200)';
+
+            if (margine !== null && margine !== undefined) {
+                if (margine >= margineTarget) {
+                    colore = 'var(--color-success)';
+                    bgBorder = '#4CAF50';
+                } else if (margine >= 0) {
+                    colore = '#FF9800';
+                    bgBorder = '#FF9800';
+                } else {
+                    colore = 'var(--color-danger)';
+                    bgBorder = '#f44336';
+                }
+            }
+
+            html +=
+                '<div class="card" style="border-left:4px solid ' + bgBorder + ';">' +
+                    '<div class="card-body" style="padding:var(--space-3);">' +
+                        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-2);">' +
+                            '<strong style="font-size:var(--font-size-base);">' + ENI.UI.escapeHtml(prod.nome) + '</strong>' +
+                            '<span style="font-size:0.75rem; color:var(--text-secondary);">' + _fmt(st.giacenza_teorica || 0, 0) + ' lt</span>' +
+                        '</div>' +
+                        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--space-1); font-size:0.8rem;">' +
+                            '<div>Costo medio<br><strong>' + _fmtEuro5(st.costo_medio || 0) + '</strong></div>' +
+                            '<div>Prezzo pompa<br><strong>' + (st.prezzo_pompa ? _fmtEuro5(st.prezzo_pompa) : 'N/D') + '</strong></div>' +
+                            '<div>Margine<br><strong style="color:' + colore + ';">' + (margine !== null ? _fmtEuro4(margine) + '/lt' : 'N/D') + '</strong></div>' +
+                            '<div>Consigliato<br><strong style="color:var(--color-primary);">' + _fmtEuro5(st.prezzo_consigliato || 0) + '</strong></div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+        });
+
+        html += '</div>';
+        return html;
+    }
+
+    // ============================================================
+    // RENDER TAB
     // ============================================================
 
     function _renderTab() {
-        var tabContent = document.getElementById('mc-tab-content');
-        if (!tabContent) return;
+        var c = document.getElementById('mc-tab-content');
+        if (!c) return;
 
         switch(_activeTab) {
-            case 'rimanenze':
-                _renderRimanenze(tabContent);
-                break;
-            case 'carichi':
-                _renderCarichi(tabContent);
-                break;
-            case 'riepilogo':
-                _renderRiepilogo(tabContent);
-                break;
-            case 'parametri':
-                _renderParametri(tabContent);
-                break;
+            case 'vendite': _renderVendite(c); break;
+            case 'carichi': _renderCarichi(c); break;
+            case 'prezzi': _renderPrezzi(c); break;
+            case 'report': _renderReport(c); break;
+            case 'conguagli': _renderConguagli(c); break;
+            case 'setup': _renderSetup(c); break;
         }
     }
 
     // ============================================================
-    // TAB: RIMANENZE
+    // TAB: SETUP
     // ============================================================
 
-    function _renderRimanenze(container) {
-        var isChiuso = _periodo.stato === 'chiuso';
+    async function _renderSetup(container) {
+        // Carica tutti i dati necessari
+        var tuttiProdotti = await ENI.API.getAll(T.PRODOTTI, { order: { col: 'ordine', asc: true } }) || [];
+        var accise = await ENI.API.getAll(T.ACCISE, { order: { col: 'data_inizio', asc: false } }) || [];
+        var giacenze = await ENI.API.getAll(T.GIACENZE) || [];
 
         var html = '';
 
-        ['iniziale', 'finale'].forEach(function(tipo) {
-            var label = tipo === 'iniziale' ? 'Rimanenze Iniziali' : 'Rimanenze Finali';
-            var rimTipo = _rimanenze.filter(function(r) { return r.tipo === tipo; });
-            var totale = rimTipo.reduce(function(s, r) { return s + (parseFloat(r.costo_totale) || 0); }, 0);
+        // --- PRODOTTI ---
+        html +=
+            '<div class="card" style="margin-bottom:var(--space-3);">' +
+                '<div class="card-body">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-3);">' +
+                        '<h3 style="margin:0;">Prodotti</h3>' +
+                        '<button class="btn btn-primary btn-sm" id="mc-setup-add-prod">+ Nuovo Prodotto</button>' +
+                    '</div>' +
+                    '<table class="table cm-table-compact"><thead><tr>' +
+                        '<th>ID</th><th>Nome</th><th>Attivo</th><th>Prog. Carb.</th><th></th>' +
+                    '</tr></thead><tbody>';
 
-            html +=
-                '<div class="card" style="margin-bottom:var(--space-3);">' +
-                    '<div class="card-body" style="padding:var(--space-2);">' +
-                        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-2);">' +
-                            '<h3 style="margin:0; font-size:var(--font-size-base);">' + label + '</h3>' +
-                            '<strong style="color:var(--color-primary);">Totale: ' + _formatEuro(totale) + '</strong>' +
-                        '</div>' +
-                        '<table class="table cm-table-compact">' +
-                            '<thead><tr>' +
-                                '<th>Prodotto</th>' +
-                                '<th class="text-right">Lt. Comm.</th>' +
-                                '<th class="text-right">Prezzo Comm.</th>' +
-                                '<th class="text-right">Lt. Fiscali</th>' +
-                                '<th class="text-right">Monofase</th>' +
-                                '<th class="text-right">Prezzo Pagato</th>' +
-                                '<th class="text-right">Costo Comm.</th>' +
-                                '<th class="text-right">Costo Fiscale</th>' +
-                                '<th class="text-right" style="background:#e0f7fa;">Costo Totale</th>' +
-                                (!isChiuso ? '<th style="width:40px;"></th>' : '') +
-                            '</tr></thead>' +
-                            '<tbody>';
-
-            PRODOTTI.forEach(function(prod) {
-                var rim = rimTipo.find(function(r) { return r.prodotto === prod.id; });
-                if (!rim) return;
-
-                html +=
-                    '<tr>' +
-                        '<td><strong>' + prod.label + '</strong></td>' +
-                        '<td class="text-right">' + _formatNumero(rim.litri_commerciali) + '</td>' +
-                        '<td class="text-right">' + _formatPrezzo5(rim.prezzo_commerciale) + '</td>' +
-                        '<td class="text-right">' + _formatNumero(rim.litri_fiscali) + '</td>' +
-                        '<td class="text-right">' + _formatPrezzo5(rim.monofase) + '</td>' +
-                        '<td class="text-right">' + _formatPrezzo5(rim.prezzo_comm_pagato) + '</td>' +
-                        '<td class="text-right">' + _formatEuro(rim.costo_commerciale) + '</td>' +
-                        '<td class="text-right">' + _formatEuro(rim.costo_fiscale) + '</td>' +
-                        '<td class="text-right" style="background:#e0f7fa; font-weight:600;">' + _formatEuro(rim.costo_totale) + '</td>' +
-                        (!isChiuso ? '<td><button class="btn-icon mc-btn-edit-rim" data-id="' + rim.id + '" data-tipo="' + tipo + '" data-prodotto="' + prod.id + '" title="Modifica"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button></td>' : '') +
-                    '</tr>';
-            });
-
-            html += '</tbody></table></div></div>';
+        tuttiProdotti.forEach(function(p) {
+            html += '<tr>' +
+                '<td><code>' + p.id + '</code></td>' +
+                '<td><strong>' + ENI.UI.escapeHtml(p.nome) + '</strong></td>' +
+                '<td>' + (p.attivo ? '<span style="color:var(--color-success);">Si</span>' : 'No') + '</td>' +
+                '<td>' + (p.ha_pc ? 'Si' : 'No') + '</td>' +
+                '<td><button class="btn-icon mc-setup-toggle-prod" data-id="' + p.id + '" data-attivo="' + p.attivo + '" title="' + (p.attivo ? 'Disattiva' : 'Attiva') + '"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button></td>' +
+            '</tr>';
         });
+        html += '</tbody></table></div></div>';
 
-        container.innerHTML = html;
-
-        // Listener modifica rimanenze
-        if (!isChiuso) {
-            container.querySelectorAll('.mc-btn-edit-rim').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    var id = btn.getAttribute('data-id');
-                    var rim = _rimanenze.find(function(r) { return String(r.id) === String(id); });
-                    if (rim) _showRimanenzaForm(rim);
-                });
-            });
-        }
-    }
-
-    // ============================================================
-    // FORM MODIFICA RIMANENZA
-    // ============================================================
-
-    function _showRimanenzaForm(rim) {
-        var prod = PRODOTTI.find(function(p) { return p.id === rim.prodotto; });
-        var tipoLabel = rim.tipo === 'iniziale' ? 'Iniziale' : 'Finale';
-
-        var modal =
-            '<div class="modal-backdrop" id="mc-modal-rim">' +
-                '<div class="modal" style="max-width:400px;">' +
-                    '<div class="modal-header">' +
-                        '<h3>Rimanenza ' + tipoLabel + ' - ' + prod.label + '</h3>' +
+        // --- ACCISE ---
+        html +=
+            '<div class="card" style="margin-bottom:var(--space-3);">' +
+                '<div class="card-body">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-3);">' +
+                        '<h3 style="margin:0;">Storico Accise</h3>' +
+                        '<button class="btn btn-primary btn-sm" id="mc-setup-add-accisa">+ Nuova Accisa</button>' +
                     '</div>' +
-                    '<div class="modal-body">' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Litri commerciali</label>' +
-                            '<input type="number" class="form-input" id="mc-rim-litri-comm" step="0.01" value="' + (rim.litri_commerciali || 0) + '">' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Prezzo commerciale (\u20AC/lt)</label>' +
-                            '<input type="number" class="form-input" id="mc-rim-prezzo" step="0.00001" value="' + (rim.prezzo_commerciale || 0) + '">' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Litri fiscali</label>' +
-                            '<input type="number" class="form-input" id="mc-rim-litri-fisc" step="0.01" value="' + (rim.litri_fiscali || 0) + '">' +
-                        '</div>' +
-                        '<div id="mc-rim-preview" style="padding:var(--space-2); background:var(--color-gray-50); border-radius:var(--radius-md); margin-top:var(--space-2); font-size:var(--font-size-sm);"></div>' +
+                    '<table class="table cm-table-compact"><thead><tr>' +
+                        '<th>Prodotto</th><th class="text-right">Accisa (\u20AC/lt)</th><th>Dal</th><th>Al</th><th>Note</th><th></th>' +
+                    '</tr></thead><tbody>';
+
+        accise.forEach(function(a) {
+            html += '<tr' + (a.data_fine ? ' style="opacity:0.6;"' : '') + '>' +
+                '<td>' + ENI.UI.escapeHtml(a.prodotto_id) + '</td>' +
+                '<td class="text-right"><strong>' + (parseFloat(a.accisa) || 0).toFixed(6) + '</strong></td>' +
+                '<td>' + _fmtData(a.data_inizio) + '</td>' +
+                '<td>' + (a.data_fine ? _fmtData(a.data_fine) : '<em>attiva</em>') + '</td>' +
+                '<td style="font-size:0.75rem; color:var(--text-secondary);">' + (a.note || '') + '</td>' +
+                '<td>' +
+                    (!a.data_fine ? '<button class="btn-icon mc-setup-chiudi-accisa" data-id="' + a.id + '" title="Chiudi"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>' : '') +
+                '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table></div></div>';
+
+        // --- GIACENZE INIZIALI ---
+        html +=
+            '<div class="card" style="margin-bottom:var(--space-3);">' +
+                '<div class="card-body">' +
+                    '<h3 style="margin:0 0 var(--space-3) 0;">Giacenze Iniziali</h3>' +
+                    '<table class="table cm-table-compact"><thead><tr>' +
+                        '<th>Prodotto</th><th class="text-right">Litri Fisici</th><th class="text-right">Costo Medio (\u20AC/lt)</th><th>Data</th><th></th>' +
+                    '</tr></thead><tbody>';
+
+        _prodotti.forEach(function(prod) {
+            var g = giacenze.find(function(x) { return x.prodotto_id === prod.id; });
+            html += '<tr>' +
+                '<td><strong>' + ENI.UI.escapeHtml(prod.nome) + '</strong></td>' +
+                '<td class="text-right">' + (g ? _fmt(g.litri_fisici, 2) : '0') + '</td>' +
+                '<td class="text-right">' + (g ? _fmtEuro5(g.costo_medio) : '0,00000') + '</td>' +
+                '<td>' + (g ? _fmtData(g.data) : '-') + '</td>' +
+                '<td><button class="btn-icon mc-setup-edit-giac" data-id="' + prod.id + '" title="Modifica"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button></td>' +
+            '</tr>';
+        });
+        html += '</tbody></table></div></div>';
+
+        // --- CONFIGURAZIONE ---
+        html +=
+            '<div class="card">' +
+                '<div class="card-body">' +
+                    '<h3 style="margin:0 0 var(--space-3) 0;">Configurazione</h3>' +
+                    '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:var(--space-3);">' +
+                        _cfgField('Margine target (\u20AC/lt)', 'mc-cfg-margine', _config.margine_target || '0.05', 'number', '0.001') +
+                        _cfgField('Aliquota monofase', 'mc-cfg-monofase', _config.aliquota_monofase || '0.21', 'number', '0.01') +
+                        _cfgField('Storno PC (\u20AC/lt)', 'mc-cfg-storno', _config.storno_pc || '0.0522', 'number', '0.0001') +
+                        _cfgField('Codice COE', 'mc-cfg-coe', _config.codice_coe || '', 'text') +
+                        _cfgField('Ragione Sociale', 'mc-cfg-rag', _config.ragione_sociale || '', 'text') +
+                        _cfgField('Email destinatario', 'mc-cfg-email-dest', _config.email_destinatario || '', 'email') +
+                        _cfgField('Email mittente', 'mc-cfg-email-mitt', _config.email_mittente || '', 'email') +
                     '</div>' +
-                    '<div class="modal-footer">' +
-                        '<button class="btn btn-outline" id="mc-rim-annulla">Annulla</button>' +
-                        '<button class="btn btn-primary" id="mc-rim-salva">Salva</button>' +
-                    '</div>' +
+                    '<button class="btn btn-primary btn-sm" id="mc-setup-save-cfg" style="margin-top:var(--space-3);">Salva Configurazione</button>' +
                 '</div>' +
             '</div>';
 
-        document.body.insertAdjacentHTML('beforeend', modal);
+        container.innerHTML = html;
+        _setupSetupListeners(container);
+    }
 
-        var modalEl = document.getElementById('mc-modal-rim');
-        requestAnimationFrame(function() { modalEl.classList.add('active'); });
+    function _cfgField(label, id, value, type, step) {
+        return '<div class="form-group"><label class="form-label">' + label + '</label>' +
+            '<input type="' + type + '" class="form-input" id="' + id + '" value="' + ENI.UI.escapeHtml(String(value)) + '"' +
+            (step ? ' step="' + step + '"' : '') + '></div>';
+    }
 
-        // Preview in tempo reale
-        function updatePreview() {
-            var litriComm = parseFloat(document.getElementById('mc-rim-litri-comm').value) || 0;
-            var prezzo = parseFloat(document.getElementById('mc-rim-prezzo').value) || 0;
-            var litriFisc = parseFloat(document.getElementById('mc-rim-litri-fisc').value) || 0;
-            var calc = _calcolaRigaProdotto(rim.prodotto, litriComm, prezzo, litriFisc, _getDataRiferimentoPeriodo());
-            var prev = document.getElementById('mc-rim-preview');
-            prev.innerHTML =
-                'Monofase: <strong>' + _formatPrezzo5(calc.monofase) + '</strong> | ' +
-                'Costo comm.: <strong>' + _formatEuro(calc.costoCommerciale) + '</strong> | ' +
-                'Costo fisc.: <strong>' + _formatEuro(calc.costoFiscale) + '</strong> | ' +
-                'Totale: <strong style="color:var(--color-primary);">' + _formatEuro(calc.costoTotale) + '</strong>';
+    function _setupSetupListeners(container) {
+        // Salva config
+        var btnCfg = document.getElementById('mc-setup-save-cfg');
+        if (btnCfg) {
+            btnCfg.addEventListener('click', async function() {
+                var fields = {
+                    margine_target: document.getElementById('mc-cfg-margine').value,
+                    aliquota_monofase: document.getElementById('mc-cfg-monofase').value,
+                    storno_pc: document.getElementById('mc-cfg-storno').value,
+                    codice_coe: document.getElementById('mc-cfg-coe').value,
+                    ragione_sociale: document.getElementById('mc-cfg-rag').value,
+                    email_destinatario: document.getElementById('mc-cfg-email-dest').value,
+                    email_mittente: document.getElementById('mc-cfg-email-mitt').value
+                };
+                try {
+                    for (var key in fields) {
+                        await ENI.API.getClient().from(T.CONFIG).upsert({ chiave: key, valore: fields[key], updated_at: new Date().toISOString() });
+                    }
+                    _config = fields;
+                    ENI.UI.success('Configurazione salvata');
+                } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+            });
         }
 
-        ['mc-rim-litri-comm', 'mc-rim-prezzo', 'mc-rim-litri-fisc'].forEach(function(id) {
-            document.getElementById(id).addEventListener('input', updatePreview);
-        });
-        updatePreview();
-
-        // Annulla
-        document.getElementById('mc-rim-annulla').addEventListener('click', function() {
-            modalEl.remove();
+        // Modifica giacenza
+        container.querySelectorAll('.mc-setup-edit-giac').forEach(function(btn) {
+            btn.addEventListener('click', function() { _showGiacenzaForm(btn.getAttribute('data-id')); });
         });
 
-        // Salva
-        document.getElementById('mc-rim-salva').addEventListener('click', async function() {
-            var litriComm = parseFloat(document.getElementById('mc-rim-litri-comm').value) || 0;
-            var prezzo = parseFloat(document.getElementById('mc-rim-prezzo').value) || 0;
-            var litriFisc = parseFloat(document.getElementById('mc-rim-litri-fisc').value) || 0;
-            var calc = _calcolaRigaProdotto(rim.prodotto, litriComm, prezzo, litriFisc, _getDataRiferimentoPeriodo());
+        // Aggiungi accisa
+        var btnAccisa = document.getElementById('mc-setup-add-accisa');
+        if (btnAccisa) {
+            btnAccisa.addEventListener('click', _showAccisaForm);
+        }
 
+        // Chiudi accisa
+        container.querySelectorAll('.mc-setup-chiudi-accisa').forEach(function(btn) {
+            btn.addEventListener('click', function() { _showChiudiAccisaForm(btn.getAttribute('data-id')); });
+        });
+
+        // Aggiungi prodotto
+        var btnProd = document.getElementById('mc-setup-add-prod');
+        if (btnProd) {
+            btnProd.addEventListener('click', _showProdottoForm);
+        }
+
+        // Toggle prodotto attivo/disattivo
+        container.querySelectorAll('.mc-setup-toggle-prod').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                var id = btn.getAttribute('data-id');
+                var attivo = btn.getAttribute('data-attivo') === 'true';
+                try {
+                    await ENI.API.getClient().from(T.PRODOTTI).update({ attivo: !attivo }).eq('id', id);
+                    await _loadBase();
+                    await _ricalcolaStato();
+                    _renderPage();
+                    ENI.UI.success('Prodotto ' + (!attivo ? 'attivato' : 'disattivato'));
+                } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+            });
+        });
+    }
+
+    // --- Form Giacenza ---
+    function _showGiacenzaForm(prodId) {
+        var prod = _prodotti.find(function(p) { return p.id === prodId; });
+        var modal = _modal('mc-modal-giac', 'Giacenza Iniziale - ' + (prod ? prod.nome : prodId),
+            _formField('Data', 'mc-giac-data', 'date', '2026-02-01') +
+            _formField('Litri fisici', 'mc-giac-litri', 'number', '0', '0.01') +
+            _formField('Costo medio (\u20AC/lt)', 'mc-giac-costo', 'number', '0', '0.00001'),
+            'mc-giac-salva', 'Salva'
+        );
+        _openModal(modal, 'mc-modal-giac');
+
+        document.getElementById('mc-giac-salva').addEventListener('click', async function() {
+            var data = document.getElementById('mc-giac-data').value;
+            var litri = parseFloat(document.getElementById('mc-giac-litri').value) || 0;
+            var costo = parseFloat(document.getElementById('mc-giac-costo').value) || 0;
+            if (!data) { ENI.UI.warning('Inserisci la data'); return; }
             try {
-                await ENI.API.update(T_RIMANENZE, rim.id, {
-                    litri_commerciali: litriComm,
-                    prezzo_commerciale: prezzo,
-                    litri_fiscali: litriFisc,
-                    monofase: calc.monofase,
-                    prezzo_comm_pagato: calc.prezzoCommPagato,
-                    costo_commerciale: calc.costoCommerciale,
-                    costo_fiscale: calc.costoFiscale,
-                    costo_totale: calc.costoTotale
+                await ENI.API.getClient().from(T.GIACENZE).upsert({
+                    prodotto_id: prodId, data: data, litri_fisici: litri, costo_medio: costo
                 });
-
-                modalEl.remove();
-                await _ricalcolaPeriodo();
-                ENI.UI.success('Rimanenza aggiornata');
-            } catch(e) {
-                ENI.UI.error('Errore: ' + e.message);
-            }
+                _closeModal('mc-modal-giac');
+                await _ricalcolaStato();
+                _renderPage();
+                ENI.UI.success('Giacenza salvata');
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
         });
+    }
 
-        // Chiudi cliccando fuori
-        modalEl.addEventListener('click', function(e) {
-            if (e.target === modalEl) modalEl.remove();
+    // --- Form Accisa ---
+    function _showAccisaForm() {
+        var opts = _prodotti.map(function(p) { return '<option value="' + p.id + '">' + p.nome + '</option>'; }).join('');
+        var modal = _modal('mc-modal-accisa', 'Nuova Accisa',
+            '<div class="form-group"><label class="form-label">Prodotto</label><select class="form-select" id="mc-acc-prod">' + opts + '</select></div>' +
+            _formField('Accisa (\u20AC/lt)', 'mc-acc-valore', 'number', '0.648700', '0.000001') +
+            _formField('In vigore dal', 'mc-acc-da', 'date', '') +
+            _formField('In vigore fino al (vuoto = attiva)', 'mc-acc-a', 'date', '') +
+            _formField('Note', 'mc-acc-note', 'text', ''),
+            'mc-acc-salva', 'Salva'
+        );
+        _openModal(modal, 'mc-modal-accisa');
+
+        document.getElementById('mc-acc-salva').addEventListener('click', async function() {
+            var prodId = document.getElementById('mc-acc-prod').value;
+            var accisa = parseFloat(document.getElementById('mc-acc-valore').value);
+            var da = document.getElementById('mc-acc-da').value;
+            var a = document.getElementById('mc-acc-a').value || null;
+            var note = document.getElementById('mc-acc-note').value || null;
+            if (!da || !accisa) { ENI.UI.warning('Compila prodotto, accisa e data'); return; }
+            try {
+                // Chiudi accisa attiva dello stesso prodotto
+                if (!a) {
+                    var attuali = await ENI.API.getAll(T.ACCISE, {
+                        filters: [{ op: 'eq', col: 'prodotto_id', val: prodId }, { op: 'is', col: 'data_fine', val: null }]
+                    });
+                    for (var i = 0; i < (attuali || []).length; i++) {
+                        var d = new Date(da); d.setDate(d.getDate() - 1);
+                        var fine = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+                        await ENI.API.update(T.ACCISE, attuali[i].id, { data_fine: fine });
+                    }
+                }
+                await ENI.API.insert(T.ACCISE, { prodotto_id: prodId, accisa: accisa, data_inizio: da, data_fine: a, note: note });
+                _closeModal('mc-modal-accisa');
+                _renderTab();
+                ENI.UI.success('Accisa inserita');
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+        });
+    }
+
+    // --- Form Chiudi Accisa ---
+    function _showChiudiAccisaForm(id) {
+        var modal = _modal('mc-modal-chiudi-acc', 'Chiudi Accisa',
+            '<p>Imposta la data di fine validit\u00E0.</p>' +
+            _formField('In vigore fino al', 'mc-chiudi-acc-data', 'date', ''),
+            'mc-chiudi-acc-salva', 'Chiudi'
+        );
+        _openModal(modal, 'mc-modal-chiudi-acc');
+
+        document.getElementById('mc-chiudi-acc-salva').addEventListener('click', async function() {
+            var data = document.getElementById('mc-chiudi-acc-data').value;
+            if (!data) { ENI.UI.warning('Inserisci data'); return; }
+            try {
+                await ENI.API.update(T.ACCISE, id, { data_fine: data });
+                _closeModal('mc-modal-chiudi-acc');
+                _renderTab();
+                ENI.UI.success('Accisa chiusa');
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+        });
+    }
+
+    // --- Form Prodotto ---
+    function _showProdottoForm() {
+        var modal = _modal('mc-modal-prod', 'Nuovo Prodotto',
+            _formField('ID (es. hvo)', 'mc-prod-id', 'text', '') +
+            _formField('Nome (es. HVO)', 'mc-prod-nome', 'text', '') +
+            '<div class="form-group"><label class="form-label"><input type="checkbox" id="mc-prod-pc" checked> Aderisce al Progetto Carburante</label></div>',
+            'mc-prod-salva', 'Crea'
+        );
+        _openModal(modal, 'mc-modal-prod');
+
+        document.getElementById('mc-prod-salva').addEventListener('click', async function() {
+            var id = document.getElementById('mc-prod-id').value.trim().toLowerCase().replace(/\s+/g, '_');
+            var nome = document.getElementById('mc-prod-nome').value.trim();
+            var haPC = document.getElementById('mc-prod-pc').checked;
+            if (!id || !nome) { ENI.UI.warning('Inserisci ID e nome'); return; }
+            try {
+                await ENI.API.insert(T.PRODOTTI, { id: id, nome: nome, ha_pc: haPC, ordine: _prodotti.length + 1 });
+                _closeModal('mc-modal-prod');
+                await _loadBase();
+                _renderTab();
+                ENI.UI.success('Prodotto creato');
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
         });
     }
 
@@ -643,817 +570,241 @@ ENI.Modules.MarginalitaCarburante = (function() {
     // TAB: CARICHI
     // ============================================================
 
-    function _renderCarichi(container) {
-        var isChiuso = _periodo.stato === 'chiuso';
-
-        var html = '';
-
-        if (!isChiuso) {
-            html += '<div style="margin-bottom:var(--space-3);">' +
-                '<button class="btn btn-primary btn-sm" id="mc-btn-add-carico">+ Nuovo Carico</button>' +
-            '</div>';
-        }
-
-        if (_carichi.length === 0) {
-            html += '<div class="card"><div class="card-body"><div class="empty-state">' +
-                '<p class="empty-state-text">Nessun carico inserito</p>' +
-                '<p style="color:var(--text-secondary); font-size:var(--font-size-sm);">Clicca "Nuovo Carico" per registrare una consegna</p>' +
-                '</div></div></div>';
-            container.innerHTML = html;
-            _setupCarichiListeners(isChiuso);
-            return;
-        }
-
-        _carichi.forEach(function(carico) {
-            var dettagli = _dettagli[carico.id] || [];
-
-            html +=
-                '<div class="card" style="margin-bottom:var(--space-3);">' +
-                    '<div class="card-body" style="padding:var(--space-2);">' +
-                        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-2);">' +
-                            '<div>' +
-                                '<strong>Carico #' + carico.numero_progressivo + '</strong>' +
-                                '<span style="color:var(--text-secondary); margin-left:var(--space-2);">' + _formatData(carico.data_carico) + '</span>' +
-                                (carico.note ? '<span style="color:var(--text-secondary); margin-left:var(--space-2); font-style:italic;">' + ENI.UI.escapeHtml(carico.note) + '</span>' : '') +
-                            '</div>' +
-                            '<div style="display:flex; align-items:center; gap:var(--space-2);">' +
-                                '<strong style="color:var(--color-primary);">' + _formatEuro(carico.costo_totale_carico) + '</strong>' +
-                                (!isChiuso ? '<button class="btn-icon mc-btn-del-carico" data-id="' + carico.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' : '') +
-                            '</div>' +
-                        '</div>' +
-                        '<table class="table cm-table-compact">' +
-                            '<thead><tr>' +
-                                '<th>Prodotto</th>' +
-                                '<th class="text-right">Lt. Comm.</th>' +
-                                '<th class="text-right">Prezzo Comm.</th>' +
-                                '<th class="text-right">Lt. Fiscali</th>' +
-                                '<th class="text-right">Monofase</th>' +
-                                '<th class="text-right">Costo Comm.</th>' +
-                                '<th class="text-right">Costo Fiscale</th>' +
-                                '<th class="text-right" style="background:#e0f7fa;">Costo Tot.</th>' +
-                                (!isChiuso ? '<th style="width:40px;"></th>' : '') +
-                            '</tr></thead>' +
-                            '<tbody>';
-
-            PRODOTTI.forEach(function(prod) {
-                var det = dettagli.find(function(d) { return d.prodotto === prod.id; });
-                if (!det) det = { litri_commerciali: 0, prezzo_commerciale: 0, litri_fiscali: 0, monofase: 0, costo_commerciale: 0, costo_fiscale: 0, costo_totale_prodotto: 0 };
-
-                html +=
-                    '<tr>' +
-                        '<td><strong>' + prod.label + '</strong></td>' +
-                        '<td class="text-right">' + _formatNumero(det.litri_commerciali) + '</td>' +
-                        '<td class="text-right">' + _formatPrezzo5(det.prezzo_commerciale) + '</td>' +
-                        '<td class="text-right">' + _formatNumero(det.litri_fiscali) + '</td>' +
-                        '<td class="text-right">' + _formatPrezzo5(det.monofase) + '</td>' +
-                        '<td class="text-right">' + _formatEuro(det.costo_commerciale) + '</td>' +
-                        '<td class="text-right">' + _formatEuro(det.costo_fiscale) + '</td>' +
-                        '<td class="text-right" style="background:#e0f7fa; font-weight:600;">' + _formatEuro(det.costo_totale_prodotto) + '</td>' +
-                        (!isChiuso && det.id ? '<td><button class="btn-icon mc-btn-edit-det" data-id="' + det.id + '" data-carico="' + carico.id + '" data-prodotto="' + prod.id + '" title="Modifica"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button></td>' : (!isChiuso ? '<td></td>' : '')) +
-                    '</tr>';
-            });
-
-            html += '</tbody></table></div></div>';
-        });
-
-        container.innerHTML = html;
-        _setupCarichiListeners(isChiuso);
-    }
-
-    function _setupCarichiListeners(isChiuso) {
-        if (isChiuso) return;
-
-        var btnAdd = document.getElementById('mc-btn-add-carico');
-        if (btnAdd) {
-            btnAdd.addEventListener('click', function() { _showNuovoCaricoForm(); });
-        }
-
-        document.querySelectorAll('.mc-btn-del-carico').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                _handleEliminaCarico(btn.getAttribute('data-id'));
-            });
-        });
-
-        document.querySelectorAll('.mc-btn-edit-det').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var detId = btn.getAttribute('data-id');
-                var caricoId = btn.getAttribute('data-carico');
-                var prodotto = btn.getAttribute('data-prodotto');
-                var dettagli = _dettagli[caricoId] || [];
-                var det = dettagli.find(function(d) { return String(d.id) === String(detId); });
-                if (det) _showDettaglioForm(det, caricoId);
-            });
-        });
-    }
-
-    // ============================================================
-    // FORM NUOVO CARICO
-    // ============================================================
-
-    function _showNuovoCaricoForm() {
-        var oggi = new Date();
-        var dataDefault = oggi.getFullYear() + '-' + String(oggi.getMonth() + 1).padStart(2, '0') + '-' + String(oggi.getDate()).padStart(2, '0');
-
-        var modal =
-            '<div class="modal-backdrop" id="mc-modal-carico">' +
-                '<div class="modal" style="max-width:350px;">' +
-                    '<div class="modal-header"><h3>Nuovo Carico</h3></div>' +
-                    '<div class="modal-body">' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Data carico</label>' +
-                            '<input type="date" class="form-input" id="mc-carico-data" value="' + dataDefault + '">' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Note (opzionale)</label>' +
-                            '<input type="text" class="form-input" id="mc-carico-note" placeholder="Es. Fornitore XY">' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="modal-footer">' +
-                        '<button class="btn btn-outline" id="mc-carico-annulla">Annulla</button>' +
-                        '<button class="btn btn-primary" id="mc-carico-crea">Crea Carico</button>' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
-
-        document.body.insertAdjacentHTML('beforeend', modal);
-        var modalEl = document.getElementById('mc-modal-carico');
-        requestAnimationFrame(function() { modalEl.classList.add('active'); });
-
-        document.getElementById('mc-carico-annulla').addEventListener('click', function() { modalEl.remove(); });
-        modalEl.addEventListener('click', function(e) { if (e.target === modalEl) modalEl.remove(); });
-
-        document.getElementById('mc-carico-crea').addEventListener('click', async function() {
-            var data = document.getElementById('mc-carico-data').value;
-            var note = document.getElementById('mc-carico-note').value.trim();
-            if (!data) { ENI.UI.warning('Inserisci la data'); return; }
-
-            try {
-                var numProg = _carichi.length + 1;
-                var carico = await ENI.API.insert(T_CARICHI, {
-                    periodo_id: _periodo.id,
-                    numero_progressivo: numProg,
-                    data_carico: data,
-                    note: note || null
-                });
-
-                // Crea 4 righe dettaglio vuote
-                for (var i = 0; i < PRODOTTI.length; i++) {
-                    await ENI.API.insert(T_DETTAGLIO, {
-                        carico_id: carico.id,
-                        prodotto: PRODOTTI[i].id
-                    });
-                }
-
-                modalEl.remove();
-                await _loadDatiPeriodo();
-                _renderTab();
-                ENI.UI.success('Carico #' + numProg + ' creato');
-            } catch(e) {
-                ENI.UI.error('Errore: ' + e.message);
-            }
-        });
-    }
-
-    // ============================================================
-    // FORM MODIFICA DETTAGLIO CARICO
-    // ============================================================
-
-    function _showDettaglioForm(det, caricoId) {
-        var prod = PRODOTTI.find(function(p) { return p.id === det.prodotto; });
-
-        var modal =
-            '<div class="modal-backdrop" id="mc-modal-det">' +
-                '<div class="modal" style="max-width:400px;">' +
-                    '<div class="modal-header"><h3>' + prod.label + ' - Carico</h3></div>' +
-                    '<div class="modal-body">' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Litri commerciali</label>' +
-                            '<input type="number" class="form-input" id="mc-det-litri-comm" step="0.01" value="' + (det.litri_commerciali || 0) + '">' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Prezzo commerciale (\u20AC/lt)</label>' +
-                            '<input type="number" class="form-input" id="mc-det-prezzo" step="0.00001" value="' + (det.prezzo_commerciale || 0) + '">' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Litri fiscali</label>' +
-                            '<input type="number" class="form-input" id="mc-det-litri-fisc" step="0.01" value="' + (det.litri_fiscali || 0) + '">' +
-                        '</div>' +
-                        '<div id="mc-det-preview" style="padding:var(--space-2); background:var(--color-gray-50); border-radius:var(--radius-md); margin-top:var(--space-2); font-size:var(--font-size-sm);"></div>' +
-                    '</div>' +
-                    '<div class="modal-footer">' +
-                        '<button class="btn btn-outline" id="mc-det-annulla">Annulla</button>' +
-                        '<button class="btn btn-primary" id="mc-det-salva">Salva</button>' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
-
-        document.body.insertAdjacentHTML('beforeend', modal);
-        var modalEl = document.getElementById('mc-modal-det');
-        requestAnimationFrame(function() { modalEl.classList.add('active'); });
-
-        function updatePreview() {
-            var litriComm = parseFloat(document.getElementById('mc-det-litri-comm').value) || 0;
-            var prezzo = parseFloat(document.getElementById('mc-det-prezzo').value) || 0;
-            var litriFisc = parseFloat(document.getElementById('mc-det-litri-fisc').value) || 0;
-            var calc = _calcolaRigaProdotto(det.prodotto, litriComm, prezzo, litriFisc, _getDataRiferimentoPeriodo());
-            var prev = document.getElementById('mc-det-preview');
-            prev.innerHTML =
-                'Monofase: <strong>' + _formatPrezzo5(calc.monofase) + '</strong> | ' +
-                'Costo comm.: <strong>' + _formatEuro(calc.costoCommerciale) + '</strong> | ' +
-                'Costo fisc.: <strong>' + _formatEuro(calc.costoFiscale) + '</strong> | ' +
-                'Totale: <strong style="color:var(--color-primary);">' + _formatEuro(calc.costoTotale) + '</strong>';
-        }
-
-        ['mc-det-litri-comm', 'mc-det-prezzo', 'mc-det-litri-fisc'].forEach(function(id) {
-            document.getElementById(id).addEventListener('input', updatePreview);
-        });
-        updatePreview();
-
-        document.getElementById('mc-det-annulla').addEventListener('click', function() { modalEl.remove(); });
-        modalEl.addEventListener('click', function(e) { if (e.target === modalEl) modalEl.remove(); });
-
-        document.getElementById('mc-det-salva').addEventListener('click', async function() {
-            var litriComm = parseFloat(document.getElementById('mc-det-litri-comm').value) || 0;
-            var prezzo = parseFloat(document.getElementById('mc-det-prezzo').value) || 0;
-            var litriFisc = parseFloat(document.getElementById('mc-det-litri-fisc').value) || 0;
-            var calc = _calcolaRigaProdotto(det.prodotto, litriComm, prezzo, litriFisc, _getDataRiferimentoPeriodo());
-
-            try {
-                await ENI.API.update(T_DETTAGLIO, det.id, {
-                    litri_commerciali: litriComm,
-                    prezzo_commerciale: prezzo,
-                    litri_fiscali: litriFisc,
-                    monofase: calc.monofase,
-                    prezzo_comm_pagato: calc.prezzoCommPagato,
-                    costo_commerciale: calc.costoCommerciale,
-                    costo_fiscale: calc.costoFiscale,
-                    costo_totale_prodotto: calc.costoTotale
-                });
-
-                // Aggiorna totale carico
-                var dettagli = await ENI.API.getAll(T_DETTAGLIO, {
-                    filters: [{ op: 'eq', col: 'carico_id', val: caricoId }]
-                });
-                var totCarico = dettagli.reduce(function(s, d) { return s + (parseFloat(d.costo_totale_prodotto) || 0); }, 0);
-                await ENI.API.update(T_CARICHI, caricoId, { costo_totale_carico: totCarico });
-
-                modalEl.remove();
-                await _ricalcolaPeriodo();
-                ENI.UI.success('Dettaglio aggiornato');
-            } catch(e) {
-                ENI.UI.error('Errore: ' + e.message);
-            }
-        });
-    }
-
-    // ============================================================
-    // ELIMINA CARICO
-    // ============================================================
-
-    async function _handleEliminaCarico(id) {
-        if (!confirm('Eliminare questo carico e tutti i suoi dettagli?')) return;
-        try {
-            await ENI.API.remove(T_CARICHI, id);
-            // Rinumera carichi
-            var carichiRes = await ENI.API.getAll(T_CARICHI, {
-                filters: [{ op: 'eq', col: 'periodo_id', val: _periodo.id }],
-                order: { col: 'numero_progressivo', asc: true }
-            });
-            for (var i = 0; i < carichiRes.length; i++) {
-                if (carichiRes[i].numero_progressivo !== i + 1) {
-                    await ENI.API.update(T_CARICHI, carichiRes[i].id, { numero_progressivo: i + 1 });
-                }
-            }
-            await _ricalcolaPeriodo();
-            ENI.UI.success('Carico eliminato');
-        } catch(e) {
-            ENI.UI.error('Errore: ' + e.message);
-        }
-    }
-
-    // ============================================================
-    // TAB: RIEPILOGO
-    // ============================================================
-
-    function _renderRiepilogo(container) {
-        var isChiuso = _periodo.stato === 'chiuso';
-        var totali = _calcolaTotali();
+    async function _renderCarichi(container) {
+        var carichi = await ENI.API.getAll(T.CARICHI, { order: { col: 'data', asc: false } }) || [];
 
         var html =
-            '<div class="card" style="margin-bottom:var(--space-3);">' +
-                '<div class="card-body">' +
-                    '<h3 style="margin:0 0 var(--space-3) 0;">Dati di Vendita e Voci Accessorie</h3>' +
-                    '<div class="form-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:var(--space-3);">' +
-                        _renderCampoRiepilogo('Litri venduti', 'mc-litri-venduti', _periodo.litri_venduti, isChiuso, '0.01') +
-                        _renderCampoRiepilogo('Totale incassato (\u20AC)', 'mc-incassato', _periodo.totale_incassato, isChiuso, '0.01') +
-                        _renderCampoRiepilogo('Rimborso Stato (\u20AC)', 'mc-rimborso-stato', _periodo.rimborso_stato, isChiuso, '0.01') +
-                        _renderCampoRiepilogo('Pi\u00F9 Servito (\u20AC)', 'mc-piu-servito', _periodo.piu_servito, isChiuso, '0.01') +
-                        _renderCampoRiepilogo('Rimborso Cali (\u20AC)', 'mc-rimborso-cali', _periodo.rimborso_cali, isChiuso, '0.01') +
-                        _renderCampoRiepilogo('Note Credito (\u20AC)', 'mc-note-credito', _periodo.note_credito, isChiuso, '0.01') +
-                        _renderCampoRiepilogo('Note Debito (\u20AC)', 'mc-note-debito', _periodo.note_debito, isChiuso, '0.01') +
-                    '</div>' +
-                    (!isChiuso ? '<button class="btn btn-primary btn-sm" id="mc-btn-salva-riepilogo" style="margin-top:var(--space-3);">Salva</button>' : '') +
-                '</div>' +
+            '<div style="margin-bottom:var(--space-3);">' +
+                '<button class="btn btn-primary btn-sm" id="mc-btn-add-carico">+ Nuovo Carico</button>' +
             '</div>';
 
-        // Riepilogo calcolo
-        html +=
-            '<div class="card" style="border:2px solid var(--color-primary);">' +
-                '<div class="card-body">' +
-                    '<h3 style="margin:0 0 var(--space-3) 0;">Calcolo Marginalit\u00e0</h3>' +
-                    '<table class="table cm-table-compact" style="max-width:500px;">' +
-                        '<tbody>' +
-                            '<tr><td>Totale costo carichi</td><td class="text-right">' + _formatEuro(totali.totaleCostoCarichi) + '</td></tr>' +
-                            '<tr><td>Rimanenze iniziali</td><td class="text-right">' + _formatEuro(totali.totRimIniziali) + '</td></tr>' +
-                            '<tr><td>Rimanenze finali</td><td class="text-right">' + _formatEuro(totali.totRimFinali) + '</td></tr>' +
-                            '<tr><td>Differenza rimanenze</td><td class="text-right">' + _formatEuro(totali.diffRimanenze) + '</td></tr>' +
-                            '<tr style="border-top:2px solid var(--color-gray-300);"><td>Totale incassato</td><td class="text-right">' + _formatEuro(parseFloat(_periodo.totale_incassato) || 0) + '</td></tr>' +
-                            '<tr><td>Voci accessorie</td><td class="text-right">' + _formatEuro(totali.vociAccessorie) + '</td></tr>' +
-                            '<tr style="font-size:1.1em; font-weight:700; border-top:2px solid var(--color-primary);"><td>UTILE MENSILE</td><td class="text-right" style="color:' + (totali.utile >= 0 ? 'var(--color-success)' : 'var(--color-danger)') + ';">' + _formatEuro(totali.utile) + '</td></tr>' +
-                            '<tr style="font-size:1.1em; font-weight:700;"><td>MARGINE MEDIO / LITRO</td><td class="text-right" style="color:var(--color-primary);">' + (totali.margineLitro !== null ? _formatEuro4(totali.margineLitro) : 'N/D') + '</td></tr>' +
-                        '</tbody>' +
-                    '</table>' +
-                '</div>' +
-            '</div>';
+        if (carichi.length === 0) {
+            html += '<div class="card"><div class="card-body"><p class="empty-state-text">Nessun carico registrato</p></div></div>';
+        } else {
+            html += '<div class="card"><div class="card-body" style="overflow-x:auto; padding:var(--space-2);">' +
+                '<table class="table cm-table-compact"><thead><tr>' +
+                    '<th>Data</th><th>Prodotto</th><th class="text-right">Lt. Ordinati</th><th class="text-right">Lt. Fisici</th>' +
+                    '<th class="text-right">Lt. Fiscali</th><th class="text-right">MP (\u20AC/lt)</th><th class="text-right">Accisa</th>' +
+                    '<th class="text-right" style="background:#e0f7fa;">Costo Tot.</th><th class="text-right" style="background:#e0f7fa;">Costo/Lt</th>' +
+                    '<th class="text-right">C.M. Dopo</th><th></th>' +
+                '</tr></thead><tbody>';
 
-        // Azioni mese
-        html +=
-            '<div style="margin-top:var(--space-3); display:flex; gap:var(--space-2);">' +
-                (isChiuso
-                    ? '<button class="btn btn-outline btn-sm" id="mc-btn-riapri">Riapri Mese</button>'
-                    : '<button class="btn btn-outline btn-sm" id="mc-btn-chiudi">Chiudi Mese</button>') +
-            '</div>';
+            carichi.forEach(function(c) {
+                var prodNome = _prodotti.find(function(p) { return p.id === c.prodotto_id; });
+                html += '<tr>' +
+                    '<td>' + _fmtData(c.data) + '</td>' +
+                    '<td><strong>' + (prodNome ? prodNome.nome : c.prodotto_id) + '</strong></td>' +
+                    '<td class="text-right">' + _fmt(c.litri_ordinati, 0) + '</td>' +
+                    '<td class="text-right">' + _fmt(c.litri_fisici, 0) + '</td>' +
+                    '<td class="text-right">' + _fmt(c.litri_fiscali, 0) + '</td>' +
+                    '<td class="text-right">' + _fmtEuro5(c.prezzo_mp) + '</td>' +
+                    '<td class="text-right">' + (parseFloat(c.accisa) || 0).toFixed(4) + '</td>' +
+                    '<td class="text-right" style="background:#e0f7fa; font-weight:600;">' + _fmtEuro(c.costo_carico_totale) + '</td>' +
+                    '<td class="text-right" style="background:#e0f7fa;">' + _fmtEuro5(c.costo_per_litro_fisico) + '</td>' +
+                    '<td class="text-right">' + _fmtEuro5(c.costo_medio_risultante) + '</td>' +
+                    '<td><button class="btn-icon mc-del-carico" data-id="' + c.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>' +
+                '</tr>';
+            });
+            html += '</tbody></table></div></div>';
+        }
 
         container.innerHTML = html;
 
-        // Listener salva riepilogo
-        var btnSalva = document.getElementById('mc-btn-salva-riepilogo');
-        if (btnSalva) {
-            btnSalva.addEventListener('click', async function() {
+        document.getElementById('mc-btn-add-carico').addEventListener('click', _showCaricoForm);
+        container.querySelectorAll('.mc-del-carico').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                if (!confirm('Eliminare questo carico?')) return;
                 try {
-                    await ENI.API.update(T_PERIODI, _periodo.id, {
-                        litri_venduti: parseFloat(document.getElementById('mc-litri-venduti').value) || 0,
-                        totale_incassato: parseFloat(document.getElementById('mc-incassato').value) || 0,
-                        rimborso_stato: parseFloat(document.getElementById('mc-rimborso-stato').value) || 0,
-                        piu_servito: parseFloat(document.getElementById('mc-piu-servito').value) || 0,
-                        rimborso_cali: parseFloat(document.getElementById('mc-rimborso-cali').value) || 0,
-                        note_credito: parseFloat(document.getElementById('mc-note-credito').value) || 0,
-                        note_debito: parseFloat(document.getElementById('mc-note-debito').value) || 0
-                    });
-                    await _ricalcolaPeriodo();
-                    ENI.UI.success('Dati salvati');
-                } catch(e) {
-                    ENI.UI.error('Errore: ' + e.message);
-                }
-            });
-        }
-
-        // Chiudi/Riapri mese
-        var btnChiudi = document.getElementById('mc-btn-chiudi');
-        if (btnChiudi) {
-            btnChiudi.addEventListener('click', async function() {
-                if (!confirm('Chiudere il mese?')) return;
-                try {
-                    await ENI.API.update(T_PERIODI, _periodo.id, { stato: 'chiuso' });
-                    await _ricalcolaPeriodo();
-                    ENI.UI.success('Mese chiuso');
+                    await ENI.API.remove(T.CARICHI, btn.getAttribute('data-id'));
+                    await _ricalcolaStato();
+                    _renderPage();
+                    ENI.UI.success('Carico eliminato');
                 } catch(e) { ENI.UI.error('Errore: ' + e.message); }
             });
-        }
-
-        var btnRiapri = document.getElementById('mc-btn-riapri');
-        if (btnRiapri) {
-            btnRiapri.addEventListener('click', async function() {
-                if (!confirm('Riaprire il mese?')) return;
-                try {
-                    await ENI.API.update(T_PERIODI, _periodo.id, { stato: 'bozza' });
-                    await _ricalcolaPeriodo();
-                    ENI.UI.success('Mese riaperto');
-                } catch(e) { ENI.UI.error('Errore: ' + e.message); }
-            });
-        }
+        });
     }
 
-    function _renderCampoRiepilogo(label, id, value, isChiuso, step) {
-        return '<div class="form-group">' +
-            '<label class="form-label">' + label + '</label>' +
-            (isChiuso
-                ? '<div style="padding:var(--space-2); font-weight:600;">' + (parseFloat(value) || 0) + '</div>'
-                : '<input type="number" class="form-input" id="' + id + '" step="' + step + '" value="' + (parseFloat(value) || 0) + '">') +
+    function _showCaricoForm() {
+        var oggi = _todayStr();
+        var opts = _prodotti.map(function(p) { return '<option value="' + p.id + '">' + p.nome + '</option>'; }).join('');
+
+        var modal = _modal('mc-modal-carico', 'Nuovo Carico',
+            '<div class="form-group"><label class="form-label">Prodotto</label><select class="form-select" id="mc-car-prod">' + opts + '</select></div>' +
+            _formField('Data', 'mc-car-data', 'date', oggi) +
+            _formField('Litri ordinati', 'mc-car-ord', 'number', '', '0.01') +
+            _formField('Litri fisici (sonda)', 'mc-car-fisici', 'number', '', '0.01') +
+            _formField('Litri fiscali (bolla)', 'mc-car-fiscali', 'number', '', '0.01') +
+            _formField('Prezzo MP (\u20AC/lt)', 'mc-car-mp', 'number', '', '0.00001') +
+            _formField('Accisa (\u20AC/lt)', 'mc-car-accisa', 'number', '', '0.000001') +
+            _formField('Note', 'mc-car-note', 'text', '') +
+            '<div id="mc-car-preview" style="padding:var(--space-2); background:var(--color-gray-50); border-radius:var(--radius-md); margin-top:var(--space-2); font-size:0.85rem;"></div>',
+            'mc-car-salva', 'Registra Carico'
+        );
+        _openModal(modal, 'mc-modal-carico');
+
+        // Precompila accisa dal prodotto selezionato
+        async function precompileAccisa() {
+            var prodId = document.getElementById('mc-car-prod').value;
+            var accise = await ENI.API.getAll(T.ACCISE, {
+                filters: [{ op: 'eq', col: 'prodotto_id', val: prodId }, { op: 'is', col: 'data_fine', val: null }],
+                order: { col: 'data_inizio', asc: false }, limit: 1
+            });
+            if (accise && accise.length > 0) {
+                document.getElementById('mc-car-accisa').value = accise[0].accisa;
+            }
+        }
+        precompileAccisa();
+        document.getElementById('mc-car-prod').addEventListener('change', precompileAccisa);
+
+        // Preview
+        function updatePreview() {
+            var fisici = parseFloat(document.getElementById('mc-car-fisici').value) || 0;
+            var fiscali = parseFloat(document.getElementById('mc-car-fiscali').value) || 0;
+            var mp = parseFloat(document.getElementById('mc-car-mp').value) || 0;
+            var accisa = parseFloat(document.getElementById('mc-car-accisa').value) || 0;
+            if (fisici <= 0) { document.getElementById('mc-car-preview').innerHTML = ''; return; }
+            var calc = ENI.Calcoli.calcolaCostoCarico(fiscali, fisici, mp, accisa);
+            document.getElementById('mc-car-preview').innerHTML =
+                'Costo totale: <strong>' + _fmtEuro(calc.costo_carico_totale) + '</strong> | Costo/lt fisico: <strong>' + _fmtEuro5(calc.costo_per_litro_fisico) + '</strong>';
+        }
+        ['mc-car-fisici','mc-car-fiscali','mc-car-mp','mc-car-accisa'].forEach(function(id) {
+            document.getElementById(id).addEventListener('input', updatePreview);
+        });
+
+        document.getElementById('mc-car-salva').addEventListener('click', async function() {
+            var prodId = document.getElementById('mc-car-prod').value;
+            var data = document.getElementById('mc-car-data').value;
+            var ordinati = parseFloat(document.getElementById('mc-car-ord').value) || 0;
+            var fisici = parseFloat(document.getElementById('mc-car-fisici').value) || 0;
+            var fiscali = parseFloat(document.getElementById('mc-car-fiscali').value) || 0;
+            var mp = parseFloat(document.getElementById('mc-car-mp').value) || 0;
+            var accisa = parseFloat(document.getElementById('mc-car-accisa').value) || 0;
+            var note = document.getElementById('mc-car-note').value || null;
+
+            if (!data || fisici <= 0 || fiscali <= 0 || mp <= 0) {
+                ENI.UI.warning('Compila tutti i campi obbligatori'); return;
+            }
+
+            var calc = ENI.Calcoli.calcolaCostoCarico(fiscali, fisici, mp, accisa);
+
+            // Calcola nuovo costo medio
+            var st = _statoProdotti[prodId] || {};
+            var cm = ENI.Calcoli.aggiornaCostoMedio(
+                st.giacenza_teorica || 0, st.costo_medio || 0,
+                fisici, calc.costo_per_litro_fisico
+            );
+
+            try {
+                await ENI.API.insert(T.CARICHI, {
+                    prodotto_id: prodId, data: data, litri_ordinati: ordinati,
+                    litri_fisici: fisici, litri_fiscali: fiscali, prezzo_mp: mp,
+                    accisa: accisa, costo_carico_totale: calc.costo_carico_totale,
+                    costo_per_litro_fisico: calc.costo_per_litro_fisico,
+                    costo_medio_risultante: cm.nuovo_costo_medio, note: note
+                });
+                _closeModal('mc-modal-carico');
+                await _ricalcolaStato();
+                _renderPage();
+                ENI.UI.success('Carico registrato. Nuovo costo medio: ' + _fmtEuro5(cm.nuovo_costo_medio));
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+        });
+    }
+
+    // ============================================================
+    // TAB: VENDITE (placeholder - da completare)
+    // ============================================================
+
+    function _renderVendite(container) {
+        container.innerHTML =
+            '<div class="card"><div class="card-body"><div class="empty-state">' +
+                '<p class="empty-state-text">Tab Vendite in sviluppo</p>' +
+                '<p style="color:var(--text-secondary);">Registro giornaliero vendite con regola festivi</p>' +
+            '</div></div></div>';
+    }
+
+    // ============================================================
+    // TAB: PREZZI POMPA (placeholder)
+    // ============================================================
+
+    function _renderPrezzi(container) {
+        container.innerHTML =
+            '<div class="card"><div class="card-body"><div class="empty-state">' +
+                '<p class="empty-state-text">Tab Prezzi Pompa in sviluppo</p>' +
+            '</div></div></div>';
+    }
+
+    // ============================================================
+    // TAB: REPORT (placeholder)
+    // ============================================================
+
+    function _renderReport(container) {
+        container.innerHTML =
+            '<div class="card"><div class="card-body"><div class="empty-state">' +
+                '<p class="empty-state-text">Tab Report in sviluppo</p>' +
+            '</div></div></div>';
+    }
+
+    // ============================================================
+    // TAB: CONGUAGLI & PC (placeholder)
+    // ============================================================
+
+    function _renderConguagli(container) {
+        container.innerHTML =
+            '<div class="card"><div class="card-body"><div class="empty-state">' +
+                '<p class="empty-state-text">Tab Conguagli & Progetto Carburante in sviluppo</p>' +
+            '</div></div></div>';
+    }
+
+    // ============================================================
+    // UTILITY MODALI
+    // ============================================================
+
+    function _modal(id, title, body, btnId, btnLabel) {
+        return '<div class="modal-backdrop" id="' + id + '">' +
+            '<div class="modal" style="max-width:450px;">' +
+                '<div class="modal-header"><h3>' + title + '</h3></div>' +
+                '<div class="modal-body">' + body + '</div>' +
+                '<div class="modal-footer">' +
+                    '<button class="btn btn-outline mc-modal-close">Annulla</button>' +
+                    '<button class="btn btn-primary" id="' + btnId + '">' + btnLabel + '</button>' +
+                '</div>' +
+            '</div>' +
         '</div>';
     }
 
-    // ============================================================
-    // RICALCOLA PERIODO
-    // ============================================================
-
-    async function _ricalcolaPeriodo() {
-        await _loadDatiPeriodo();
-
-        // Ricalcola periodo
-        var periodoRes = await ENI.API.getAll(T_PERIODI, {
-            filters: [
-                { op: 'eq', col: 'anno', val: _periodo.anno },
-                { op: 'eq', col: 'mese', val: _periodo.mese }
-            ],
-            limit: 1
-        });
-        if (periodoRes && periodoRes.length > 0) _periodo = periodoRes[0];
-
-        var totali = _calcolaTotali();
-
-        await ENI.API.update(T_PERIODI, _periodo.id, {
-            totale_costo_carichi: totali.totaleCostoCarichi,
-            differenza_rimanenze: totali.diffRimanenze,
-            utile_mensile: totali.utile,
-            margine_medio_litro: totali.margineLitro || 0,
-            updated_at: new Date().toISOString()
-        });
-
-        // Ricarica periodo aggiornato
-        var periodoUpd = await ENI.API.getAll(T_PERIODI, {
-            filters: [
-                { op: 'eq', col: 'anno', val: _periodo.anno },
-                { op: 'eq', col: 'mese', val: _periodo.mese }
-            ],
-            limit: 1
-        });
-        if (periodoUpd && periodoUpd.length > 0) _periodo = periodoUpd[0];
-
-        var content = document.getElementById('mc-content');
-        if (content) _renderContent(content);
+    function _openModal(html, id) {
+        document.body.insertAdjacentHTML('beforeend', html);
+        var el = document.getElementById(id);
+        requestAnimationFrame(function() { el.classList.add('active'); });
+        el.querySelector('.mc-modal-close').addEventListener('click', function() { el.remove(); });
+        el.addEventListener('click', function(e) { if (e.target === el) el.remove(); });
     }
 
-    // ============================================================
-    // CALCOLI
-    // ============================================================
-
-    function _calcolaRigaProdotto(prodotto, litriComm, prezzoComm, litriFisc, dataRif) {
-        var aliquota = _getAliquotaMonofase(dataRif);
-        var accisa = _getAccisa(prodotto, dataRif);
-        var monofase = prezzoComm * aliquota;
-        var prezzoCommPagato = prezzoComm + monofase;
-        var costoCommerciale = litriComm * prezzoCommPagato;
-        var costoFiscale = litriFisc * (accisa * (1 + aliquota));
-        var costoTotale = costoCommerciale + costoFiscale;
-
-        return {
-            monofase: Math.round(monofase * 100000) / 100000,
-            prezzoCommPagato: Math.round(prezzoCommPagato * 100000) / 100000,
-            costoCommerciale: Math.round(costoCommerciale * 100) / 100,
-            costoFiscale: Math.round(costoFiscale * 100) / 100,
-            costoTotale: Math.round(costoTotale * 100) / 100
-        };
+    function _closeModal(id) {
+        var el = document.getElementById(id);
+        if (el) el.remove();
     }
 
-    function _calcolaTotali() {
-        var totRimIniziali = _rimanenze
-            .filter(function(r) { return r.tipo === 'iniziale'; })
-            .reduce(function(s, r) { return s + (parseFloat(r.costo_totale) || 0); }, 0);
-
-        var totRimFinali = _rimanenze
-            .filter(function(r) { return r.tipo === 'finale'; })
-            .reduce(function(s, r) { return s + (parseFloat(r.costo_totale) || 0); }, 0);
-
-        var totaleCostoCarichi = _carichi
-            .reduce(function(s, c) { return s + (parseFloat(c.costo_totale_carico) || 0); }, 0);
-
-        var diffRimanenze = totRimFinali - totRimIniziali;
-
-        var incassato = parseFloat(_periodo.totale_incassato) || 0;
-        var rimborsoStato = parseFloat(_periodo.rimborso_stato) || 0;
-        var piuServito = parseFloat(_periodo.piu_servito) || 0;
-        var rimborsoCali = parseFloat(_periodo.rimborso_cali) || 0;
-        var noteCredito = parseFloat(_periodo.note_credito) || 0;
-        var noteDebito = parseFloat(_periodo.note_debito) || 0;
-
-        var vociAccessorie = rimborsoStato + piuServito + rimborsoCali + noteCredito + noteDebito;
-
-        var margineBase = incassato - totaleCostoCarichi + diffRimanenze;
-        var utile = margineBase + vociAccessorie;
-
-        var litriVenduti = parseFloat(_periodo.litri_venduti) || 0;
-        var margineLitro = litriVenduti > 0 ? utile / litriVenduti : null;
-
-        return {
-            totRimIniziali: totRimIniziali,
-            totRimFinali: totRimFinali,
-            totaleCostoCarichi: totaleCostoCarichi,
-            diffRimanenze: diffRimanenze,
-            vociAccessorie: vociAccessorie,
-            utile: Math.round(utile * 100) / 100,
-            margineLitro: margineLitro !== null ? Math.round(margineLitro * 10000) / 10000 : null
-        };
+    function _formField(label, id, type, value, step) {
+        return '<div class="form-group"><label class="form-label">' + label + '</label>' +
+            '<input type="' + type + '" class="form-input" id="' + id + '" value="' + (value || '') + '"' +
+            (step ? ' step="' + step + '"' : '') + '></div>';
     }
 
     // ============================================================
     // UTILITY FORMATTAZIONE
     // ============================================================
 
-    function _formatEuro(n) {
-        return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(n || 0);
-    }
-
-    function _formatEuro4(n) {
-        return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(n || 0);
-    }
-
-    function _formatNumero(n) {
-        return new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
-    }
-
-    function _formatPrezzo5(n) {
-        return (n || 0).toFixed(5).replace('.', ',');
-    }
-
-    function _formatData(d) {
-        if (!d) return '';
-        var parts = d.split('-');
-        return parts[2] + '/' + parts[1] + '/' + parts[0];
-    }
-
-    // ============================================================
-    // TAB: PARAMETRI FISCALI
-    // ============================================================
-
-    var _allParametri = [];
-
-    async function _loadAllParametri() {
-        _allParametri = await ENI.API.getAll(T_PARAMETRI, {
-            order: { col: 'data_inizio', asc: false }
-        }) || [];
-    }
-
-    async function _renderParametri(container) {
-        await _loadAllParametri();
-
-        var tipiLabel = {
-            'aliquota_monofase': 'Aliquota Monofase (IVA)',
-            'accisa_benzina': 'Accisa Benzina + Blu Super',
-            'accisa_gasolio': 'Accisa Gasolio + Diesel+'
-        };
-
-        // Separa attivi e storici
-        var attivi = _allParametri.filter(function(p) { return !p.data_fine; });
-        var storici = _allParametri.filter(function(p) { return p.data_fine; });
-
-        var html =
-            '<div class="card" style="margin-bottom:var(--space-3);">' +
-                '<div class="card-body">' +
-                    '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-3);">' +
-                        '<h3 style="margin:0;">Parametri Attivi</h3>' +
-                        '<button class="btn btn-primary btn-sm" id="mc-btn-new-param">+ Nuovo Parametro</button>' +
-                    '</div>' +
-                    '<table class="table cm-table-compact">' +
-                        '<thead><tr>' +
-                            '<th>Tipo</th>' +
-                            '<th class="text-right">Valore</th>' +
-                            '<th>Da</th>' +
-                            '<th>Note</th>' +
-                            '<th style="width:80px;"></th>' +
-                        '</tr></thead>' +
-                        '<tbody>';
-
-        if (attivi.length === 0) {
-            html += '<tr><td colspan="5" style="text-align:center; color:var(--text-secondary);">Nessun parametro attivo</td></tr>';
-        }
-
-        attivi.forEach(function(p) {
-            html +=
-                '<tr>' +
-                    '<td><strong>' + (tipiLabel[p.tipo] || p.tipo) + '</strong></td>' +
-                    '<td class="text-right" style="font-weight:700;">' + _formatValore(p) + '</td>' +
-                    '<td>' + _formatData(p.data_inizio) + '</td>' +
-                    '<td style="color:var(--text-secondary); font-size:0.8rem;">' + (p.note ? ENI.UI.escapeHtml(p.note) : '') + '</td>' +
-                    '<td class="text-right">' +
-                        '<button class="btn-icon mc-btn-chiudi-param" data-id="' + p.id + '" title="Chiudi (imposta data fine)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>' +
-                        '<button class="btn-icon mc-btn-del-param" data-id="' + p.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
-                    '</td>' +
-                '</tr>';
-        });
-
-        html += '</tbody></table></div></div>';
-
-        // Storico
-        if (storici.length > 0) {
-            html +=
-                '<div class="card">' +
-                    '<div class="card-body">' +
-                        '<h3 style="margin:0 0 var(--space-3) 0; color:var(--text-secondary);">Storico Parametri</h3>' +
-                        '<table class="table cm-table-compact">' +
-                            '<thead><tr>' +
-                                '<th>Tipo</th>' +
-                                '<th class="text-right">Valore</th>' +
-                                '<th>Da</th>' +
-                                '<th>A</th>' +
-                                '<th>Note</th>' +
-                            '</tr></thead>' +
-                            '<tbody>';
-
-            storici.forEach(function(p) {
-                html +=
-                    '<tr style="opacity:0.7;">' +
-                        '<td>' + (tipiLabel[p.tipo] || p.tipo) + '</td>' +
-                        '<td class="text-right">' + _formatValore(p) + '</td>' +
-                        '<td>' + _formatData(p.data_inizio) + '</td>' +
-                        '<td>' + _formatData(p.data_fine) + '</td>' +
-                        '<td style="color:var(--text-secondary); font-size:0.8rem;">' + (p.note ? ENI.UI.escapeHtml(p.note) : '') + '</td>' +
-                    '</tr>';
-            });
-
-            html += '</tbody></table></div></div>';
-        }
-
-        container.innerHTML = html;
-
-        // Listeners
-        document.getElementById('mc-btn-new-param').addEventListener('click', _showNewParamForm);
-
-        container.querySelectorAll('.mc-btn-chiudi-param').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                _showChiudiParamForm(btn.getAttribute('data-id'));
-            });
-        });
-
-        container.querySelectorAll('.mc-btn-del-param').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                _handleDeleteParam(btn.getAttribute('data-id'));
-            });
-        });
-    }
-
-    function _formatValore(p) {
-        if (p.tipo === 'aliquota_monofase') {
-            return (parseFloat(p.valore) * 100).toFixed(1) + '%';
-        }
-        return (parseFloat(p.valore) || 0).toFixed(6).replace('.', ',') + ' \u20AC/lt';
-    }
-
-    // ============================================================
-    // FORM: NUOVO PARAMETRO
-    // ============================================================
-
-    function _showNewParamForm() {
-        var oggi = new Date();
-        var dataDefault = oggi.getFullYear() + '-' + String(oggi.getMonth() + 1).padStart(2, '0') + '-' + String(oggi.getDate()).padStart(2, '0');
-
-        var modal =
-            '<div class="modal-backdrop" id="mc-modal-param">' +
-                '<div class="modal" style="max-width:420px;">' +
-                    '<div class="modal-header"><h3>Nuovo Parametro Fiscale</h3></div>' +
-                    '<div class="modal-body">' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Tipo</label>' +
-                            '<select class="form-select" id="mc-param-tipo">' +
-                                '<option value="accisa_benzina">Accisa Benzina + Blu Super</option>' +
-                                '<option value="accisa_gasolio">Accisa Gasolio + Diesel+</option>' +
-                                '<option value="aliquota_monofase">Aliquota Monofase (IVA)</option>' +
-                            '</select>' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Valore (per accise: \u20AC/litro, per IVA: decimale es. 0.21)</label>' +
-                            '<input type="number" class="form-input" id="mc-param-valore" step="0.000001" placeholder="0.648700">' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">In vigore dal</label>' +
-                            '<input type="date" class="form-input" id="mc-param-data-inizio" value="' + dataDefault + '">' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">In vigore fino al (lascia vuoto se ancora attivo)</label>' +
-                            '<input type="date" class="form-input" id="mc-param-data-fine" value="">' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Note (opzionale)</label>' +
-                            '<input type="text" class="form-input" id="mc-param-note" placeholder="Es. Decreto Legge XY">' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="modal-footer">' +
-                        '<button class="btn btn-outline" id="mc-param-annulla">Annulla</button>' +
-                        '<button class="btn btn-primary" id="mc-param-salva">Salva</button>' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
-
-        document.body.insertAdjacentHTML('beforeend', modal);
-        var modalEl = document.getElementById('mc-modal-param');
-        requestAnimationFrame(function() { modalEl.classList.add('active'); });
-
-        document.getElementById('mc-param-annulla').addEventListener('click', function() { modalEl.remove(); });
-        modalEl.addEventListener('click', function(e) { if (e.target === modalEl) modalEl.remove(); });
-
-        document.getElementById('mc-param-salva').addEventListener('click', async function() {
-            var tipo = document.getElementById('mc-param-tipo').value;
-            var valore = parseFloat(document.getElementById('mc-param-valore').value);
-            var dataInizio = document.getElementById('mc-param-data-inizio').value;
-            var dataFine = document.getElementById('mc-param-data-fine').value || null;
-            var note = document.getElementById('mc-param-note').value.trim() || null;
-
-            if (!valore || valore <= 0) { ENI.UI.warning('Inserisci un valore valido'); return; }
-            if (!dataInizio) { ENI.UI.warning('Inserisci la data di inizio'); return; }
-
-            try {
-                // Se non ha data fine, chiudi automaticamente il parametro attivo dello stesso tipo
-                if (!dataFine) {
-                    var attiviStessoTipo = _allParametri.filter(function(p) {
-                        return p.tipo === tipo && !p.data_fine;
-                    });
-                    for (var i = 0; i < attiviStessoTipo.length; i++) {
-                        // Chiudi il giorno prima della nuova data inizio
-                        var d = new Date(dataInizio);
-                        d.setDate(d.getDate() - 1);
-                        var chiusura = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-                        await ENI.API.update(T_PARAMETRI, attiviStessoTipo[i].id, { data_fine: chiusura });
-                    }
-                }
-
-                await ENI.API.insert(T_PARAMETRI, {
-                    tipo: tipo,
-                    valore: valore,
-                    data_inizio: dataInizio,
-                    data_fine: dataFine,
-                    note: note
-                });
-
-                modalEl.remove();
-                await _loadParametri();
-                _renderTab();
-                ENI.UI.success('Parametro inserito');
-            } catch(e) {
-                ENI.UI.error('Errore: ' + e.message);
-            }
-        });
-    }
-
-    // ============================================================
-    // FORM: CHIUDI PARAMETRO (imposta data fine)
-    // ============================================================
-
-    function _showChiudiParamForm(id) {
-        var param = _allParametri.find(function(p) { return String(p.id) === String(id); });
-        if (!param) return;
-
-        var modal =
-            '<div class="modal-backdrop" id="mc-modal-chiudi-param">' +
-                '<div class="modal" style="max-width:350px;">' +
-                    '<div class="modal-header"><h3>Chiudi Parametro</h3></div>' +
-                    '<div class="modal-body">' +
-                        '<p>Imposta la data di fine validit\u00e0 per questo parametro.</p>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">In vigore fino al</label>' +
-                            '<input type="date" class="form-input" id="mc-chiudi-data">' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="modal-footer">' +
-                        '<button class="btn btn-outline" id="mc-chiudi-annulla">Annulla</button>' +
-                        '<button class="btn btn-primary" id="mc-chiudi-salva">Chiudi Parametro</button>' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
-
-        document.body.insertAdjacentHTML('beforeend', modal);
-        var modalEl = document.getElementById('mc-modal-chiudi-param');
-        requestAnimationFrame(function() { modalEl.classList.add('active'); });
-
-        document.getElementById('mc-chiudi-annulla').addEventListener('click', function() { modalEl.remove(); });
-        modalEl.addEventListener('click', function(e) { if (e.target === modalEl) modalEl.remove(); });
-
-        document.getElementById('mc-chiudi-salva').addEventListener('click', async function() {
-            var dataFine = document.getElementById('mc-chiudi-data').value;
-            if (!dataFine) { ENI.UI.warning('Inserisci la data di fine'); return; }
-
-            try {
-                await ENI.API.update(T_PARAMETRI, id, { data_fine: dataFine });
-                modalEl.remove();
-                await _loadParametri();
-                _renderTab();
-                ENI.UI.success('Parametro chiuso');
-            } catch(e) {
-                ENI.UI.error('Errore: ' + e.message);
-            }
-        });
-    }
-
-    // ============================================================
-    // ELIMINA PARAMETRO
-    // ============================================================
-
-    async function _handleDeleteParam(id) {
-        if (!confirm('Eliminare questo parametro?')) return;
-        try {
-            await ENI.API.remove(T_PARAMETRI, id);
-            await _loadParametri();
-            _renderTab();
-            ENI.UI.success('Parametro eliminato');
-        } catch(e) {
-            ENI.UI.error('Errore: ' + e.message);
-        }
-    }
+    function _fmtEuro(n) { return new Intl.NumberFormat('it-IT', { style:'currency', currency:'EUR' }).format(n || 0); }
+    function _fmtEuro4(n) { return new Intl.NumberFormat('it-IT', { style:'currency', currency:'EUR', minimumFractionDigits:4, maximumFractionDigits:4 }).format(n || 0); }
+    function _fmtEuro5(n) { return (n || 0).toFixed(5).replace('.', ',') + ' \u20AC'; }
+    function _fmt(n, d) { return new Intl.NumberFormat('it-IT', { minimumFractionDigits: d, maximumFractionDigits: d }).format(n || 0); }
+    function _fmtData(d) { if (!d) return ''; var p = d.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+    function _todayStr() { var d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
     // ============================================================
     // API PUBBLICA
     // ============================================================
 
-    return {
-        render: render
-    };
+    return { render: render };
 })();

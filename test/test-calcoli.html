@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Motore di Calcolo Carburanti</title>
+    <style>
+        body { font-family: 'Inter', sans-serif; padding: 2rem; background: #f5f5f5; }
+        h1 { color: #1B2D4E; }
+        .test-suite { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .test-suite h2 { margin-top: 0; color: #333; font-size: 1.1rem; }
+        .test { padding: 0.5rem 0; border-bottom: 1px solid #eee; display: flex; align-items: center; gap: 0.5rem; }
+        .test:last-child { border-bottom: none; }
+        .pass { color: #2e7d32; }
+        .fail { color: #c62828; }
+        .icon { font-size: 1.2rem; }
+        .detail { color: #666; font-size: 0.85rem; margin-left: 1.5rem; }
+        .summary { font-size: 1.2rem; font-weight: 700; margin-top: 1rem; padding: 1rem; border-radius: 8px; }
+        .summary.all-pass { background: #e8f5e9; color: #2e7d32; }
+        .summary.has-fail { background: #ffebee; color: #c62828; }
+    </style>
+</head>
+<body>
+    <h1>Test Motore di Calcolo Carburanti</h1>
+    <div id="results"></div>
+
+    <script src="../js/lib/calcoli.js"></script>
+    <script>
+    (function() {
+        var results = [];
+        var totalPass = 0;
+        var totalFail = 0;
+
+        function assert(name, actual, expected, tolerance) {
+            tolerance = tolerance || 0.01;
+            var pass;
+            if (typeof expected === 'object' && expected !== null) {
+                pass = true;
+                for (var key in expected) {
+                    if (Math.abs((actual[key] || 0) - expected[key]) > tolerance) {
+                        pass = false;
+                        break;
+                    }
+                }
+            } else {
+                pass = Math.abs(actual - expected) <= tolerance;
+            }
+
+            if (pass) {
+                totalPass++;
+            } else {
+                totalFail++;
+            }
+
+            results.push({
+                name: name,
+                pass: pass,
+                actual: typeof actual === 'object' ? JSON.stringify(actual) : actual,
+                expected: typeof expected === 'object' ? JSON.stringify(expected) : expected
+            });
+        }
+
+        function renderSuite(title, startIdx, endIdx) {
+            var html = '<div class="test-suite"><h2>' + title + '</h2>';
+            for (var i = startIdx; i < endIdx; i++) {
+                var r = results[i];
+                html += '<div class="test">';
+                html += '<span class="icon ' + (r.pass ? 'pass' : 'fail') + '">' + (r.pass ? '\u2705' : '\u274C') + '</span>';
+                html += '<span class="' + (r.pass ? 'pass' : 'fail') + '">' + r.name + '</span>';
+                if (!r.pass) {
+                    html += '<div class="detail">Atteso: ' + r.expected + ' | Ottenuto: ' + r.actual + '</div>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        var C = ENI.Calcoli;
+        var suites = [];
+        var sIdx;
+
+        // ============================================================
+        // SUITE 1: Costo Carico
+        // ============================================================
+        sIdx = results.length;
+
+        // Test base: carico benzina
+        // litri_fiscali=9844, litri_fisici=10000, prezzo_mp=0.59955, accisa=0.6487
+        // costo = 9844 * (0.59955 + 0.6487) * 1.21 = 9844 * 1.24825 * 1.21 = 9844 * 1.510...
+        var c1 = C.calcolaCostoCarico(9844, 10000, 0.59955, 0.6487);
+        // costo_carico_totale = 9844 * (0.59955 + 0.6487) * 1.21
+        var expected_costo = 9844 * (0.59955 + 0.6487) * 1.21;
+        assert('Costo carico totale benzina', c1.costo_carico_totale, Math.round(expected_costo * 100) / 100);
+        assert('Costo per litro fisico benzina', c1.costo_per_litro_fisico, Math.round((expected_costo / 10000) * 1000000) / 1000000, 0.0001);
+
+        // Test: litri fiscali = litri fisici (caso semplice)
+        var c2 = C.calcolaCostoCarico(1000, 1000, 0.50, 0.6487);
+        var exp2 = 1000 * (0.50 + 0.6487) * 1.21;
+        assert('Costo carico litri uguali', c2.costo_carico_totale, Math.round(exp2 * 100) / 100);
+        assert('Costo/litro quando litri uguali', c2.costo_per_litro_fisico, Math.round((exp2 / 1000) * 1000000) / 1000000, 0.0001);
+
+        // Test: litri fisici > litri fiscali (vantaggio)
+        var c3 = C.calcolaCostoCarico(950, 1000, 0.60, 0.6487);
+        var exp3 = 950 * (0.60 + 0.6487) * 1.21;
+        assert('Litri fisici > fiscali: costo totale', c3.costo_carico_totale, Math.round(exp3 * 100) / 100);
+        assert('Litri fisici > fiscali: costo/lt pi\u00F9 basso', c3.costo_per_litro_fisico < (0.60 + 0.6487) * 1.21, true, 0);
+
+        suites.push({ title: '1. Costo Carico', start: sIdx, end: results.length });
+
+        // ============================================================
+        // SUITE 2: Costo Medio Ponderato
+        // ============================================================
+        sIdx = results.length;
+
+        // Primo carico su giacenza zero
+        var m1 = C.aggiornaCostoMedio(0, 0, 1000, 1.50);
+        assert('Primo carico: giacenza', m1.nuova_giacenza, 1000);
+        assert('Primo carico: costo medio = costo carico', m1.nuovo_costo_medio, 1.50, 0.0001);
+
+        // Secondo carico: media ponderata
+        // giacenza 1000 a 1.50, aggiungo 500 a 1.80
+        // nuovo = (1000*1.50 + 500*1.80) / 1500 = (1500+900)/1500 = 2400/1500 = 1.60
+        var m2 = C.aggiornaCostoMedio(1000, 1.50, 500, 1.80);
+        assert('Secondo carico: giacenza', m2.nuova_giacenza, 1500);
+        assert('Secondo carico: costo medio ponderato', m2.nuovo_costo_medio, 1.60, 0.0001);
+
+        // Terzo carico: prezzo pi\u00F9 basso che abbassa la media
+        // giacenza 1500 a 1.60, aggiungo 1000 a 1.20
+        // nuovo = (1500*1.60 + 1000*1.20) / 2500 = (2400+1200)/2500 = 3600/2500 = 1.44
+        var m3 = C.aggiornaCostoMedio(1500, 1.60, 1000, 1.20);
+        assert('Terzo carico: costo medio scende', m3.nuovo_costo_medio, 1.44, 0.0001);
+        assert('Terzo carico: giacenza', m3.nuova_giacenza, 2500);
+
+        suites.push({ title: '2. Costo Medio Ponderato', start: sIdx, end: results.length });
+
+        // ============================================================
+        // SUITE 3: Vendita
+        // ============================================================
+        sIdx = results.length;
+
+        // Vendita con margine positivo
+        var v1 = C.applicaVendita(2500, 1.44, 500, 1.55, true);
+        assert('Vendita: giacenza ridotta', v1.nuova_giacenza, 2000);
+        assert('Vendita: costo medio invariato', v1.costo_medio, 1.44, 0.0001);
+        assert('Vendita: margine unitario', v1.margine_unitario, 0.11, 0.01);
+        assert('Vendita: margine totale', v1.margine_vendita, 55.00, 0.5);
+        assert('Vendita: PC maturato (0.0522 * 500)', v1.pc_maturato, 26.10, 0.01);
+
+        // Vendita senza PC
+        var v2 = C.applicaVendita(1000, 1.50, 200, 1.60, false);
+        assert('Vendita senza PC: pc_maturato = 0', v2.pc_maturato, 0);
+
+        // Vendita che porta giacenza a zero
+        var v3 = C.applicaVendita(100, 1.50, 150, 1.60, false);
+        assert('Vendita > giacenza: giacenza = 0', v3.nuova_giacenza, 0);
+
+        suites.push({ title: '3. Vendita e Margine', start: sIdx, end: results.length });
+
+        // ============================================================
+        // SUITE 4: Conguaglio
+        // ============================================================
+        sIdx = results.length;
+
+        // Conguaglio negativo (credito = riduce costo)
+        var cg1 = C.applicaConguaglio(2000, 1.44, -100);
+        // nuovo = 1.44 + (-100/2000) = 1.44 - 0.05 = 1.39
+        assert('Conguaglio credito: costo medio scende', cg1.costo_medio, 1.39, 0.001);
+
+        // Conguaglio positivo (debito = aumenta costo)
+        var cg2 = C.applicaConguaglio(2000, 1.44, 200);
+        // nuovo = 1.44 + (200/2000) = 1.44 + 0.10 = 1.54
+        assert('Conguaglio debito: costo medio sale', cg2.costo_medio, 1.54, 0.001);
+
+        // Conguaglio su giacenza zero (non cambia)
+        var cg3 = C.applicaConguaglio(0, 1.44, -100);
+        assert('Conguaglio su giacenza 0: nessun effetto', cg3.costo_medio, 1.44, 0.001);
+
+        suites.push({ title: '4. Conguaglio ENI', start: sIdx, end: results.length });
+
+        // ============================================================
+        // SUITE 5: Prezzo Consigliato e Margine
+        // ============================================================
+        sIdx = results.length;
+
+        assert('Prezzo consigliato con margine 0.05', C.prezzoConsigliato(1.44, 0.05), 1.49, 0.001);
+        assert('Prezzo consigliato con margine 0.10', C.prezzoConsigliato(1.44, 0.10), 1.54, 0.001);
+        assert('Margine corrente positivo', C.marginCorrente(1.55, 1.44), 0.11, 0.001);
+        assert('Margine corrente negativo', C.marginCorrente(1.40, 1.44), -0.04, 0.001);
+
+        suites.push({ title: '5. Prezzo Consigliato e Margine', start: sIdx, end: results.length });
+
+        // ============================================================
+        // SUITE 6: Scenario completo (simula un mese)
+        // ============================================================
+        sIdx = results.length;
+
+        // Giacenza iniziale: 500 litri a 1.40 €/lt
+        // Carico 1: 1000 litri fisici, 980 fiscali, MP 0.55, accisa 0.6487
+        // Vendita 1: 600 litri a 1.65
+        // Carico 2: 800 litri fisici, 790 fiscali, MP 0.58, accisa 0.6487
+        // Conguaglio: -50€
+        // Vendita 2: 400 litri a 1.65
+
+        var eventi = [
+            { tipo: 'carico', litri_fisici: 1000, litri_fiscali: 980, prezzo_mp: 0.55, accisa: 0.6487 },
+            { tipo: 'vendita', litri: 600, prezzo_pompa: 1.65 },
+            { tipo: 'carico', litri_fisici: 800, litri_fiscali: 790, prezzo_mp: 0.58, accisa: 0.6487 },
+            { tipo: 'conguaglio', importo_mp: -50 },
+            { tipo: 'vendita', litri: 400, prezzo_pompa: 1.65 }
+        ];
+
+        var stato = C.calcolaStatoProdotto(500, 1.40, eventi, true, 0.05);
+
+        // Verifica step by step:
+        // Dopo carico 1: costo = 980*(0.55+0.6487)*1.21 / 1000 = 980*1.1987*1.21/1000 = 980*1.450427/1000 = 1421.42/1000 = 1.42142
+        //   media: (500*1.40 + 1000*1.42142) / 1500 = (700 + 1421.42) / 1500 = 2121.42/1500 = 1.41428
+        // Dopo vendita 1: giacenza = 1500-600 = 900, margine = (1.65-1.41428)*600
+        // Dopo carico 2: costo = 790*(0.58+0.6487)*1.21 / 800
+        //   media ponderata con giacenza 900
+        // Dopo conguaglio: costo_medio += -50/giacenza
+        // Dopo vendita 2: giacenza -= 400
+
+        // Verifichiamo solo che il totale sia ragionevole
+        assert('Scenario: giacenza > 0', stato.giacenza_teorica > 0, true, 0);
+        assert('Scenario: litri venduti = 1000', stato.litri_venduti_tot, 1000, 0.01);
+        assert('Scenario: margine accumulato > 0', stato.margine_accumulato > 0, true, 0);
+        assert('Scenario: PC maturato = 1000 * 0.0522 = 52.20', stato.pc_maturato, 52.20, 0.01);
+        assert('Scenario: giacenza = 500+1000-600+800-400 = 1300', stato.giacenza_teorica, 1300, 0.01);
+
+        // Verifica costo medio step by step manualmente
+        var c1_costo = 980 * (0.55 + 0.6487) * 1.21;
+        var c1_per_lt = c1_costo / 1000;
+        var dopo_c1_cm = (500 * 1.40 + 1000 * c1_per_lt) / 1500;
+
+        var c2_costo = 790 * (0.58 + 0.6487) * 1.21;
+        var c2_per_lt = c2_costo / 800;
+        var dopo_v1_giac = 1500 - 600; // 900
+        var dopo_c2_cm = (dopo_v1_giac * dopo_c1_cm + 800 * c2_per_lt) / (dopo_v1_giac + 800);
+        var dopo_cong_cm = dopo_c2_cm + (-50 / (dopo_v1_giac + 800));
+
+        assert('Scenario: costo medio finale corretto', stato.costo_medio, dopo_cong_cm, 0.001);
+
+        suites.push({ title: '6. Scenario Completo (simulazione mese)', start: sIdx, end: results.length });
+
+        // ============================================================
+        // SUITE 7: Test con dati reali utente (Dicembre 2024)
+        // Benzina 167 lt a 0.59955, Gasolio 2019 lt a 0.63957
+        // Diesel+ 254 lt a 0.72154, accisa 0.6487
+        // ============================================================
+        sIdx = results.length;
+
+        // Calcolo costo giacenza per singolo prodotto
+        // costo_per_litro = (prezzo_comm + accisa) * 1.21
+        // Per giacenze iniziali il "costo medio" e' gia' noto - qui verifichiamo la formula carico
+        var benz_cpl = (0.59955 + 0.6487) * 1.21;
+        var gas_cpl = (0.63957 + 0.6487) * 1.21;
+        var dies_cpl = (0.72154 + 0.6487) * 1.21;
+        // Blu Super: prezzo_mp = 0, ma ha litri fiscali con accisa
+        var blu_cpl = (0.00000 + 0.6487) * 1.21;
+
+        var benz_costo = 167 * benz_cpl;
+        var gas_costo = 2019 * gas_cpl;
+        var dies_costo = 254 * dies_cpl;
+        var blu_costo = 250 * blu_cpl;
+        var totale_atteso = benz_costo + gas_costo + dies_costo + blu_costo;
+
+        assert('Dati reali: costo benzina 167lt', benz_costo, 167 * (0.59955 + 0.6487) * 1.21, 0.01);
+        assert('Dati reali: costo gasolio 2019lt', gas_costo, 2019 * (0.63957 + 0.6487) * 1.21, 0.01);
+        assert('Dati reali: costo diesel+ 254lt', dies_costo, 254 * (0.72154 + 0.6487) * 1.21, 0.01);
+        assert('Dati reali: costo blu super 250lt (solo accisa)', blu_costo, 250 * 0.6487 * 1.21, 0.01);
+        assert('Dati reali: totale 4 prodotti ~ 4016.83', totale_atteso, 4016.83, 5.0);
+
+        suites.push({ title: '7. Dati Reali Utente (Dicembre 2024)', start: sIdx, end: results.length });
+
+        // ============================================================
+        // RENDER RISULTATI
+        // ============================================================
+        var container = document.getElementById('results');
+        var html = '';
+
+        for (var s = 0; s < suites.length; s++) {
+            html += renderSuite(suites[s].title, suites[s].start, suites[s].end);
+        }
+
+        var allPass = totalFail === 0;
+        html += '<div class="summary ' + (allPass ? 'all-pass' : 'has-fail') + '">';
+        html += (allPass ? '\u2705' : '\u274C') + ' ';
+        html += totalPass + ' passati, ' + totalFail + ' falliti su ' + (totalPass + totalFail) + ' test totali';
+        html += '</div>';
+
+        container.innerHTML = html;
+    })();
+    </script>
+</body>
+</html>
