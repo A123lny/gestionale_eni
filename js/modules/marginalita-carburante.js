@@ -349,7 +349,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 '<div class="card-body">' +
                     '<h3 style="margin:0 0 var(--space-3) 0;">Giacenze Iniziali</h3>' +
                     '<table class="table cm-table-compact"><thead><tr>' +
-                        '<th>Prodotto</th><th class="text-right">Litri Fisici</th><th class="text-right">Costo Medio (\u20AC/lt)</th><th>Data</th><th></th>' +
+                        '<th>Prodotto</th><th class="text-right">Litri Commerciali</th><th class="text-right">Costo Medio (\u20AC/lt)</th><th>Data</th><th></th>' +
                     '</tr></thead><tbody>';
 
         _prodotti.forEach(function(prod) {
@@ -485,7 +485,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
         var prod = _prodotti.find(function(p) { return p.id === prodId; });
         var modal = _modal('mc-modal-giac', 'Giacenza Iniziale - ' + (prod ? prod.nome : prodId),
             _formField('Data', 'mc-giac-data', 'date', '2026-02-01') +
-            _formField('Litri fisici', 'mc-giac-litri', 'number', '0', '0.01') +
+            _formField('Litri commerciali', 'mc-giac-litri', 'number', '0', '0.01') +
             _formField('Costo medio (\u20AC/lt)', 'mc-giac-costo', 'number', '0', '0.00001'),
             'mc-giac-salva', 'Salva'
         );
@@ -639,7 +639,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
         } else {
             html += '<div class="card"><div class="card-body" style="overflow-x:auto; padding:var(--space-2);">' +
                 '<table class="table cm-table-compact"><thead><tr>' +
-                    '<th>Data</th><th>Prodotto</th><th class="text-right">Lt. Ordinati</th><th class="text-right">Lt. Fisici</th>' +
+                    '<th>Data</th><th>Prodotto</th><th class="text-right">Lt. Ordinati</th><th class="text-right">Lt. Comm.</th>' +
                     '<th class="text-right">Lt. Fiscali</th><th class="text-right">MP (\u20AC/lt)</th><th class="text-right">Accisa</th>' +
                     '<th class="text-right" style="background:#e0f7fa;">Costo Tot.</th><th class="text-right" style="background:#e0f7fa;">Costo/Lt</th>' +
                     '<th class="text-right">C.M. Dopo</th><th></th>' +
@@ -688,7 +688,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
             '<div class="form-group"><label class="form-label">Prodotto</label><select class="form-select" id="mc-car-prod">' + opts + '</select></div>' +
             _formField('Data', 'mc-car-data', 'date', oggi) +
             _formField('Litri ordinati', 'mc-car-ord', 'number', '', '0.01') +
-            _formField('Litri fisici (sonda)', 'mc-car-fisici', 'number', '', '0.01') +
+            _formField('Litri commerciali (sonda)', 'mc-car-fisici', 'number', '', '0.01') +
             _formField('Litri fiscali (bolla)', 'mc-car-fiscali', 'number', '', '0.01') +
             _formField('Prezzo MP (\u20AC/lt)', 'mc-car-mp', 'number', '', '0.00001') +
             _formField('Accisa (\u20AC/lt)', 'mc-car-accisa', 'number', '', '0.000001') +
@@ -698,19 +698,31 @@ ENI.Modules.MarginalitaCarburante = (function() {
         );
         _openModal(modal, 'mc-modal-carico');
 
-        // Precompila accisa dal prodotto selezionato
+        // Precompila accisa dal prodotto selezionato (cerca l'accisa attiva alla data del carico)
         async function precompileAccisa() {
             var prodId = document.getElementById('mc-car-prod').value;
+            var dataCarico = document.getElementById('mc-car-data').value || _todayStr();
             var accise = await ENI.API.getAll(T.ACCISE, {
-                filters: [{ op: 'eq', col: 'prodotto_id', val: prodId }, { op: 'is', col: 'data_fine', val: null }],
-                order: { col: 'data_inizio', asc: false }, limit: 1
-            });
-            if (accise && accise.length > 0) {
-                document.getElementById('mc-car-accisa').value = accise[0].accisa;
+                filters: [{ op: 'eq', col: 'prodotto_id', val: prodId }],
+                order: { col: 'data_inizio', asc: false }
+            }) || [];
+            // Trova l'accisa valida alla data del carico
+            var accisaValida = null;
+            for (var i = 0; i < accise.length; i++) {
+                var a = accise[i];
+                if (a.data_inizio <= dataCarico && (!a.data_fine || a.data_fine >= dataCarico)) {
+                    accisaValida = a.accisa;
+                    break;
+                }
+            }
+            if (accisaValida !== null) {
+                document.getElementById('mc-car-accisa').value = accisaValida;
+                updatePreview();
             }
         }
         precompileAccisa();
         document.getElementById('mc-car-prod').addEventListener('change', precompileAccisa);
+        document.getElementById('mc-car-data').addEventListener('change', precompileAccisa);
 
         // Preview
         function updatePreview() {
@@ -721,7 +733,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
             if (fisici <= 0) { document.getElementById('mc-car-preview').innerHTML = ''; return; }
             var calc = ENI.Calcoli.calcolaCostoCarico(fiscali, fisici, mp, accisa);
             document.getElementById('mc-car-preview').innerHTML =
-                'Costo totale: <strong>' + _fmtEuro(calc.costo_carico_totale) + '</strong> | Costo/lt fisico: <strong>' + _fmtEuro5(calc.costo_per_litro_fisico) + '</strong>';
+                'Costo totale: <strong>' + _fmtEuro(calc.costo_carico_totale) + '</strong> | Costo/lt comm.: <strong>' + _fmtEuro5(calc.costo_per_litro_fisico) + '</strong>';
         }
         ['mc-car-fisici','mc-car-fiscali','mc-car-mp','mc-car-accisa'].forEach(function(id) {
             document.getElementById(id).addEventListener('input', updatePreview);
@@ -833,7 +845,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
         var el = document.getElementById(id);
         requestAnimationFrame(function() { el.classList.add('active'); });
         el.querySelector('.mc-modal-close').addEventListener('click', function() { el.remove(); });
-        el.addEventListener('click', function(e) { if (e.target === el) el.remove(); });
+        // Non chiudere cliccando fuori per evitare perdita dati
     }
 
     function _closeModal(id) {
