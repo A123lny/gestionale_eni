@@ -1013,31 +1013,35 @@ ENI.Modules.MarginalitaCarburante = (function() {
                     vendita = await ENI.API.update(T.VENDITE, existing.id, {
                         data_inizio: data, data_fine: dataFine, litri_totali: litri, importo_totale: importo, note: note
                     });
-                    venditaId = existing.id;
+                    venditaId = existing.id || (vendita && vendita.id);
                 } else {
                     vendita = await ENI.API.insert(T.VENDITE, {
                         data_inizio: data, data_fine: dataFine, litri_totali: litri, importo_totale: importo, note: note
                     });
-                    venditaId = vendita.id;
+                    venditaId = vendita && vendita.id;
                 }
 
-                // Salva breakdown per prodotto
-                var prodInputs = document.querySelectorAll('.mc-vend-prod-litri');
-                for (var i = 0; i < prodInputs.length; i++) {
-                    var prodId = prodInputs[i].getAttribute('data-prod');
-                    var prodLitri = parseFloat(prodInputs[i].value) || 0;
-                    if (prodLitri > 0) {
-                        var st = _statoProdotti[prodId] || {};
-                        var prezziProd = await ENI.API.getAll(T.PREZZI, {
-                            filters: [{ op: 'eq', col: 'prodotto_id', val: prodId }],
-                            order: { col: 'data_inizio', asc: false }, limit: 1
-                        }) || [];
-                        var pp = prezziProd.length > 0 ? parseFloat(prezziProd[0].prezzo) : 0;
+                console.log('Vendita salvata, venditaId:', venditaId, 'isEdit:', isEdit);
 
-                        await ENI.API.getClient().from(T.VENDITE_PROD).upsert({
-                            vendita_id: venditaId, prodotto_id: prodId, litri: prodLitri,
-                            prezzo_pompa: pp, importo: prodLitri * pp, costo_medio_ref: st.costo_medio || 0
-                        }, { onConflict: 'vendita_id,prodotto_id' });
+                // Salva breakdown per prodotto (solo se venditaId valido e ci sono litri compilati)
+                if (venditaId) {
+                    var prodInputs = document.querySelectorAll('.mc-vend-prod-litri');
+                    for (var i = 0; i < prodInputs.length; i++) {
+                        var prodId = prodInputs[i].getAttribute('data-prod');
+                        var prodLitri = parseFloat(prodInputs[i].value) || 0;
+                        if (prodLitri > 0) {
+                            var st = _statoProdotti[prodId] || {};
+                            var prezziProd = await ENI.API.getAll(T.PREZZI, {
+                                filters: [{ op: 'eq', col: 'prodotto_id', val: prodId }],
+                                order: { col: 'data_inizio', asc: false }, limit: 1
+                            }) || [];
+                            var pp = prezziProd.length > 0 ? parseFloat(prezziProd[0].prezzo) : 0;
+
+                            await ENI.API.getClient().from(T.VENDITE_PROD).upsert({
+                                vendita_id: venditaId, prodotto_id: prodId, litri: prodLitri,
+                                prezzo_pompa: pp, importo: prodLitri * pp, costo_medio_ref: st.costo_medio || 0
+                            }, { onConflict: 'vendita_id,prodotto_id' });
+                        }
                     }
                 }
 
