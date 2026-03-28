@@ -675,7 +675,10 @@ ENI.Modules.MarginalitaCarburante = (function() {
                         '<td class="text-right" style="background:#e0f7fa; font-weight:600;">' + _fmtEuro(c.costo_carico_totale) + '</td>' +
                         '<td class="text-right" style="background:#e0f7fa;">' + _fmtEuro5(c.costo_per_litro_fisico) + '</td>' +
                         '<td class="text-right">' + _fmtEuro5(c.costo_medio_risultante) + '</td>' +
-                        '<td><button class="btn-icon mc-del-carico" data-id="' + c.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>' +
+                        '<td style="white-space:nowrap;">' +
+                            '<button class="btn-icon mc-edit-carico" data-id="' + c.id + '" data-prod="' + c.prodotto_id + '" data-data="' + c.data + '" data-ord="' + (c.litri_ordinati||0) + '" data-comm="' + (c.litri_fisici||0) + '" data-fisc="' + (c.litri_fiscali||0) + '" data-mp="' + (c.prezzo_mp||0) + '" data-acc="' + (c.accisa||0) + '" data-note="' + ENI.UI.escapeHtml(c.note||'') + '" title="Modifica"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+                            '<button class="btn-icon mc-del-carico" data-id="' + c.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
+                        '</td>' +
                     '</tr>';
                 });
 
@@ -686,6 +689,21 @@ ENI.Modules.MarginalitaCarburante = (function() {
         container.innerHTML = html;
 
         document.getElementById('mc-btn-add-carico').addEventListener('click', _showCaricoForm);
+        container.querySelectorAll('.mc-edit-carico').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                _showEditCaricoForm({
+                    id: btn.getAttribute('data-id'),
+                    prodotto_id: btn.getAttribute('data-prod'),
+                    data: btn.getAttribute('data-data'),
+                    litri_ordinati: btn.getAttribute('data-ord'),
+                    litri_fisici: btn.getAttribute('data-comm'),
+                    litri_fiscali: btn.getAttribute('data-fisc'),
+                    prezzo_mp: btn.getAttribute('data-mp'),
+                    accisa: btn.getAttribute('data-acc'),
+                    note: btn.getAttribute('data-note')
+                });
+            });
+        });
         container.querySelectorAll('.mc-del-carico').forEach(function(btn) {
             btn.addEventListener('click', async function() {
                 if (!confirm('Eliminare questo carico?')) return;
@@ -696,6 +714,69 @@ ENI.Modules.MarginalitaCarburante = (function() {
                     ENI.UI.success('Carico eliminato');
                 } catch(e) { ENI.UI.error('Errore: ' + e.message); }
             });
+        });
+    }
+
+    // --- Form Modifica Singolo Carico ---
+    function _showEditCaricoForm(c) {
+        var prodNome = _prodotti.find(function(p) { return p.id === c.prodotto_id; });
+
+        var body =
+            '<div style="padding:var(--space-2); background:var(--color-gray-50); border-radius:var(--radius-md); margin-bottom:var(--space-3);">' +
+                '<strong>' + (prodNome ? prodNome.nome : c.prodotto_id) + '</strong> &mdash; ' + _fmtData(c.data) +
+            '</div>' +
+            _formField('Litri ordinati', 'mc-ecar-ord', 'number', c.litri_ordinati, '0.01') +
+            _formField('Litri commerciali', 'mc-ecar-comm', 'number', c.litri_fisici, '0.01') +
+            _formField('Litri fiscali', 'mc-ecar-fisc', 'number', c.litri_fiscali, '0.01') +
+            _formField('Prezzo MP (\u20AC/lt)', 'mc-ecar-mp', 'number', c.prezzo_mp, '0.00001') +
+            _formField('Accisa (\u20AC/lt)', 'mc-ecar-acc', 'number', c.accisa, '0.000001') +
+            _formField('Note', 'mc-ecar-note', 'text', c.note || '') +
+            '<div id="mc-ecar-preview" style="padding:var(--space-2); background:var(--color-gray-50); border-radius:var(--radius-md); margin-top:var(--space-2); font-size:0.85rem;"></div>';
+
+        var modal = _modal('mc-modal-edit-carico', 'Modifica Carico - ' + (prodNome ? prodNome.nome : ''), body, 'mc-ecar-salva', 'Salva');
+        _openModal(modal, 'mc-modal-edit-carico');
+
+        function updatePreview() {
+            var comm = parseFloat(document.getElementById('mc-ecar-comm').value) || 0;
+            var fisc = parseFloat(document.getElementById('mc-ecar-fisc').value) || 0;
+            var mp = parseFloat(document.getElementById('mc-ecar-mp').value) || 0;
+            var acc = parseFloat(document.getElementById('mc-ecar-acc').value) || 0;
+            if (comm <= 0) { document.getElementById('mc-ecar-preview').innerHTML = ''; return; }
+            var calc = ENI.Calcoli.calcolaCostoCarico(fisc, comm, mp, acc);
+            document.getElementById('mc-ecar-preview').innerHTML =
+                'Costo totale: <strong>' + _fmtEuro(calc.costo_carico_totale) + '</strong> | Costo/lt: <strong>' + _fmtEuro5(calc.costo_per_litro_fisico) + '</strong>';
+        }
+        ['mc-ecar-comm','mc-ecar-fisc','mc-ecar-mp','mc-ecar-acc'].forEach(function(id) {
+            document.getElementById(id).addEventListener('input', updatePreview);
+        });
+        updatePreview();
+
+        document.getElementById('mc-ecar-salva').addEventListener('click', async function() {
+            var ord = parseFloat(document.getElementById('mc-ecar-ord').value) || 0;
+            var comm = parseFloat(document.getElementById('mc-ecar-comm').value) || 0;
+            var fisc = parseFloat(document.getElementById('mc-ecar-fisc').value) || 0;
+            var mp = parseFloat(document.getElementById('mc-ecar-mp').value) || 0;
+            var acc = parseFloat(document.getElementById('mc-ecar-acc').value) || 0;
+            var note = document.getElementById('mc-ecar-note').value || null;
+
+            if (comm <= 0 || fisc <= 0 || mp <= 0) {
+                ENI.UI.warning('Compila litri commerciali, fiscali e prezzo MP'); return;
+            }
+
+            var calc = ENI.Calcoli.calcolaCostoCarico(fisc, comm, mp, acc);
+
+            try {
+                await ENI.API.update(T.CARICHI, c.id, {
+                    litri_ordinati: ord, litri_fisici: comm, litri_fiscali: fisc,
+                    prezzo_mp: mp, accisa: acc, note: note,
+                    costo_carico_totale: calc.costo_carico_totale,
+                    costo_per_litro_fisico: calc.costo_per_litro_fisico
+                });
+                _closeModal('mc-modal-edit-carico');
+                await _ricalcolaStato();
+                _renderPage();
+                ENI.UI.success('Carico aggiornato');
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
         });
     }
 
