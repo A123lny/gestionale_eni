@@ -779,48 +779,621 @@ ENI.Modules.MarginalitaCarburante = (function() {
     }
 
     // ============================================================
-    // TAB: VENDITE (placeholder - da completare)
+    // TAB: VENDITE
+    // Registro giornaliero con regola festivi/domeniche
     // ============================================================
 
-    function _renderVendite(container) {
-        container.innerHTML =
-            '<div class="card"><div class="card-body"><div class="empty-state">' +
-                '<p class="empty-state-text">Tab Vendite in sviluppo</p>' +
-                '<p style="color:var(--text-secondary);">Registro giornaliero vendite con regola festivi</p>' +
-            '</div></div></div>';
+    var _venditeMese = null; // { anno, mese }
+
+    async function _renderVendite(container) {
+        var oggi = new Date();
+        if (!_venditeMese) _venditeMese = { anno: oggi.getFullYear(), mese: oggi.getMonth() + 1 };
+
+        var html =
+            '<div style="display:flex; gap:var(--space-2); align-items:center; margin-bottom:var(--space-3);">' +
+                '<select id="mc-vend-mese" class="form-select" style="min-width:130px;">';
+        for (var m = 0; m < 12; m++) {
+            html += '<option value="' + (m+1) + '"' + (m+1 === _venditeMese.mese ? ' selected' : '') + '>' + MESI[m] + '</option>';
+        }
+        html += '</select>' +
+                '<select id="mc-vend-anno" class="form-select" style="min-width:90px;">';
+        for (var a = 2024; a <= oggi.getFullYear() + 1; a++) {
+            html += '<option value="' + a + '"' + (a === _venditeMese.anno ? ' selected' : '') + '>' + a + '</option>';
+        }
+        html += '</select>' +
+                '<button class="btn btn-sm btn-outline" id="mc-vend-load">Carica</button>' +
+                '<div style="flex:1;"></div>' +
+                '<button class="btn btn-primary btn-sm" id="mc-vend-add">+ Registra Vendita</button>' +
+            '</div>' +
+            '<div id="mc-vend-table"></div>';
+
+        container.innerHTML = html;
+
+        document.getElementById('mc-vend-load').addEventListener('click', function() {
+            _venditeMese.mese = parseInt(document.getElementById('mc-vend-mese').value);
+            _venditeMese.anno = parseInt(document.getElementById('mc-vend-anno').value);
+            _loadVendite();
+        });
+        document.getElementById('mc-vend-add').addEventListener('click', _showVenditaForm);
+
+        await _loadVendite();
+    }
+
+    async function _loadVendite() {
+        var tbl = document.getElementById('mc-vend-table');
+        if (!tbl) return;
+
+        var primoGiorno = _venditeMese.anno + '-' + String(_venditeMese.mese).padStart(2,'0') + '-01';
+        var ultimoGiorno = new Date(_venditeMese.anno, _venditeMese.mese, 0);
+        var fino = ultimoGiorno.getFullYear() + '-' + String(ultimoGiorno.getMonth()+1).padStart(2,'0') + '-' + String(ultimoGiorno.getDate()).padStart(2,'0');
+
+        var vendite = await ENI.API.getAll(T.VENDITE, {
+            filters: [{ op: 'gte', col: 'data_inizio', val: primoGiorno }, { op: 'lte', col: 'data_inizio', val: fino }],
+            order: { col: 'data_inizio', asc: true }
+        }) || [];
+
+        if (vendite.length === 0) {
+            tbl.innerHTML = '<div class="card"><div class="card-body"><p class="empty-state-text">Nessuna vendita registrata per ' + MESI[_venditeMese.mese-1] + ' ' + _venditeMese.anno + '</p></div></div>';
+            return;
+        }
+
+        var totLitri = 0, totImporto = 0;
+        var html = '<div class="card"><div class="card-body" style="overflow-x:auto; padding:var(--space-2);">' +
+            '<table class="table cm-table-compact"><thead><tr>' +
+                '<th>Data</th><th class="text-right">Litri</th><th class="text-right">Importo</th><th>Note</th><th></th>' +
+            '</tr></thead><tbody>';
+
+        vendite.forEach(function(v) {
+            var dataLabel = _fmtData(v.data_inizio);
+            if (v.data_fine && v.data_fine !== v.data_inizio) {
+                dataLabel = 'dal ' + _fmtData(v.data_inizio) + ' al ' + _fmtData(v.data_fine);
+            }
+            totLitri += parseFloat(v.litri_totali) || 0;
+            totImporto += parseFloat(v.importo_totale) || 0;
+
+            html += '<tr>' +
+                '<td>' + dataLabel + '</td>' +
+                '<td class="text-right">' + _fmt(v.litri_totali, 2) + '</td>' +
+                '<td class="text-right"><strong>' + _fmtEuro(v.importo_totale) + '</strong></td>' +
+                '<td style="font-size:0.75rem; color:var(--text-secondary);">' + (v.note || '') + '</td>' +
+                '<td style="white-space:nowrap;">' +
+                    '<button class="btn-icon mc-vend-edit" data-id="' + v.id + '" title="Modifica"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+                    '<button class="btn-icon mc-vend-del" data-id="' + v.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
+                '</td>' +
+            '</tr>';
+        });
+
+        html += '<tr style="font-weight:700; background:var(--color-gray-50);">' +
+            '<td>TOTALE</td>' +
+            '<td class="text-right">' + _fmt(totLitri, 2) + '</td>' +
+            '<td class="text-right">' + _fmtEuro(totImporto) + '</td>' +
+            '<td colspan="2"></td>' +
+        '</tr>';
+
+        html += '</tbody></table></div></div>';
+        tbl.innerHTML = html;
+
+        // Listener
+        tbl.querySelectorAll('.mc-vend-edit').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                var v = await ENI.API.getById(T.VENDITE, btn.getAttribute('data-id'));
+                if (v) _showVenditaForm(v);
+            });
+        });
+        tbl.querySelectorAll('.mc-vend-del').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                if (!confirm('Eliminare questa vendita?')) return;
+                try {
+                    await ENI.API.remove(T.VENDITE, btn.getAttribute('data-id'));
+                    await _ricalcolaStato();
+                    _renderPage();
+                    ENI.UI.success('Vendita eliminata');
+                } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+            });
+        });
+    }
+
+    function _showVenditaForm(existing) {
+        var isEdit = !!existing;
+        var oggi = _todayStr();
+
+        var body =
+            _formField('Data', 'mc-vend-data', 'date', isEdit ? existing.data_inizio : oggi) +
+            '<div class="form-group"><label class="form-label"><input type="checkbox" id="mc-vend-festivo"' + (isEdit && existing.data_fine !== existing.data_inizio ? ' checked' : '') + '> Accorpa giorno festivo/domenica</label></div>' +
+            '<div id="mc-vend-festivo-extra" style="display:none;">' +
+                _formField('Fino al (data fine intervallo)', 'mc-vend-data-fine', 'date', isEdit ? existing.data_fine : '') +
+            '</div>' +
+            _formField('Litri totali', 'mc-vend-litri', 'number', isEdit ? existing.litri_totali : '', '0.01') +
+            _formField('Importo totale (\u20AC)', 'mc-vend-importo', 'number', isEdit ? existing.importo_totale : '', '0.01') +
+            _formField('Note', 'mc-vend-note', 'text', isEdit ? (existing.note || '') : '');
+
+        // Breakdown per prodotto
+        body += '<div style="margin-top:var(--space-3); padding-top:var(--space-3); border-top:1px solid var(--color-gray-200);">' +
+            '<h4 style="margin:0 0 var(--space-2) 0; font-size:var(--font-size-sm);">Dettaglio per prodotto (opzionale)</h4>';
+        _prodotti.forEach(function(p) {
+            body += '<div style="display:flex; gap:var(--space-2); align-items:center; margin-bottom:var(--space-1);">' +
+                '<span style="min-width:80px; font-size:0.85rem;">' + p.nome + '</span>' +
+                '<input type="number" class="form-input mc-vend-prod-litri" data-prod="' + p.id + '" placeholder="Litri" step="0.01" style="flex:1;">' +
+            '</div>';
+        });
+        body += '</div>';
+
+        var modal = _modal('mc-modal-vendita', isEdit ? 'Modifica Vendita' : 'Registra Vendita', body, 'mc-vend-salva', isEdit ? 'Salva' : 'Registra');
+        _openModal(modal, 'mc-modal-vendita');
+
+        // Toggle festivo
+        var chkFestivo = document.getElementById('mc-vend-festivo');
+        var extraDiv = document.getElementById('mc-vend-festivo-extra');
+        chkFestivo.addEventListener('change', function() {
+            extraDiv.style.display = this.checked ? '' : 'none';
+        });
+        if (chkFestivo.checked) extraDiv.style.display = '';
+
+        document.getElementById('mc-vend-salva').addEventListener('click', async function() {
+            var data = document.getElementById('mc-vend-data').value;
+            var isFestivo = document.getElementById('mc-vend-festivo').checked;
+            var dataFine = isFestivo ? (document.getElementById('mc-vend-data-fine').value || data) : data;
+            var litri = parseFloat(document.getElementById('mc-vend-litri').value) || 0;
+            var importo = parseFloat(document.getElementById('mc-vend-importo').value) || 0;
+            var note = document.getElementById('mc-vend-note').value || null;
+
+            if (!data || litri <= 0) { ENI.UI.warning('Inserisci data e litri'); return; }
+
+            try {
+                var vendita;
+                if (isEdit) {
+                    vendita = await ENI.API.update(T.VENDITE, existing.id, {
+                        data_inizio: data, data_fine: dataFine, litri_totali: litri, importo_totale: importo, note: note
+                    });
+                } else {
+                    vendita = await ENI.API.insert(T.VENDITE, {
+                        data_inizio: data, data_fine: dataFine, litri_totali: litri, importo_totale: importo, note: note
+                    });
+                }
+
+                // Salva breakdown per prodotto
+                var prodInputs = document.querySelectorAll('.mc-vend-prod-litri');
+                for (var i = 0; i < prodInputs.length; i++) {
+                    var prodId = prodInputs[i].getAttribute('data-prod');
+                    var prodLitri = parseFloat(prodInputs[i].value) || 0;
+                    if (prodLitri > 0) {
+                        var st = _statoProdotti[prodId] || {};
+                        var prezziProd = await ENI.API.getAll(T.PREZZI, {
+                            filters: [{ op: 'eq', col: 'prodotto_id', val: prodId }],
+                            order: { col: 'data_inizio', asc: false }, limit: 1
+                        }) || [];
+                        var pp = prezziProd.length > 0 ? parseFloat(prezziProd[0].prezzo) : 0;
+
+                        await ENI.API.getClient().from(T.VENDITE_PROD).upsert({
+                            vendita_id: vendita.id, prodotto_id: prodId, litri: prodLitri,
+                            prezzo_pompa: pp, importo: prodLitri * pp, costo_medio_ref: st.costo_medio || 0
+                        }, { onConflict: 'vendita_id,prodotto_id' });
+                    }
+                }
+
+                _closeModal('mc-modal-vendita');
+                await _ricalcolaStato();
+                _renderPage();
+                ENI.UI.success(isEdit ? 'Vendita aggiornata' : 'Vendita registrata');
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+        });
     }
 
     // ============================================================
-    // TAB: PREZZI POMPA (placeholder)
+    // TAB: PREZZI POMPA
+    // Storico prezzi + simulatore margine
     // ============================================================
 
-    function _renderPrezzi(container) {
-        container.innerHTML =
-            '<div class="card"><div class="card-body"><div class="empty-state">' +
-                '<p class="empty-state-text">Tab Prezzi Pompa in sviluppo</p>' +
-            '</div></div></div>';
+    async function _renderPrezzi(container) {
+        var prezzi = await ENI.API.getAll(T.PREZZI, { order: { col: 'data_inizio', asc: false } }) || [];
+        var margineTarget = parseFloat(_config.margine_target) || 0.05;
+
+        var html =
+            '<div style="margin-bottom:var(--space-3);">' +
+                '<button class="btn btn-primary btn-sm" id="mc-btn-add-prezzo">+ Imposta Prezzo</button>' +
+            '</div>';
+
+        // Simulatore margine
+        html +=
+            '<div class="card" style="margin-bottom:var(--space-3);">' +
+                '<div class="card-body">' +
+                    '<h3 style="margin:0 0 var(--space-3) 0;">Simulatore Margine</h3>' +
+                    '<div style="display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap;">' +
+                        '<label style="font-size:0.85rem;">Margine target:</label>' +
+                        '<input type="range" id="mc-sim-slider" min="0.02" max="0.15" step="0.005" value="' + margineTarget + '" style="flex:1; min-width:150px;">' +
+                        '<span id="mc-sim-val" style="font-weight:700; min-width:60px;">' + margineTarget.toFixed(3) + ' \u20AC/lt</span>' +
+                    '</div>' +
+                    '<div id="mc-sim-result" style="margin-top:var(--space-2);"></div>' +
+                '</div>' +
+            '</div>';
+
+        // Storico prezzi
+        if (prezzi.length > 0) {
+            html += '<div class="card"><div class="card-body" style="overflow-x:auto; padding:var(--space-2);">' +
+                '<table class="table cm-table-compact"><thead><tr>' +
+                    '<th>Prodotto</th><th class="text-right">Prezzo Pompa</th><th>Dal</th><th>Note</th><th></th>' +
+                '</tr></thead><tbody>';
+            prezzi.forEach(function(p) {
+                var prodNome = _prodotti.find(function(pr) { return pr.id === p.prodotto_id; });
+                html += '<tr>' +
+                    '<td><strong>' + (prodNome ? prodNome.nome : p.prodotto_id) + '</strong></td>' +
+                    '<td class="text-right"><strong>' + _fmtEuro5(p.prezzo) + '</strong></td>' +
+                    '<td>' + _fmtData(p.data_inizio) + '</td>' +
+                    '<td style="font-size:0.75rem;">' + (p.note || '') + '</td>' +
+                    '<td><button class="btn-icon mc-del-prezzo" data-id="' + p.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>' +
+                '</tr>';
+            });
+            html += '</tbody></table></div></div>';
+        }
+
+        container.innerHTML = html;
+
+        // Simulatore
+        var slider = document.getElementById('mc-sim-slider');
+        var simVal = document.getElementById('mc-sim-val');
+        var simResult = document.getElementById('mc-sim-result');
+
+        function updateSim() {
+            var m = parseFloat(slider.value);
+            simVal.textContent = m.toFixed(3) + ' \u20AC/lt';
+            var resHtml = '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:var(--space-2); font-size:0.85rem;">';
+            _prodotti.forEach(function(p) {
+                var st = _statoProdotti[p.id] || {};
+                var consigliato = (st.costo_medio || 0) + m;
+                resHtml += '<div>'+p.nome+': <strong>' + _fmtEuro5(consigliato) + '</strong> (costo: ' + _fmtEuro5(st.costo_medio || 0) + ')</div>';
+            });
+            resHtml += '</div>';
+            simResult.innerHTML = resHtml;
+        }
+        slider.addEventListener('input', updateSim);
+        updateSim();
+
+        // Listener
+        document.getElementById('mc-btn-add-prezzo').addEventListener('click', _showPrezzoForm);
+        container.querySelectorAll('.mc-del-prezzo').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                if (!confirm('Eliminare questo prezzo?')) return;
+                try {
+                    await ENI.API.remove(T.PREZZI, btn.getAttribute('data-id'));
+                    await _ricalcolaStato();
+                    _renderPage();
+                    ENI.UI.success('Prezzo eliminato');
+                } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+            });
+        });
+    }
+
+    function _showPrezzoForm() {
+        var opts = _prodotti.map(function(p) { return '<option value="' + p.id + '">' + p.nome + '</option>'; }).join('');
+        var margineTarget = parseFloat(_config.margine_target) || 0.05;
+
+        var body =
+            '<div class="form-group"><label class="form-label">Prodotto</label><select class="form-select" id="mc-prez-prod">' + opts + '</select></div>' +
+            _formField('Prezzo pompa (\u20AC/lt)', 'mc-prez-prezzo', 'number', '', '0.00001') +
+            _formField('In vigore dal', 'mc-prez-data', 'date', _todayStr()) +
+            _formField('Note', 'mc-prez-note', 'text', '') +
+            '<div id="mc-prez-info" style="padding:var(--space-2); background:var(--color-gray-50); border-radius:var(--radius-md); font-size:0.85rem;"></div>';
+
+        var modal = _modal('mc-modal-prezzo', 'Imposta Prezzo Pompa', body, 'mc-prez-salva', 'Salva');
+        _openModal(modal, 'mc-modal-prezzo');
+
+        function updateInfo() {
+            var prodId = document.getElementById('mc-prez-prod').value;
+            var st = _statoProdotti[prodId] || {};
+            var info = document.getElementById('mc-prez-info');
+            var consigliato = (st.costo_medio || 0) + margineTarget;
+            info.innerHTML = 'Costo medio: <strong>' + _fmtEuro5(st.costo_medio || 0) + '</strong> | ' +
+                'Consigliato (margine ' + margineTarget.toFixed(3) + '): <strong style="color:var(--color-primary);">' + _fmtEuro5(consigliato) + '</strong>';
+        }
+        updateInfo();
+        document.getElementById('mc-prez-prod').addEventListener('change', updateInfo);
+
+        document.getElementById('mc-prez-salva').addEventListener('click', async function() {
+            var prodId = document.getElementById('mc-prez-prod').value;
+            var prezzo = parseFloat(document.getElementById('mc-prez-prezzo').value);
+            var data = document.getElementById('mc-prez-data').value;
+            var note = document.getElementById('mc-prez-note').value || null;
+            if (!prezzo || !data) { ENI.UI.warning('Inserisci prezzo e data'); return; }
+            try {
+                await ENI.API.insert(T.PREZZI, { prodotto_id: prodId, data_inizio: data, prezzo: prezzo, note: note });
+                _closeModal('mc-modal-prezzo');
+                await _ricalcolaStato();
+                _renderPage();
+                ENI.UI.success('Prezzo impostato');
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+        });
     }
 
     // ============================================================
-    // TAB: REPORT (placeholder)
+    // TAB: REPORT MENSILE
+    // Report formato ufficiale + invio email
     // ============================================================
 
-    function _renderReport(container) {
-        container.innerHTML =
-            '<div class="card"><div class="card-body"><div class="empty-state">' +
-                '<p class="empty-state-text">Tab Report in sviluppo</p>' +
-            '</div></div></div>';
+    async function _renderReport(container) {
+        var oggi = new Date();
+        var meseReport = oggi.getMonth() + 1;
+        var annoReport = oggi.getFullYear();
+
+        var html =
+            '<div class="card" style="margin-bottom:var(--space-3);">' +
+                '<div class="card-body">' +
+                    '<h3 style="margin:0 0 var(--space-3) 0;">Genera Report Mensile</h3>' +
+                    '<div style="display:flex; gap:var(--space-2); align-items:center; margin-bottom:var(--space-3);">' +
+                        '<select id="mc-rep-mese" class="form-select" style="min-width:130px;">';
+        for (var m = 0; m < 12; m++) {
+            html += '<option value="'+(m+1)+'"'+(m+1===meseReport?' selected':'')+'>'+MESI[m]+'</option>';
+        }
+        html += '</select><select id="mc-rep-anno" class="form-select" style="min-width:90px;">';
+        for (var a = 2024; a <= oggi.getFullYear()+1; a++) {
+            html += '<option value="'+a+'"'+(a===annoReport?' selected':'')+'>'+a+'</option>';
+        }
+        html += '</select>' +
+                        '<button class="btn btn-primary btn-sm" id="mc-rep-genera">Genera Anteprima</button>' +
+                        '<button class="btn btn-outline btn-sm" id="mc-rep-email">Prepara Email</button>' +
+                    '</div>' +
+                    '<div id="mc-rep-preview"></div>' +
+                '</div>' +
+            '</div>';
+
+        container.innerHTML = html;
+
+        document.getElementById('mc-rep-genera').addEventListener('click', async function() {
+            var mese = parseInt(document.getElementById('mc-rep-mese').value);
+            var anno = parseInt(document.getElementById('mc-rep-anno').value);
+            await _generaAnteprima(mese, anno);
+        });
+
+        document.getElementById('mc-rep-email').addEventListener('click', function() {
+            var mese = parseInt(document.getElementById('mc-rep-mese').value);
+            var anno = parseInt(document.getElementById('mc-rep-anno').value);
+            _preparaEmail(mese, anno);
+        });
+    }
+
+    async function _generaAnteprima(mese, anno) {
+        var preview = document.getElementById('mc-rep-preview');
+        if (!preview) return;
+
+        var primoGiorno = anno + '-' + String(mese).padStart(2,'0') + '-01';
+        var ultimoGiorno = new Date(anno, mese, 0);
+        var fino = ultimoGiorno.getFullYear() + '-' + String(ultimoGiorno.getMonth()+1).padStart(2,'0') + '-' + String(ultimoGiorno.getDate()).padStart(2,'0');
+
+        var vendite = await ENI.API.getAll(T.VENDITE, {
+            filters: [{ op: 'gte', col: 'data_inizio', val: primoGiorno }, { op: 'lte', col: 'data_inizio', val: fino }],
+            order: { col: 'data_inizio', asc: true }
+        }) || [];
+
+        var totLitri = 0, totImporto = 0;
+
+        var html =
+            '<div style="border:1px solid var(--color-gray-300); padding:var(--space-4); background:white; font-family:serif; max-width:600px;">' +
+                '<div style="text-align:center; margin-bottom:var(--space-4);">' +
+                    '<strong>COE ' + (_config.codice_coe || 'SM 30756') + ' - Ragione Sociale - ' + (_config.ragione_sociale || 'CERVELLINI ANDREA') + '</strong><br>' +
+                    '<span>MESE: ' + MESI[mese-1].toUpperCase() + ' ' + anno + '</span>' +
+                '</div>' +
+                '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">' +
+                    '<thead><tr style="border-bottom:2px solid #000;">' +
+                        '<th style="text-align:left; padding:4px;">DATA</th>' +
+                        '<th style="text-align:right; padding:4px;">LITRI EROGATI</th>' +
+                        '<th style="text-align:right; padding:4px;">IMPORTO</th>' +
+                    '</tr></thead><tbody>';
+
+        vendite.forEach(function(v) {
+            var dataLabel = _fmtData(v.data_inizio);
+            if (v.data_fine && v.data_fine !== v.data_inizio) {
+                dataLabel = 'dal ' + _fmtData(v.data_inizio).slice(0,8) + ' al ' + _fmtData(v.data_fine).slice(0,8);
+            }
+            var litri = parseFloat(v.litri_totali) || 0;
+            var importo = parseFloat(v.importo_totale) || 0;
+            totLitri += litri;
+            totImporto += importo;
+
+            html += '<tr style="border-bottom:1px solid #ccc;">' +
+                '<td style="padding:3px 4px;">' + dataLabel + '</td>' +
+                '<td style="text-align:right; padding:3px 4px;">' + _fmt(litri, 2) + '</td>' +
+                '<td style="text-align:right; padding:3px 4px;">' + _fmtEuro(importo) + '</td>' +
+            '</tr>';
+        });
+
+        html += '<tr style="border-top:2px solid #000; font-weight:bold;">' +
+            '<td style="padding:4px;">TOTALE</td>' +
+            '<td style="text-align:right; padding:4px;">' + _fmt(totLitri, 2) + '</td>' +
+            '<td style="text-align:right; padding:4px;">' + _fmtEuro(totImporto) + '</td>' +
+        '</tr></tbody></table>' +
+        '<div style="margin-top:var(--space-6); text-align:right; font-style:italic;">Timbro e Firma</div>' +
+        '</div>';
+
+        preview.innerHTML = html;
+    }
+
+    function _preparaEmail(mese, anno) {
+        var dest = _config.email_destinatario || '';
+        var oggetto = 'Comunicazione mensile vendite carburanti - ' + MESI[mese-1] + ' ' + anno + ' - COE ' + (_config.codice_coe || 'SM 30756');
+        var corpo = 'Gentile Ufficio Prodotti Petroliferi,\n\n' +
+            'in allegato la comunicazione mensile delle vendite di carburante relative al mese di ' + MESI[mese-1] + ' ' + anno + '.\n\n' +
+            'COE: ' + (_config.codice_coe || 'SM 30756') + '\n' +
+            'Ragione Sociale: ' + (_config.ragione_sociale || 'CERVELLINI ANDREA') + '\n\n' +
+            'Cordiali saluti,\n' + (_config.ragione_sociale || 'Andrea Cervellini');
+
+        var mailtoUrl = 'mailto:' + encodeURIComponent(dest) +
+            '?subject=' + encodeURIComponent(oggetto) +
+            '&body=' + encodeURIComponent(corpo);
+
+        window.open(mailtoUrl);
+        ENI.UI.success('Email preparata in Outlook. Ricordati di allegare il report.');
     }
 
     // ============================================================
-    // TAB: CONGUAGLI & PC (placeholder)
+    // TAB: CONGUAGLI & PROGETTO CARBURANTE
     // ============================================================
 
-    function _renderConguagli(container) {
-        container.innerHTML =
-            '<div class="card"><div class="card-body"><div class="empty-state">' +
-                '<p class="empty-state-text">Tab Conguagli & Progetto Carburante in sviluppo</p>' +
-            '</div></div></div>';
+    async function _renderConguagli(container) {
+        var conguagli = await ENI.API.getAll(T.CONGUAGLI, { order: { col: 'data', asc: false } }) || [];
+        var rimborsi = await ENI.API.getAll(T.RIMBORSI, { order: { col: 'data', asc: false } }) || [];
+
+        var html = '';
+
+        // --- CONGUAGLI ENI ---
+        html +=
+            '<div class="card" style="margin-bottom:var(--space-3);">' +
+                '<div class="card-body">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-3);">' +
+                        '<h3 style="margin:0;">Conguagli ENI</h3>' +
+                        '<button class="btn btn-primary btn-sm" id="mc-btn-add-cong">+ Nuovo Conguaglio</button>' +
+                    '</div>';
+
+        if (conguagli.length === 0) {
+            html += '<p class="empty-state-text">Nessun conguaglio registrato</p>';
+        } else {
+            html += '<table class="table cm-table-compact"><thead><tr>' +
+                '<th>Data</th><th>Prodotto</th><th class="text-right">Importo MP</th><th>Note</th><th></th>' +
+            '</tr></thead><tbody>';
+            conguagli.forEach(function(c) {
+                var prodNome = _prodotti.find(function(p) { return p.id === c.prodotto_id; });
+                var importo = parseFloat(c.importo_mp) || 0;
+                html += '<tr>' +
+                    '<td>' + _fmtData(c.data) + '</td>' +
+                    '<td>' + (prodNome ? prodNome.nome : c.prodotto_id) + '</td>' +
+                    '<td class="text-right" style="color:' + (importo < 0 ? 'var(--color-success)' : 'var(--color-danger)') + '; font-weight:600;">' + _fmtEuro(importo) + '</td>' +
+                    '<td style="font-size:0.75rem;">' + (c.note || '') + '</td>' +
+                    '<td><button class="btn-icon mc-del-cong" data-id="' + c.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>' +
+                '</tr>';
+            });
+            html += '</tbody></table>';
+        }
+        html += '</div></div>';
+
+        // --- PROGETTO CARBURANTE ---
+        html +=
+            '<div class="card" style="margin-bottom:var(--space-3);">' +
+                '<div class="card-body">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-3);">' +
+                        '<h3 style="margin:0;">Progetto Carburante - Rimborsi Stato</h3>' +
+                        '<button class="btn btn-primary btn-sm" id="mc-btn-add-rimb">+ Registra Rimborso</button>' +
+                    '</div>';
+
+        // Riepilogo PC
+        var totMaturato = 0, totRimborsato = 0;
+        _prodotti.forEach(function(p) {
+            var st = _statoProdotti[p.id] || {};
+            totMaturato += st.pc_maturato || 0;
+            totRimborsato += st.pc_rimborsi || 0;
+        });
+        var credito = totMaturato - totRimborsato;
+
+        html +=
+            '<div class="cm-stats-inline" style="margin-bottom:var(--space-3);">' +
+                '<div class="stat-card"><div class="stat-label">PC Maturato</div><div class="stat-value">' + _fmtEuro(totMaturato) + '</div></div>' +
+                '<div class="stat-card"><div class="stat-label">Rimborsato</div><div class="stat-value">' + _fmtEuro(totRimborsato) + '</div></div>' +
+                '<div class="stat-card"><div class="stat-label">Credito residuo</div><div class="stat-value" style="color:' + (credito >= 0 ? 'var(--color-success)' : 'var(--color-danger)') + ';">' + _fmtEuro(credito) + '</div></div>' +
+            '</div>';
+
+        if (rimborsi.length > 0) {
+            html += '<table class="table cm-table-compact"><thead><tr>' +
+                '<th>Data</th><th>Prodotto</th><th class="text-right">Importo</th><th>Periodo</th><th>Note</th><th></th>' +
+            '</tr></thead><tbody>';
+            rimborsi.forEach(function(r) {
+                html += '<tr>' +
+                    '<td>' + _fmtData(r.data) + '</td>' +
+                    '<td>' + (r.prodotto_id || 'Tutti') + '</td>' +
+                    '<td class="text-right" style="font-weight:600; color:var(--color-success);">' + _fmtEuro(r.importo) + '</td>' +
+                    '<td>' + (r.periodo_rif || '') + '</td>' +
+                    '<td style="font-size:0.75rem;">' + (r.note || '') + '</td>' +
+                    '<td><button class="btn-icon mc-del-rimb" data-id="' + r.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>' +
+                '</tr>';
+            });
+            html += '</tbody></table>';
+        }
+        html += '</div></div>';
+
+        container.innerHTML = html;
+
+        // Listener conguagli
+        document.getElementById('mc-btn-add-cong').addEventListener('click', _showConguaglioForm);
+        container.querySelectorAll('.mc-del-cong').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                if (!confirm('Eliminare questo conguaglio?')) return;
+                try {
+                    await ENI.API.remove(T.CONGUAGLI, btn.getAttribute('data-id'));
+                    await _ricalcolaStato();
+                    _renderPage();
+                    ENI.UI.success('Conguaglio eliminato');
+                } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+            });
+        });
+
+        // Listener rimborsi
+        document.getElementById('mc-btn-add-rimb').addEventListener('click', _showRimborsoForm);
+        container.querySelectorAll('.mc-del-rimb').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                if (!confirm('Eliminare questo rimborso?')) return;
+                try {
+                    await ENI.API.remove(T.RIMBORSI, btn.getAttribute('data-id'));
+                    await _ricalcolaStato();
+                    _renderPage();
+                    ENI.UI.success('Rimborso eliminato');
+                } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+            });
+        });
+    }
+
+    function _showConguaglioForm() {
+        var opts = _prodotti.map(function(p) { return '<option value="' + p.id + '">' + p.nome + '</option>'; }).join('');
+
+        var modal = _modal('mc-modal-cong', 'Nuovo Conguaglio ENI',
+            '<div class="form-group"><label class="form-label">Prodotto</label><select class="form-select" id="mc-cong-prod">' + opts + '</select></div>' +
+            _formField('Data', 'mc-cong-data', 'date', _todayStr()) +
+            _formField('Importo MP (\u20AC) (negativo = credito, positivo = debito)', 'mc-cong-importo', 'number', '', '0.01') +
+            _formField('Note', 'mc-cong-note', 'text', ''),
+            'mc-cong-salva', 'Registra'
+        );
+        _openModal(modal, 'mc-modal-cong');
+
+        document.getElementById('mc-cong-salva').addEventListener('click', async function() {
+            var prodId = document.getElementById('mc-cong-prod').value;
+            var data = document.getElementById('mc-cong-data').value;
+            var importo = parseFloat(document.getElementById('mc-cong-importo').value);
+            var note = document.getElementById('mc-cong-note').value || null;
+            if (!data || importo === undefined || isNaN(importo)) { ENI.UI.warning('Compila data e importo'); return; }
+            try {
+                await ENI.API.insert(T.CONGUAGLI, { prodotto_id: prodId, data: data, importo_mp: importo, note: note });
+                _closeModal('mc-modal-cong');
+                await _ricalcolaStato();
+                _renderPage();
+                ENI.UI.success('Conguaglio registrato');
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+        });
+    }
+
+    function _showRimborsoForm() {
+        var opts = '<option value="">Tutti i prodotti</option>' +
+            _prodotti.map(function(p) { return '<option value="' + p.id + '">' + p.nome + '</option>'; }).join('');
+
+        var modal = _modal('mc-modal-rimb', 'Registra Rimborso Stato',
+            '<div class="form-group"><label class="form-label">Prodotto</label><select class="form-select" id="mc-rimb-prod">' + opts + '</select></div>' +
+            _formField('Data', 'mc-rimb-data', 'date', _todayStr()) +
+            _formField('Importo (\u20AC)', 'mc-rimb-importo', 'number', '', '0.01') +
+            _formField('Periodo di riferimento', 'mc-rimb-periodo', 'text', '') +
+            _formField('Note', 'mc-rimb-note', 'text', ''),
+            'mc-rimb-salva', 'Registra'
+        );
+        _openModal(modal, 'mc-modal-rimb');
+
+        document.getElementById('mc-rimb-salva').addEventListener('click', async function() {
+            var prodId = document.getElementById('mc-rimb-prod').value || null;
+            var data = document.getElementById('mc-rimb-data').value;
+            var importo = parseFloat(document.getElementById('mc-rimb-importo').value);
+            var periodo = document.getElementById('mc-rimb-periodo').value || null;
+            var note = document.getElementById('mc-rimb-note').value || null;
+            if (!data || !importo) { ENI.UI.warning('Compila data e importo'); return; }
+            try {
+                await ENI.API.insert(T.RIMBORSI, { prodotto_id: prodId, data: data, importo: importo, periodo_rif: periodo, note: note });
+                _closeModal('mc-modal-rimb');
+                await _ricalcolaStato();
+                _renderPage();
+                ENI.UI.success('Rimborso registrato');
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+        });
     }
 
     // ============================================================
