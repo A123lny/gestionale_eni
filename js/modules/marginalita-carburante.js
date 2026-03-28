@@ -334,8 +334,10 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 '<td>' + _fmtData(a.data_inizio) + '</td>' +
                 '<td>' + (a.data_fine ? _fmtData(a.data_fine) : '<em>attiva</em>') + '</td>' +
                 '<td style="font-size:0.75rem; color:var(--text-secondary);">' + (a.note || '') + '</td>' +
-                '<td>' +
+                '<td style="white-space:nowrap;">' +
+                    '<button class="btn-icon mc-setup-edit-accisa" data-id="' + a.id + '" data-prodotto="' + a.prodotto_id + '" data-accisa="' + a.accisa + '" data-inizio="' + (a.data_inizio||'') + '" data-fine="' + (a.data_fine||'') + '" data-note="' + ENI.UI.escapeHtml(a.note||'') + '" title="Modifica"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
                     (!a.data_fine ? '<button class="btn-icon mc-setup-chiudi-accisa" data-id="' + a.id + '" title="Chiudi"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>' : '') +
+                    '<button class="btn-icon mc-setup-del-accisa" data-id="' + a.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
                 '</td>' +
             '</tr>';
         });
@@ -430,6 +432,32 @@ ENI.Modules.MarginalitaCarburante = (function() {
             btn.addEventListener('click', function() { _showChiudiAccisaForm(btn.getAttribute('data-id')); });
         });
 
+        // Modifica accisa
+        container.querySelectorAll('.mc-setup-edit-accisa').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                _showEditAccisaForm({
+                    id: btn.getAttribute('data-id'),
+                    prodotto_id: btn.getAttribute('data-prodotto'),
+                    accisa: btn.getAttribute('data-accisa'),
+                    data_inizio: btn.getAttribute('data-inizio'),
+                    data_fine: btn.getAttribute('data-fine'),
+                    note: btn.getAttribute('data-note')
+                });
+            });
+        });
+
+        // Elimina accisa
+        container.querySelectorAll('.mc-setup-del-accisa').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                if (!confirm('Eliminare questa accisa dallo storico?')) return;
+                try {
+                    await ENI.API.remove(T.ACCISE, btn.getAttribute('data-id'));
+                    _renderTab();
+                    ENI.UI.success('Accisa eliminata');
+                } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+            });
+        });
+
         // Aggiungi prodotto
         var btnProd = document.getElementById('mc-setup-add-prod');
         if (btnProd) {
@@ -516,6 +544,34 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 _closeModal('mc-modal-accisa');
                 _renderTab();
                 ENI.UI.success('Accisa inserita');
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+        });
+    }
+
+    // --- Form Modifica Accisa ---
+    function _showEditAccisaForm(acc) {
+        var modal = _modal('mc-modal-edit-acc', 'Modifica Accisa - ' + acc.prodotto_id,
+            _formField('Accisa (\u20AC/lt)', 'mc-edit-acc-val', 'number', acc.accisa, '0.000001') +
+            _formField('In vigore dal', 'mc-edit-acc-da', 'date', acc.data_inizio) +
+            _formField('In vigore fino al (vuoto = attiva)', 'mc-edit-acc-a', 'date', acc.data_fine) +
+            _formField('Note', 'mc-edit-acc-note', 'text', acc.note),
+            'mc-edit-acc-salva', 'Salva'
+        );
+        _openModal(modal, 'mc-modal-edit-acc');
+
+        document.getElementById('mc-edit-acc-salva').addEventListener('click', async function() {
+            var accisa = parseFloat(document.getElementById('mc-edit-acc-val').value);
+            var da = document.getElementById('mc-edit-acc-da').value;
+            var a = document.getElementById('mc-edit-acc-a').value || null;
+            var note = document.getElementById('mc-edit-acc-note').value || null;
+            if (!da || !accisa) { ENI.UI.warning('Compila accisa e data inizio'); return; }
+            try {
+                await ENI.API.update(T.ACCISE, acc.id, {
+                    accisa: accisa, data_inizio: da, data_fine: a, note: note
+                });
+                _closeModal('mc-modal-edit-acc');
+                _renderTab();
+                ENI.UI.success('Accisa aggiornata');
             } catch(e) { ENI.UI.error('Errore: ' + e.message); }
         });
     }
