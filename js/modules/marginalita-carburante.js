@@ -881,7 +881,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
             _venditeMese.anno = parseInt(document.getElementById('mc-vend-anno').value);
             _loadVendite();
         });
-        document.getElementById('mc-vend-add').addEventListener('click', _showVenditaForm);
+        document.getElementById('mc-vend-add').addEventListener('click', function() { _showVenditaForm(); });
 
         await _loadVendite();
     }
