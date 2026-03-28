@@ -1008,14 +1008,17 @@ ENI.Modules.MarginalitaCarburante = (function() {
 
             try {
                 var vendita;
+                var venditaId;
                 if (isEdit) {
                     vendita = await ENI.API.update(T.VENDITE, existing.id, {
                         data_inizio: data, data_fine: dataFine, litri_totali: litri, importo_totale: importo, note: note
                     });
+                    venditaId = existing.id;
                 } else {
                     vendita = await ENI.API.insert(T.VENDITE, {
                         data_inizio: data, data_fine: dataFine, litri_totali: litri, importo_totale: importo, note: note
                     });
+                    venditaId = vendita.id;
                 }
 
                 // Salva breakdown per prodotto
@@ -1032,7 +1035,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
                         var pp = prezziProd.length > 0 ? parseFloat(prezziProd[0].prezzo) : 0;
 
                         await ENI.API.getClient().from(T.VENDITE_PROD).upsert({
-                            vendita_id: vendita.id, prodotto_id: prodId, litri: prodLitri,
+                            vendita_id: venditaId, prodotto_id: prodId, litri: prodLitri,
                             prezzo_pompa: pp, importo: prodLitri * pp, costo_medio_ref: st.costo_medio || 0
                         }, { onConflict: 'vendita_id,prodotto_id' });
                     }
