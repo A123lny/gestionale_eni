@@ -637,31 +637,50 @@ ENI.Modules.MarginalitaCarburante = (function() {
         if (carichi.length === 0) {
             html += '<div class="card"><div class="card-body"><p class="empty-state-text">Nessun carico registrato</p></div></div>';
         } else {
-            html += '<div class="card"><div class="card-body" style="overflow-x:auto; padding:var(--space-2);">' +
-                '<table class="table cm-table-compact"><thead><tr>' +
-                    '<th>Data</th><th>Prodotto</th><th class="text-right">Lt. Ordinati</th><th class="text-right">Lt. Comm.</th>' +
-                    '<th class="text-right">Lt. Fiscali</th><th class="text-right">MP (\u20AC/lt)</th><th class="text-right">Accisa</th>' +
-                    '<th class="text-right" style="background:#e0f7fa;">Costo Tot.</th><th class="text-right" style="background:#e0f7fa;">Costo/Lt</th>' +
-                    '<th class="text-right">C.M. Dopo</th><th></th>' +
-                '</tr></thead><tbody>';
-
+            // Raggruppa carichi per data
+            var perData = {};
             carichi.forEach(function(c) {
-                var prodNome = _prodotti.find(function(p) { return p.id === c.prodotto_id; });
-                html += '<tr>' +
-                    '<td>' + _fmtData(c.data) + '</td>' +
-                    '<td><strong>' + (prodNome ? prodNome.nome : c.prodotto_id) + '</strong></td>' +
-                    '<td class="text-right">' + _fmt(c.litri_ordinati, 0) + '</td>' +
-                    '<td class="text-right">' + _fmt(c.litri_fisici, 0) + '</td>' +
-                    '<td class="text-right">' + _fmt(c.litri_fiscali, 0) + '</td>' +
-                    '<td class="text-right">' + _fmtEuro5(c.prezzo_mp) + '</td>' +
-                    '<td class="text-right">' + (parseFloat(c.accisa) || 0).toFixed(4) + '</td>' +
-                    '<td class="text-right" style="background:#e0f7fa; font-weight:600;">' + _fmtEuro(c.costo_carico_totale) + '</td>' +
-                    '<td class="text-right" style="background:#e0f7fa;">' + _fmtEuro5(c.costo_per_litro_fisico) + '</td>' +
-                    '<td class="text-right">' + _fmtEuro5(c.costo_medio_risultante) + '</td>' +
-                    '<td><button class="btn-icon mc-del-carico" data-id="' + c.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>' +
-                '</tr>';
+                if (!perData[c.data]) perData[c.data] = [];
+                perData[c.data].push(c);
             });
-            html += '</tbody></table></div></div>';
+
+            var dateOrdinate = Object.keys(perData).sort().reverse();
+
+            dateOrdinate.forEach(function(data) {
+                var righe = perData[data];
+                var totCostoCarico = righe.reduce(function(s, c) { return s + (parseFloat(c.costo_carico_totale) || 0); }, 0);
+
+                html += '<div class="card" style="margin-bottom:var(--space-2);">' +
+                    '<div class="card-body" style="overflow-x:auto; padding:var(--space-2);">' +
+                        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-1);">' +
+                            '<strong>Carico del ' + _fmtData(data) + '</strong>' +
+                            '<span style="color:var(--color-primary); font-weight:600;">Totale: ' + _fmtEuro(totCostoCarico) + '</span>' +
+                        '</div>' +
+                        '<table class="table cm-table-compact"><thead><tr>' +
+                            '<th>Prodotto</th><th class="text-right">Lt. Ord.</th><th class="text-right">Lt. Comm.</th>' +
+                            '<th class="text-right">Lt. Fiscali</th><th class="text-right">MP (\u20AC/lt)</th><th class="text-right">Accisa</th>' +
+                            '<th class="text-right" style="background:#e0f7fa;">Costo Tot.</th><th class="text-right" style="background:#e0f7fa;">Costo/Lt</th>' +
+                            '<th class="text-right">C.M. Dopo</th><th></th>' +
+                        '</tr></thead><tbody>';
+
+                righe.forEach(function(c) {
+                    var prodNome = _prodotti.find(function(p) { return p.id === c.prodotto_id; });
+                    html += '<tr>' +
+                        '<td><strong>' + (prodNome ? prodNome.nome : c.prodotto_id) + '</strong></td>' +
+                        '<td class="text-right">' + _fmt(c.litri_ordinati, 0) + '</td>' +
+                        '<td class="text-right">' + _fmt(c.litri_fisici, 0) + '</td>' +
+                        '<td class="text-right">' + _fmt(c.litri_fiscali, 0) + '</td>' +
+                        '<td class="text-right">' + _fmtEuro5(c.prezzo_mp) + '</td>' +
+                        '<td class="text-right">' + (parseFloat(c.accisa) || 0).toFixed(4) + '</td>' +
+                        '<td class="text-right" style="background:#e0f7fa; font-weight:600;">' + _fmtEuro(c.costo_carico_totale) + '</td>' +
+                        '<td class="text-right" style="background:#e0f7fa;">' + _fmtEuro5(c.costo_per_litro_fisico) + '</td>' +
+                        '<td class="text-right">' + _fmtEuro5(c.costo_medio_risultante) + '</td>' +
+                        '<td><button class="btn-icon mc-del-carico" data-id="' + c.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>' +
+                    '</tr>';
+                });
+
+                html += '</tbody></table></div></div>';
+            });
         }
 
         container.innerHTML = html;
@@ -680,100 +699,148 @@ ENI.Modules.MarginalitaCarburante = (function() {
         });
     }
 
+    // --- Form Carico Multi-Prodotto ---
     function _showCaricoForm() {
         var oggi = _todayStr();
-        var opts = _prodotti.map(function(p) { return '<option value="' + p.id + '">' + p.nome + '</option>'; }).join('');
 
-        var modal = _modal('mc-modal-carico', 'Nuovo Carico',
-            '<div class="form-group"><label class="form-label">Prodotto</label><select class="form-select" id="mc-car-prod">' + opts + '</select></div>' +
-            _formField('Data', 'mc-car-data', 'date', oggi) +
-            _formField('Litri ordinati', 'mc-car-ord', 'number', '', '0.01') +
-            _formField('Litri commerciali (sonda)', 'mc-car-fisici', 'number', '', '0.01') +
-            _formField('Litri fiscali (bolla)', 'mc-car-fiscali', 'number', '', '0.01') +
-            _formField('Prezzo MP (\u20AC/lt)', 'mc-car-mp', 'number', '', '0.00001') +
-            _formField('Accisa (\u20AC/lt)', 'mc-car-accisa', 'number', '', '0.000001') +
-            _formField('Note', 'mc-car-note', 'text', '') +
-            '<div id="mc-car-preview" style="padding:var(--space-2); background:var(--color-gray-50); border-radius:var(--radius-md); margin-top:var(--space-2); font-size:0.85rem;"></div>',
-            'mc-car-salva', 'Registra Carico'
-        );
-        _openModal(modal, 'mc-modal-carico');
+        // Costruisci form con una sezione per ogni prodotto
+        var body =
+            _formField('Data carico', 'mc-car-data', 'date', oggi) +
+            _formField('Note (opzionale)', 'mc-car-note', 'text', '') +
+            '<hr style="margin:var(--space-3) 0; border:none; border-top:1px solid var(--color-gray-200);">';
 
-        // Precompila accisa dal prodotto selezionato (cerca l'accisa attiva alla data del carico)
-        async function precompileAccisa() {
-            var prodId = document.getElementById('mc-car-prod').value;
-            var dataCarico = document.getElementById('mc-car-data').value || _todayStr();
-            var accise = await ENI.API.getAll(T.ACCISE, {
-                filters: [{ op: 'eq', col: 'prodotto_id', val: prodId }],
-                order: { col: 'data_inizio', asc: false }
-            }) || [];
-            // Trova l'accisa valida alla data del carico
-            var accisaValida = null;
-            for (var i = 0; i < accise.length; i++) {
-                var a = accise[i];
-                if (a.data_inizio <= dataCarico && (!a.data_fine || a.data_fine >= dataCarico)) {
-                    accisaValida = a.accisa;
-                    break;
-                }
-            }
-            if (accisaValida !== null) {
-                document.getElementById('mc-car-accisa').value = accisaValida;
-                updatePreview();
-            }
-        }
-        precompileAccisa();
-        document.getElementById('mc-car-prod').addEventListener('change', precompileAccisa);
-        document.getElementById('mc-car-data').addEventListener('change', precompileAccisa);
-
-        // Preview
-        function updatePreview() {
-            var fisici = parseFloat(document.getElementById('mc-car-fisici').value) || 0;
-            var fiscali = parseFloat(document.getElementById('mc-car-fiscali').value) || 0;
-            var mp = parseFloat(document.getElementById('mc-car-mp').value) || 0;
-            var accisa = parseFloat(document.getElementById('mc-car-accisa').value) || 0;
-            if (fisici <= 0) { document.getElementById('mc-car-preview').innerHTML = ''; return; }
-            var calc = ENI.Calcoli.calcolaCostoCarico(fiscali, fisici, mp, accisa);
-            document.getElementById('mc-car-preview').innerHTML =
-                'Costo totale: <strong>' + _fmtEuro(calc.costo_carico_totale) + '</strong> | Costo/lt comm.: <strong>' + _fmtEuro5(calc.costo_per_litro_fisico) + '</strong>';
-        }
-        ['mc-car-fisici','mc-car-fiscali','mc-car-mp','mc-car-accisa'].forEach(function(id) {
-            document.getElementById(id).addEventListener('input', updatePreview);
+        _prodotti.forEach(function(prod, idx) {
+            body +=
+                '<div style="padding:var(--space-2); margin-bottom:var(--space-2); border:1px solid var(--color-gray-200); border-radius:var(--radius-md);">' +
+                    '<div style="display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-2);">' +
+                        '<strong style="font-size:0.9rem;">' + prod.nome + '</strong>' +
+                        '<span style="font-size:0.75rem; color:var(--text-secondary);">(lascia vuoto se non presente nel carico)</span>' +
+                    '</div>' +
+                    '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:var(--space-2);">' +
+                        '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.7rem;">Lt. ordinati</label>' +
+                            '<input type="number" class="form-input mc-car-field" id="mc-car-ord-' + prod.id + '" step="0.01" data-prod="' + prod.id + '" data-field="ord"></div>' +
+                        '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.7rem;">Lt. commerciali</label>' +
+                            '<input type="number" class="form-input mc-car-field" id="mc-car-comm-' + prod.id + '" step="0.01" data-prod="' + prod.id + '" data-field="comm"></div>' +
+                        '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.7rem;">Lt. fiscali</label>' +
+                            '<input type="number" class="form-input mc-car-field" id="mc-car-fisc-' + prod.id + '" step="0.01" data-prod="' + prod.id + '" data-field="fisc"></div>' +
+                        '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.7rem;">Prezzo MP (\u20AC/lt)</label>' +
+                            '<input type="number" class="form-input mc-car-field" id="mc-car-mp-' + prod.id + '" step="0.00001" data-prod="' + prod.id + '" data-field="mp"></div>' +
+                        '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.7rem;">Accisa (\u20AC/lt)</label>' +
+                            '<input type="number" class="form-input mc-car-field" id="mc-car-acc-' + prod.id + '" step="0.000001" data-prod="' + prod.id + '" data-field="acc"></div>' +
+                    '</div>' +
+                    '<div id="mc-car-prev-' + prod.id + '" style="font-size:0.75rem; color:var(--text-secondary); margin-top:var(--space-1);"></div>' +
+                '</div>';
         });
 
-        document.getElementById('mc-car-salva').addEventListener('click', async function() {
-            var prodId = document.getElementById('mc-car-prod').value;
-            var data = document.getElementById('mc-car-data').value;
-            var ordinati = parseFloat(document.getElementById('mc-car-ord').value) || 0;
-            var fisici = parseFloat(document.getElementById('mc-car-fisici').value) || 0;
-            var fiscali = parseFloat(document.getElementById('mc-car-fiscali').value) || 0;
-            var mp = parseFloat(document.getElementById('mc-car-mp').value) || 0;
-            var accisa = parseFloat(document.getElementById('mc-car-accisa').value) || 0;
-            var note = document.getElementById('mc-car-note').value || null;
+        body += '<div id="mc-car-totale" style="padding:var(--space-2); background:var(--color-primary-light); border-radius:var(--radius-md); font-weight:600; text-align:right;"></div>';
 
-            if (!data || fisici <= 0 || fiscali <= 0 || mp <= 0) {
-                ENI.UI.warning('Compila tutti i campi obbligatori'); return;
+        var modal = _modal('mc-modal-carico', 'Nuovo Carico', body, 'mc-car-salva', 'Registra Carico');
+        _openModal(modal, 'mc-modal-carico');
+
+        // Precompila accise per ogni prodotto alla data selezionata
+        async function precompileAccise() {
+            var dataCarico = document.getElementById('mc-car-data').value || _todayStr();
+            for (var i = 0; i < _prodotti.length; i++) {
+                var prod = _prodotti[i];
+                var accise = await ENI.API.getAll(T.ACCISE, {
+                    filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }],
+                    order: { col: 'data_inizio', asc: false }
+                }) || [];
+                for (var j = 0; j < accise.length; j++) {
+                    var a = accise[j];
+                    if (a.data_inizio <= dataCarico && (!a.data_fine || a.data_fine >= dataCarico)) {
+                        document.getElementById('mc-car-acc-' + prod.id).value = a.accisa;
+                        break;
+                    }
+                }
+            }
+            updatePreviews();
+        }
+        precompileAccise();
+        document.getElementById('mc-car-data').addEventListener('change', precompileAccise);
+
+        // Preview per prodotto + totale
+        function updatePreviews() {
+            var totale = 0;
+            _prodotti.forEach(function(prod) {
+                var comm = parseFloat(document.getElementById('mc-car-comm-' + prod.id).value) || 0;
+                var fisc = parseFloat(document.getElementById('mc-car-fisc-' + prod.id).value) || 0;
+                var mp = parseFloat(document.getElementById('mc-car-mp-' + prod.id).value) || 0;
+                var acc = parseFloat(document.getElementById('mc-car-acc-' + prod.id).value) || 0;
+                var prev = document.getElementById('mc-car-prev-' + prod.id);
+
+                if (comm <= 0 && fisc <= 0) {
+                    prev.innerHTML = '';
+                    return;
+                }
+
+                var calc = ENI.Calcoli.calcolaCostoCarico(fisc, comm, mp, acc);
+                totale += calc.costo_carico_totale;
+                prev.innerHTML = 'Costo: <strong>' + _fmtEuro(calc.costo_carico_totale) + '</strong> | ' + _fmtEuro5(calc.costo_per_litro_fisico) + '/lt';
+            });
+
+            var totDiv = document.getElementById('mc-car-totale');
+            if (totDiv) totDiv.innerHTML = totale > 0 ? 'Costo totale carico: ' + _fmtEuro(totale) : '';
+        }
+
+        document.querySelectorAll('.mc-car-field').forEach(function(input) {
+            input.addEventListener('input', updatePreviews);
+        });
+
+        // Salva
+        document.getElementById('mc-car-salva').addEventListener('click', async function() {
+            var data = document.getElementById('mc-car-data').value;
+            var note = document.getElementById('mc-car-note').value || null;
+            if (!data) { ENI.UI.warning('Inserisci la data'); return; }
+
+            var haAlmenoUnProdotto = false;
+            var prodottiDaSalvare = [];
+
+            _prodotti.forEach(function(prod) {
+                var comm = parseFloat(document.getElementById('mc-car-comm-' + prod.id).value) || 0;
+                var fisc = parseFloat(document.getElementById('mc-car-fisc-' + prod.id).value) || 0;
+                var mp = parseFloat(document.getElementById('mc-car-mp-' + prod.id).value) || 0;
+                var acc = parseFloat(document.getElementById('mc-car-acc-' + prod.id).value) || 0;
+                var ord = parseFloat(document.getElementById('mc-car-ord-' + prod.id).value) || 0;
+
+                if (comm > 0 && fisc > 0 && mp > 0) {
+                    haAlmenoUnProdotto = true;
+                    prodottiDaSalvare.push({ prodId: prod.id, ord: ord, comm: comm, fisc: fisc, mp: mp, acc: acc });
+                }
+            });
+
+            if (!haAlmenoUnProdotto) {
+                ENI.UI.warning('Inserisci i dati di almeno un prodotto'); return;
             }
 
-            var calc = ENI.Calcoli.calcolaCostoCarico(fiscali, fisici, mp, accisa);
-
-            // Calcola nuovo costo medio
-            var st = _statoProdotti[prodId] || {};
-            var cm = ENI.Calcoli.aggiornaCostoMedio(
-                st.giacenza_teorica || 0, st.costo_medio || 0,
-                fisici, calc.costo_per_litro_fisico
-            );
-
             try {
-                await ENI.API.insert(T.CARICHI, {
-                    prodotto_id: prodId, data: data, litri_ordinati: ordinati,
-                    litri_fisici: fisici, litri_fiscali: fiscali, prezzo_mp: mp,
-                    accisa: accisa, costo_carico_totale: calc.costo_carico_totale,
-                    costo_per_litro_fisico: calc.costo_per_litro_fisico,
-                    costo_medio_risultante: cm.nuovo_costo_medio, note: note
-                });
+                for (var i = 0; i < prodottiDaSalvare.length; i++) {
+                    var p = prodottiDaSalvare[i];
+                    var calc = ENI.Calcoli.calcolaCostoCarico(p.fisc, p.comm, p.mp, p.acc);
+                    var st = _statoProdotti[p.prodId] || {};
+                    var cm = ENI.Calcoli.aggiornaCostoMedio(
+                        st.giacenza_teorica || 0, st.costo_medio || 0,
+                        p.comm, calc.costo_per_litro_fisico
+                    );
+
+                    await ENI.API.insert(T.CARICHI, {
+                        prodotto_id: p.prodId, data: data, litri_ordinati: p.ord,
+                        litri_fisici: p.comm, litri_fiscali: p.fisc, prezzo_mp: p.mp,
+                        accisa: p.acc, costo_carico_totale: calc.costo_carico_totale,
+                        costo_per_litro_fisico: calc.costo_per_litro_fisico,
+                        costo_medio_risultante: cm.nuovo_costo_medio, note: note
+                    });
+
+                    // Aggiorna stato per il prodotto successivo (se nello stesso carico)
+                    _statoProdotti[p.prodId] = _statoProdotti[p.prodId] || {};
+                    _statoProdotti[p.prodId].giacenza_teorica = cm.nuova_giacenza;
+                    _statoProdotti[p.prodId].costo_medio = cm.nuovo_costo_medio;
+                }
+
                 _closeModal('mc-modal-carico');
                 await _ricalcolaStato();
                 _renderPage();
-                ENI.UI.success('Carico registrato. Nuovo costo medio: ' + _fmtEuro5(cm.nuovo_costo_medio));
+                ENI.UI.success('Carico registrato (' + prodottiDaSalvare.length + ' prodotti)');
             } catch(e) { ENI.UI.error('Errore: ' + e.message); }
         });
     }
