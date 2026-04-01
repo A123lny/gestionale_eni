@@ -20,7 +20,8 @@ ENI.Modules.MarginalitaCarburante = (function() {
         VENDITE_PROD: 'vendite_per_prodotto',
         CONGUAGLI: 'conguagli_eni',
         RIMBORSI: 'rimborsi_stato',
-        CONFIG: 'config_carburanti'
+        CONFIG: 'config_carburanti',
+        CHIUSURE: 'chiusure_mensili_carburante'
     };
 
     var MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
@@ -78,18 +79,52 @@ ENI.Modules.MarginalitaCarburante = (function() {
         for (var i = 0; i < _prodotti.length; i++) {
             var prod = _prodotti[i];
 
-            // Giacenza iniziale
-            var giacenze = await ENI.API.getAll(T.GIACENZE, {
+            // Cerca ultima chiusura per questo prodotto
+            var ultimaChiusura = await ENI.API.getAll(T.CHIUSURE, {
                 filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }],
-                limit: 1
+                order: { col: 'anno', asc: false },
+                limit: 10
+            }) || [];
+            // Ordina per anno+mese desc e prendi la prima
+            ultimaChiusura.sort(function(a, b) {
+                var va = a.anno * 100 + a.mese;
+                var vb = b.anno * 100 + b.mese;
+                return vb - va;
             });
-            var g = giacenze && giacenze.length > 0 ? giacenze[0] : null;
-            var giacIniz = g ? parseFloat(g.litri_fisici) || 0 : 0;
-            var costoIniz = g ? parseFloat(g.costo_medio) || 0 : 0;
+            var chiusura = ultimaChiusura.length > 0 ? ultimaChiusura[0] : null;
 
-            // Carica tutti gli eventi
+            var giacIniz, costoIniz, dataFiltro;
+
+            if (chiusura) {
+                // Riparti dall'ultima chiusura
+                giacIniz = parseFloat(chiusura.giacenza_reale) || 0;
+                costoIniz = parseFloat(chiusura.costo_medio) || 0;
+                // Calcola primo giorno del mese DOPO la chiusura
+                var meseSucc = chiusura.mese + 1, annoSucc = chiusura.anno;
+                if (meseSucc > 12) { meseSucc = 1; annoSucc++; }
+                dataFiltro = annoSucc + '-' + String(meseSucc).padStart(2, '0') + '-01';
+            } else {
+                // Nessuna chiusura: comportamento originale
+                var giacenze = await ENI.API.getAll(T.GIACENZE, {
+                    filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }],
+                    limit: 1
+                });
+                var g = giacenze && giacenze.length > 0 ? giacenze[0] : null;
+                giacIniz = g ? parseFloat(g.litri_fisici) || 0 : 0;
+                costoIniz = g ? parseFloat(g.costo_medio) || 0 : 0;
+                dataFiltro = null; // carica tutto
+            }
+
+            // Carica eventi (tutti o solo dal mese dopo la chiusura)
+            var carichiFilters = [{ op: 'eq', col: 'prodotto_id', val: prod.id }];
+            var conguagliFilters = [{ op: 'eq', col: 'prodotto_id', val: prod.id }];
+            if (dataFiltro) {
+                carichiFilters.push({ op: 'gte', col: 'data', val: dataFiltro });
+                conguagliFilters.push({ op: 'gte', col: 'data', val: dataFiltro });
+            }
+
             var carichi = await ENI.API.getAll(T.CARICHI, {
-                filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }],
+                filters: carichiFilters,
                 order: { col: 'data', asc: true }
             }) || [];
 
@@ -103,6 +138,8 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 var vp = venditeProd[v];
                 try {
                     var vendita = await ENI.API.getById(T.VENDITE, vp.vendita_id);
+                    // Filtra per data se c'è una chiusura
+                    if (dataFiltro && vendita.data_inizio < dataFiltro) continue;
                     venditeConDate.push({
                         tipo: 'vendita',
                         data: vendita.data_inizio,
@@ -113,7 +150,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
             }
 
             var conguagli = await ENI.API.getAll(T.CONGUAGLI, {
-                filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }],
+                filters: conguagliFilters,
                 order: { col: 'data', asc: true }
             }) || [];
 
@@ -187,6 +224,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 _tabBtn('prezzi', 'Prezzi Pompa') +
                 _tabBtn('report', 'Report') +
                 _tabBtn('conguagli', 'Conguagli & PC') +
+                _tabBtn('chiusure', 'Chiusure') +
                 _tabBtn('setup', 'Setup') +
             '</div>' +
             '<div id="mc-tab-content"></div>';
@@ -276,6 +314,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
             case 'prezzi': _renderPrezzi(c); break;
             case 'report': _renderReport(c); break;
             case 'conguagli': _renderConguagli(c); break;
+            case 'chiusure': _renderChiusure(c); break;
             case 'setup': _renderSetup(c); break;
         }
     }
@@ -1631,6 +1670,636 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 ENI.UI.success('Rimborso registrato');
             } catch(e) { ENI.UI.error('Errore: ' + e.message); }
         });
+    }
+
+    // ============================================================
+    // TAB: CHIUSURE MENSILI
+    // ============================================================
+
+    var _chiusureMese = null; // { anno, mese } per selezione anteprima
+    var _chiusurePeriodo = null; // { daAnno, daMese, aAnno, aMese }
+
+    // Calcola lo stato di un prodotto per un mese specifico
+    // Trova il punto di partenza corretto (chiusura precedente o giacenza iniziale)
+    async function _calcolaStatoMese(prod, anno, mese) {
+        // Cerca chiusura del mese precedente
+        var mesePrev = mese - 1, annoPrev = anno;
+        if (mesePrev < 1) { mesePrev = 12; annoPrev--; }
+
+        var chiusuraPrev = await ENI.API.getAll(T.CHIUSURE, {
+            filters: [
+                { op: 'eq', col: 'prodotto_id', val: prod.id },
+                { op: 'eq', col: 'anno', val: annoPrev },
+                { op: 'eq', col: 'mese', val: mesePrev }
+            ],
+            limit: 1
+        });
+        chiusuraPrev = chiusuraPrev && chiusuraPrev.length > 0 ? chiusuraPrev[0] : null;
+
+        var giacIniz, costoIniz;
+        if (chiusuraPrev) {
+            giacIniz = parseFloat(chiusuraPrev.giacenza_reale) || 0;
+            costoIniz = parseFloat(chiusuraPrev.costo_medio) || 0;
+        } else {
+            // Nessuna chiusura precedente: cerca la più recente anteriore
+            var chiusureAnt = await ENI.API.getAll(T.CHIUSURE, {
+                filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }],
+                order: { col: 'anno', asc: false }
+            });
+            // Filtra solo quelle prima del mese richiesto
+            var chiusuraBase = null;
+            if (chiusureAnt) {
+                for (var ci = 0; ci < chiusureAnt.length; ci++) {
+                    var ch = chiusureAnt[ci];
+                    if (ch.anno < anno || (ch.anno === anno && ch.mese < mese)) {
+                        chiusuraBase = ch;
+                        break;
+                    }
+                }
+            }
+            if (chiusuraBase) {
+                giacIniz = parseFloat(chiusuraBase.giacenza_reale) || 0;
+                costoIniz = parseFloat(chiusuraBase.costo_medio) || 0;
+            } else {
+                // Nessuna chiusura: usa giacenze_iniziali
+                var giac = await ENI.API.getAll(T.GIACENZE, {
+                    filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }],
+                    limit: 1
+                });
+                var g = giac && giac.length > 0 ? giac[0] : null;
+                giacIniz = g ? parseFloat(g.litri_fisici) || 0 : 0;
+                costoIniz = g ? parseFloat(g.costo_medio) || 0 : 0;
+
+                // Se non c'è chiusura precedente ma ci sono mesi anteriori con eventi,
+                // devo processare tutti gli eventi fino al mese precedente
+                var primoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-01';
+                var carichiPre = await ENI.API.getAll(T.CARICHI, {
+                    filters: [
+                        { op: 'eq', col: 'prodotto_id', val: prod.id },
+                        { op: 'lt', col: 'data', val: primoGiorno }
+                    ],
+                    order: { col: 'data', asc: true }
+                }) || [];
+
+                var venditeProdPre = await ENI.API.getAll(T.VENDITE_PROD, {
+                    filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }]
+                }) || [];
+
+                var conguagliPre = await ENI.API.getAll(T.CONGUAGLI, {
+                    filters: [
+                        { op: 'eq', col: 'prodotto_id', val: prod.id },
+                        { op: 'lt', col: 'data', val: primoGiorno }
+                    ],
+                    order: { col: 'data', asc: true }
+                }) || [];
+
+                // Costruisci eventi pre-mese
+                var eventiPre = [];
+                carichiPre.forEach(function(c) {
+                    eventiPre.push({
+                        tipo: 'carico', data: c.data,
+                        litri_fisici: parseFloat(c.litri_fisici) || 0,
+                        litri_fiscali: parseFloat(c.litri_fiscali) || 0,
+                        prezzo_mp: parseFloat(c.prezzo_mp) || 0,
+                        accisa: parseFloat(c.accisa) || 0
+                    });
+                });
+
+                // Vendite pre-mese con date
+                for (var vi = 0; vi < venditeProdPre.length; vi++) {
+                    var vp = venditeProdPre[vi];
+                    try {
+                        var vendita = await ENI.API.getById(T.VENDITE, vp.vendita_id);
+                        if (vendita && vendita.data_inizio < primoGiorno) {
+                            eventiPre.push({
+                                tipo: 'vendita', data: vendita.data_inizio,
+                                litri: parseFloat(vp.litri) || 0,
+                                prezzo_pompa: parseFloat(vp.prezzo_pompa) || 0
+                            });
+                        }
+                    } catch(e) { /* vendita non trovata */ }
+                }
+
+                conguagliPre.forEach(function(cg) {
+                    eventiPre.push({
+                        tipo: 'conguaglio', data: cg.data,
+                        importo_mp: parseFloat(cg.importo_mp) || 0
+                    });
+                });
+
+                eventiPre.sort(function(a, b) { return a.data < b.data ? -1 : a.data > b.data ? 1 : 0; });
+
+                if (eventiPre.length > 0) {
+                    var statoPre = ENI.Calcoli.calcolaStatoProdotto(
+                        giacIniz, costoIniz, eventiPre, prod.ha_pc,
+                        parseFloat(_config.margine_target) || 0.05
+                    );
+                    giacIniz = statoPre.giacenza_teorica;
+                    costoIniz = statoPre.costo_medio;
+                }
+            }
+        }
+
+        // Ora carica gli eventi SOLO del mese richiesto
+        var primoG = anno + '-' + String(mese).padStart(2, '0') + '-01';
+        var ultimoD = new Date(anno, mese, 0);
+        var ultimoG = ultimoD.getFullYear() + '-' + String(ultimoD.getMonth() + 1).padStart(2, '0') + '-' + String(ultimoD.getDate()).padStart(2, '0');
+
+        var carichi = await ENI.API.getAll(T.CARICHI, {
+            filters: [
+                { op: 'eq', col: 'prodotto_id', val: prod.id },
+                { op: 'gte', col: 'data', val: primoG },
+                { op: 'lte', col: 'data', val: ultimoG }
+            ],
+            order: { col: 'data', asc: true }
+        }) || [];
+
+        var venditeProd = await ENI.API.getAll(T.VENDITE_PROD, {
+            filters: [{ op: 'eq', col: 'prodotto_id', val: prod.id }]
+        }) || [];
+
+        var conguagli = await ENI.API.getAll(T.CONGUAGLI, {
+            filters: [
+                { op: 'eq', col: 'prodotto_id', val: prod.id },
+                { op: 'gte', col: 'data', val: primoG },
+                { op: 'lte', col: 'data', val: ultimoG }
+            ],
+            order: { col: 'data', asc: true }
+        }) || [];
+
+        var eventi = [];
+        var litriCaricati = 0;
+        carichi.forEach(function(c) {
+            litriCaricati += parseFloat(c.litri_fisici) || 0;
+            eventi.push({
+                tipo: 'carico', data: c.data,
+                litri_fisici: parseFloat(c.litri_fisici) || 0,
+                litri_fiscali: parseFloat(c.litri_fiscali) || 0,
+                prezzo_mp: parseFloat(c.prezzo_mp) || 0,
+                accisa: parseFloat(c.accisa) || 0
+            });
+        });
+
+        // Vendite del mese
+        for (var j = 0; j < venditeProd.length; j++) {
+            var vpj = venditeProd[j];
+            try {
+                var vend = await ENI.API.getById(T.VENDITE, vpj.vendita_id);
+                if (vend && vend.data_inizio >= primoG && vend.data_inizio <= ultimoG) {
+                    eventi.push({
+                        tipo: 'vendita', data: vend.data_inizio,
+                        litri: parseFloat(vpj.litri) || 0,
+                        prezzo_pompa: parseFloat(vpj.prezzo_pompa) || 0
+                    });
+                }
+            } catch(e) { /* skip */ }
+        }
+
+        conguagli.forEach(function(cg) {
+            eventi.push({
+                tipo: 'conguaglio', data: cg.data,
+                importo_mp: parseFloat(cg.importo_mp) || 0
+            });
+        });
+
+        eventi.sort(function(a, b) { return a.data < b.data ? -1 : a.data > b.data ? 1 : 0; });
+
+        var stato = ENI.Calcoli.calcolaStatoProdotto(
+            giacIniz, costoIniz, eventi, prod.ha_pc,
+            parseFloat(_config.margine_target) || 0.05
+        );
+
+        return {
+            giacenza_inizio: giacIniz,
+            costo_medio_inizio: costoIniz,
+            giacenza_teorica: stato.giacenza_teorica,
+            costo_medio: stato.costo_medio,
+            margine_totale: stato.margine_accumulato,
+            margine_medio_lt: stato.litri_venduti_tot > 0 ? Math.round((stato.margine_accumulato / stato.litri_venduti_tot) * 1000000) / 1000000 : 0,
+            litri_venduti: stato.litri_venduti_tot,
+            litri_caricati: litriCaricati,
+            pc_maturato: stato.pc_maturato
+        };
+    }
+
+    // Render tab Chiusure
+    async function _renderChiusure(container) {
+        var oggi = new Date();
+        if (!_chiusureMese) _chiusureMese = { anno: oggi.getFullYear(), mese: oggi.getMonth() + 1 };
+        if (!_chiusurePeriodo) _chiusurePeriodo = { daAnno: oggi.getFullYear(), daMese: 1, aAnno: oggi.getFullYear(), aMese: oggi.getMonth() + 1 };
+
+        // Carica chiusure esistenti
+        var chiusure = await ENI.API.getAll(T.CHIUSURE, {
+            order: { col: 'anno', asc: false }
+        }) || [];
+
+        var html = '';
+
+        // ---- SEZIONE 1: CHIUDI MESE ----
+        html += '<div class="card" style="margin-bottom:var(--space-3);">' +
+            '<div class="card-body">' +
+            '<h3 style="margin-bottom:var(--space-2);">Chiudi Mese</h3>' +
+            '<div style="display:flex; gap:var(--space-2); align-items:center; margin-bottom:var(--space-3); flex-wrap:wrap;">' +
+                '<select id="mc-chius-mese" class="form-select" style="min-width:130px;">';
+        for (var m = 0; m < 12; m++) {
+            html += '<option value="' + (m + 1) + '"' + (m + 1 === _chiusureMese.mese ? ' selected' : '') + '>' + MESI[m] + '</option>';
+        }
+        html += '</select>' +
+                '<select id="mc-chius-anno" class="form-select" style="min-width:90px;">';
+        for (var a = 2024; a <= oggi.getFullYear() + 1; a++) {
+            html += '<option value="' + a + '"' + (a === _chiusureMese.anno ? ' selected' : '') + '>' + a + '</option>';
+        }
+        html += '</select>' +
+                '<button class="btn btn-sm btn-outline" id="mc-chius-anteprima">Calcola Anteprima</button>' +
+            '</div>' +
+            '<div id="mc-chius-preview"></div>' +
+            '</div></div>';
+
+        // ---- SEZIONE 2: STORICO CHIUSURE ----
+        html += '<div class="card" style="margin-bottom:var(--space-3);">' +
+            '<div class="card-body">' +
+            '<h3 style="margin-bottom:var(--space-2);">Storico Chiusure</h3>';
+
+        if (chiusure.length === 0) {
+            html += '<p class="empty-state-text">Nessuna chiusura mensile registrata.</p>';
+        } else {
+            // Raggruppa per anno-mese
+            var gruppi = {};
+            chiusure.forEach(function(c) {
+                var key = c.anno + '-' + String(c.mese).padStart(2, '0');
+                if (!gruppi[key]) gruppi[key] = { anno: c.anno, mese: c.mese, righe: [] };
+                gruppi[key].righe.push(c);
+            });
+
+            var keys = Object.keys(gruppi).sort().reverse();
+            keys.forEach(function(key) {
+                var g = gruppi[key];
+                html += '<div style="margin-bottom:var(--space-3);">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-1);">' +
+                        '<h4 style="color:var(--color-primary);">' + MESI[g.mese - 1] + ' ' + g.anno + '</h4>' +
+                        '<button class="btn btn-sm btn-outline mc-chius-riapri" data-anno="' + g.anno + '" data-mese="' + g.mese + '" style="color:var(--color-danger); border-color:var(--color-danger);">Riapri Mese</button>' +
+                    '</div>' +
+                    '<div style="overflow-x:auto;">' +
+                    '<table class="table cm-table-compact"><thead><tr>' +
+                        '<th>Prodotto</th>' +
+                        '<th class="text-right">Giac. Inizio</th>' +
+                        '<th class="text-right">Caricati</th>' +
+                        '<th class="text-right">Venduti</th>' +
+                        '<th class="text-right">Giac. Teorica</th>' +
+                        '<th class="text-right">Giac. Reale</th>' +
+                        '<th class="text-right">Scarto</th>' +
+                        '<th class="text-right">Costo Medio</th>' +
+                        '<th class="text-right">Margine Tot.</th>' +
+                        '<th class="text-right">Marg./lt</th>' +
+                    '</tr></thead><tbody>';
+
+                g.righe.forEach(function(r) {
+                    var nomeProd = _prodotti.find(function(p) { return p.id === r.prodotto_id; });
+                    var scartoStile = Math.abs(r.scarto) > 0 ? ' style="color:var(--color-danger);"' : '';
+                    html += '<tr>' +
+                        '<td><strong>' + (nomeProd ? nomeProd.nome : r.prodotto_id) + '</strong></td>' +
+                        '<td class="text-right">' + _fmt(r.giacenza_inizio, 2) + '</td>' +
+                        '<td class="text-right">' + _fmt(r.litri_caricati, 2) + '</td>' +
+                        '<td class="text-right">' + _fmt(r.litri_venduti, 2) + '</td>' +
+                        '<td class="text-right">' + _fmt(r.giacenza_teorica, 2) + '</td>' +
+                        '<td class="text-right"><strong>' + _fmt(r.giacenza_reale, 2) + '</strong></td>' +
+                        '<td class="text-right"' + scartoStile + '>' + _fmt(r.scarto, 2) + '</td>' +
+                        '<td class="text-right">' + _fmtEuro4(r.costo_medio) + '</td>' +
+                        '<td class="text-right"><strong>' + _fmtEuro(r.margine_totale) + '</strong></td>' +
+                        '<td class="text-right">' + _fmtEuro4(r.margine_medio_lt) + '</td>' +
+                    '</tr>';
+                });
+
+                html += '</tbody></table></div></div>';
+            });
+        }
+        html += '</div></div>';
+
+        // ---- SEZIONE 3: RIEPILOGO PERIODO ----
+        html += '<div class="card">' +
+            '<div class="card-body">' +
+            '<h3 style="margin-bottom:var(--space-2);">Riepilogo Periodo</h3>' +
+            '<div style="display:flex; gap:var(--space-2); align-items:center; margin-bottom:var(--space-3); flex-wrap:wrap;">' +
+                '<span style="font-size:0.85rem; color:var(--text-secondary);">Da:</span>' +
+                '<select id="mc-per-da-mese" class="form-select" style="min-width:110px;">';
+        for (var pm = 0; pm < 12; pm++) {
+            html += '<option value="' + (pm + 1) + '"' + (pm + 1 === _chiusurePeriodo.daMese ? ' selected' : '') + '>' + MESI[pm] + '</option>';
+        }
+        html += '</select>' +
+                '<select id="mc-per-da-anno" class="form-select" style="min-width:80px;">';
+        for (var pa = 2024; pa <= oggi.getFullYear() + 1; pa++) {
+            html += '<option value="' + pa + '"' + (pa === _chiusurePeriodo.daAnno ? ' selected' : '') + '>' + pa + '</option>';
+        }
+        html += '</select>' +
+                '<span style="font-size:0.85rem; color:var(--text-secondary);">A:</span>' +
+                '<select id="mc-per-a-mese" class="form-select" style="min-width:110px;">';
+        for (var pm2 = 0; pm2 < 12; pm2++) {
+            html += '<option value="' + (pm2 + 1) + '"' + (pm2 + 1 === _chiusurePeriodo.aMese ? ' selected' : '') + '>' + MESI[pm2] + '</option>';
+        }
+        html += '</select>' +
+                '<select id="mc-per-a-anno" class="form-select" style="min-width:80px;">';
+        for (var pa2 = 2024; pa2 <= oggi.getFullYear() + 1; pa2++) {
+            html += '<option value="' + pa2 + '"' + (pa2 === _chiusurePeriodo.aAnno ? ' selected' : '') + '>' + pa2 + '</option>';
+        }
+        html += '</select>' +
+                '<button class="btn btn-sm btn-outline" id="mc-per-calcola">Calcola</button>' +
+            '</div>' +
+            '<div id="mc-per-result"></div>' +
+            '</div></div>';
+
+        container.innerHTML = html;
+
+        // ---- EVENTI ----
+        document.getElementById('mc-chius-anteprima').addEventListener('click', function() {
+            _chiusureMese.mese = parseInt(document.getElementById('mc-chius-mese').value);
+            _chiusureMese.anno = parseInt(document.getElementById('mc-chius-anno').value);
+            _mostraAnteprimaChiusura();
+        });
+
+        document.getElementById('mc-per-calcola').addEventListener('click', function() {
+            _chiusurePeriodo.daMese = parseInt(document.getElementById('mc-per-da-mese').value);
+            _chiusurePeriodo.daAnno = parseInt(document.getElementById('mc-per-da-anno').value);
+            _chiusurePeriodo.aMese = parseInt(document.getElementById('mc-per-a-mese').value);
+            _chiusurePeriodo.aAnno = parseInt(document.getElementById('mc-per-a-anno').value);
+            _calcolaRiepilogoPeriodo();
+        });
+
+        // Riapertura
+        container.querySelectorAll('.mc-chius-riapri').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var annoR = parseInt(this.dataset.anno);
+                var meseR = parseInt(this.dataset.mese);
+                _riapriMese(annoR, meseR);
+            });
+        });
+    }
+
+    // Mostra anteprima chiusura mese
+    async function _mostraAnteprimaChiusura() {
+        var preview = document.getElementById('mc-chius-preview');
+        if (!preview) return;
+        preview.innerHTML = '<div style="text-align:center; padding:var(--space-3);"><div class="spinner"></div></div>';
+
+        var anno = _chiusureMese.anno;
+        var mese = _chiusureMese.mese;
+
+        // Verifica se mese già chiuso
+        var esistenti = await ENI.API.getAll(T.CHIUSURE, {
+            filters: [{ op: 'eq', col: 'anno', val: anno }, { op: 'eq', col: 'mese', val: mese }]
+        }) || [];
+
+        var giaChiuso = esistenti.length > 0;
+
+        var html = '';
+        if (giaChiuso) {
+            html += '<div style="background:var(--color-success-bg, #e8f5e9); border:1px solid var(--color-success, #4CAF50); border-radius:var(--radius-md); padding:var(--space-2); margin-bottom:var(--space-2); color:var(--color-success, #2E7D32);">' +
+                '<strong>' + MESI[mese - 1] + ' ' + anno + '</strong> è già chiuso. Se salvi, i dati verranno aggiornati.' +
+            '</div>';
+        }
+
+        html += '<div style="overflow-x:auto;">' +
+            '<table class="table cm-table-compact"><thead><tr>' +
+                '<th>Prodotto</th>' +
+                '<th class="text-right">Giac. Inizio</th>' +
+                '<th class="text-right">Caricati</th>' +
+                '<th class="text-right">Venduti</th>' +
+                '<th class="text-right">Giac. Teorica</th>' +
+                '<th class="text-right">Costo Medio</th>' +
+                '<th class="text-right">Margine Tot.</th>' +
+                '<th class="text-right">Marg./lt</th>' +
+                '<th>Giacenza Reale</th>' +
+            '</tr></thead><tbody>';
+
+        for (var i = 0; i < _prodotti.length; i++) {
+            var prod = _prodotti[i];
+            var stato = await _calcolaStatoMese(prod, anno, mese);
+
+            // Se già chiuso, pre-popola giacenza reale
+            var giacRealeVal = '';
+            if (giaChiuso) {
+                var chiusuraProd = esistenti.find(function(e) { return e.prodotto_id === prod.id; });
+                if (chiusuraProd) giacRealeVal = chiusuraProd.giacenza_reale;
+            }
+
+            var margColor = stato.margine_medio_lt > 0.07 ? 'color:var(--color-success);' : stato.margine_medio_lt > 0.04 ? '' : 'color:var(--color-danger);';
+
+            html += '<tr>' +
+                '<td><strong>' + prod.nome + '</strong></td>' +
+                '<td class="text-right">' + _fmt(stato.giacenza_inizio, 2) + '</td>' +
+                '<td class="text-right">' + _fmt(stato.litri_caricati, 2) + '</td>' +
+                '<td class="text-right">' + _fmt(stato.litri_venduti, 2) + '</td>' +
+                '<td class="text-right">' + _fmt(stato.giacenza_teorica, 2) + '</td>' +
+                '<td class="text-right">' + _fmtEuro4(stato.costo_medio) + '</td>' +
+                '<td class="text-right"><strong>' + _fmtEuro(stato.margine_totale) + '</strong></td>' +
+                '<td class="text-right" style="' + margColor + '">' + _fmtEuro4(stato.margine_medio_lt) + '</td>' +
+                '<td><input type="number" step="0.01" class="form-input mc-chius-giac-reale" ' +
+                    'data-prod="' + prod.id + '" ' +
+                    'data-giac-teorica="' + stato.giacenza_teorica + '" ' +
+                    'data-costo-medio="' + stato.costo_medio + '" ' +
+                    'data-giac-inizio="' + stato.giacenza_inizio + '" ' +
+                    'data-litri-caricati="' + stato.litri_caricati + '" ' +
+                    'data-litri-venduti="' + stato.litri_venduti + '" ' +
+                    'data-margine-totale="' + stato.margine_totale + '" ' +
+                    'data-margine-medio="' + stato.margine_medio_lt + '" ' +
+                    'data-pc-maturato="' + stato.pc_maturato + '" ' +
+                    'value="' + giacRealeVal + '" ' +
+                    'placeholder="Litri reali" style="width:120px;"></td>' +
+            '</tr>';
+        }
+
+        html += '</tbody></table></div>';
+
+        // Note e bottone salva
+        html += '<div style="margin-top:var(--space-2); display:flex; gap:var(--space-2); align-items:flex-end; flex-wrap:wrap;">' +
+            '<div class="form-group" style="flex:1; min-width:200px; margin-bottom:0;">' +
+                '<label class="form-label">Note (opzionale)</label>' +
+                '<input type="text" class="form-input" id="mc-chius-note" placeholder="Es. conteggio fisico cisterne">' +
+            '</div>' +
+            '<button class="btn btn-primary" id="mc-chius-salva">Chiudi ' + MESI[mese - 1] + ' ' + anno + '</button>' +
+        '</div>';
+
+        preview.innerHTML = html;
+
+        // Evento salva
+        document.getElementById('mc-chius-salva').addEventListener('click', function() {
+            _salvaChiusuraMese(anno, mese);
+        });
+    }
+
+    // Salva chiusura mese
+    async function _salvaChiusuraMese(anno, mese) {
+        var inputs = document.querySelectorAll('.mc-chius-giac-reale');
+        var note = (document.getElementById('mc-chius-note') || {}).value || '';
+        var errori = [];
+
+        inputs.forEach(function(inp) {
+            if (!inp.value && inp.value !== '0') {
+                var nomeProd = _prodotti.find(function(p) { return p.id === inp.dataset.prod; });
+                errori.push((nomeProd ? nomeProd.nome : inp.dataset.prod) + ': giacenza reale mancante');
+            }
+        });
+
+        if (errori.length > 0) {
+            ENI.UI.error('Compila la giacenza reale per tutti i prodotti:\n' + errori.join('\n'));
+            return;
+        }
+
+        try {
+            for (var i = 0; i < inputs.length; i++) {
+                var inp = inputs[i];
+                var giacReale = parseFloat(inp.value) || 0;
+                var giacTeorica = parseFloat(inp.dataset.giacTeorica) || 0;
+
+                await ENI.API.getClient().from(T.CHIUSURE).upsert({
+                    prodotto_id: inp.dataset.prod,
+                    anno: anno,
+                    mese: mese,
+                    giacenza_inizio: parseFloat(inp.dataset.giacInizio) || 0,
+                    giacenza_teorica: giacTeorica,
+                    giacenza_reale: giacReale,
+                    scarto: Math.round((giacReale - giacTeorica) * 100) / 100,
+                    costo_medio: parseFloat(inp.dataset.costoMedio) || 0,
+                    litri_caricati: parseFloat(inp.dataset.litriCaricati) || 0,
+                    litri_venduti: parseFloat(inp.dataset.litriVenduti) || 0,
+                    margine_totale: parseFloat(inp.dataset.margineTotale) || 0,
+                    margine_medio_lt: parseFloat(inp.dataset.margineMedio) || 0,
+                    pc_maturato: parseFloat(inp.dataset.pcMaturato) || 0,
+                    note: note
+                }, { onConflict: 'prodotto_id,anno,mese' });
+            }
+
+            await _ricalcolaStato();
+            _renderPage();
+            _activeTab = 'chiusure';
+            _renderTab();
+            ENI.UI.success(MESI[mese - 1] + ' ' + anno + ' chiuso con successo');
+        } catch(e) {
+            ENI.UI.error('Errore nel salvataggio: ' + e.message);
+        }
+    }
+
+    // Riapertura mese
+    async function _riapriMese(anno, mese) {
+        var conferma = confirm('Sei sicuro di voler riaprire ' + MESI[mese - 1] + ' ' + anno + '?\n\nLa chiusura verrà eliminata e il mese tornerà aperto.');
+        if (!conferma) return;
+
+        try {
+            // Elimina tutte le chiusure di quel mese (tutti i prodotti)
+            var chiusure = await ENI.API.getAll(T.CHIUSURE, {
+                filters: [{ op: 'eq', col: 'anno', val: anno }, { op: 'eq', col: 'mese', val: mese }]
+            }) || [];
+
+            for (var i = 0; i < chiusure.length; i++) {
+                await ENI.API.remove(T.CHIUSURE, chiusure[i].id);
+            }
+
+            await _ricalcolaStato();
+            _renderPage();
+            _activeTab = 'chiusure';
+            _renderTab();
+            ENI.UI.success(MESI[mese - 1] + ' ' + anno + ' riaperto');
+        } catch(e) {
+            ENI.UI.error('Errore: ' + e.message);
+        }
+    }
+
+    // Riepilogo periodo
+    async function _calcolaRiepilogoPeriodo() {
+        var result = document.getElementById('mc-per-result');
+        if (!result) return;
+        result.innerHTML = '<div style="text-align:center; padding:var(--space-3);"><div class="spinner"></div></div>';
+
+        var da = _chiusurePeriodo;
+
+        // Carica chiusure nel range
+        var chiusure = await ENI.API.getAll(T.CHIUSURE) || [];
+
+        // Filtra per periodo
+        var filtrate = chiusure.filter(function(c) {
+            var cVal = c.anno * 100 + c.mese;
+            var daVal = da.daAnno * 100 + da.daMese;
+            var aVal = da.aAnno * 100 + da.aMese;
+            return cVal >= daVal && cVal <= aVal;
+        });
+
+        if (filtrate.length === 0) {
+            result.innerHTML = '<p class="empty-state-text">Nessuna chiusura trovata nel periodo selezionato. Chiudi prima i mesi che vuoi analizzare.</p>';
+            return;
+        }
+
+        // Raggruppa per prodotto
+        var perProdotto = {};
+        filtrate.forEach(function(c) {
+            if (!perProdotto[c.prodotto_id]) {
+                perProdotto[c.prodotto_id] = {
+                    litri_venduti: 0, litri_caricati: 0,
+                    margine_totale: 0, pc_maturato: 0,
+                    scarto_totale: 0, mesi: 0
+                };
+            }
+            var pp = perProdotto[c.prodotto_id];
+            pp.litri_venduti += parseFloat(c.litri_venduti) || 0;
+            pp.litri_caricati += parseFloat(c.litri_caricati) || 0;
+            pp.margine_totale += parseFloat(c.margine_totale) || 0;
+            pp.pc_maturato += parseFloat(c.pc_maturato) || 0;
+            pp.scarto_totale += parseFloat(c.scarto) || 0;
+            pp.mesi++;
+        });
+
+        var html = '<div style="overflow-x:auto;">' +
+            '<table class="table cm-table-compact"><thead><tr>' +
+                '<th>Prodotto</th>' +
+                '<th class="text-right">Mesi</th>' +
+                '<th class="text-right">Lt Caricati</th>' +
+                '<th class="text-right">Lt Venduti</th>' +
+                '<th class="text-right">Margine Tot.</th>' +
+                '<th class="text-right">Margine/lt</th>' +
+                '<th class="text-right">PC Maturato</th>' +
+                '<th class="text-right">Scarto Tot.</th>' +
+            '</tr></thead><tbody>';
+
+        var totMargine = 0, totVenduti = 0, totPC = 0;
+
+        _prodotti.forEach(function(prod) {
+            var pp = perProdotto[prod.id];
+            if (!pp) return;
+            var margLt = pp.litri_venduti > 0 ? pp.margine_totale / pp.litri_venduti : 0;
+            totMargine += pp.margine_totale;
+            totVenduti += pp.litri_venduti;
+            totPC += pp.pc_maturato;
+
+            html += '<tr>' +
+                '<td><strong>' + prod.nome + '</strong></td>' +
+                '<td class="text-right">' + pp.mesi + '</td>' +
+                '<td class="text-right">' + _fmt(pp.litri_caricati, 2) + '</td>' +
+                '<td class="text-right">' + _fmt(pp.litri_venduti, 2) + '</td>' +
+                '<td class="text-right"><strong>' + _fmtEuro(pp.margine_totale) + '</strong></td>' +
+                '<td class="text-right">' + _fmtEuro4(margLt) + '</td>' +
+                '<td class="text-right">' + _fmtEuro(pp.pc_maturato) + '</td>' +
+                '<td class="text-right">' + _fmt(pp.scarto_totale, 2) + '</td>' +
+            '</tr>';
+        });
+
+        // Riga totali
+        var margLtTot = totVenduti > 0 ? totMargine / totVenduti : 0;
+        html += '<tr style="font-weight:700; border-top:2px solid var(--color-primary);">' +
+            '<td>TOTALE</td>' +
+            '<td></td><td></td>' +
+            '<td class="text-right">' + _fmt(totVenduti, 2) + '</td>' +
+            '<td class="text-right">' + _fmtEuro(totMargine) + '</td>' +
+            '<td class="text-right">' + _fmtEuro4(margLtTot) + '</td>' +
+            '<td class="text-right">' + _fmtEuro(totPC) + '</td>' +
+            '<td></td>' +
+        '</tr>';
+
+        html += '</tbody></table></div>';
+
+        // Periodo label
+        var label = MESI[da.daMese - 1] + ' ' + da.daAnno;
+        if (da.daMese !== da.aMese || da.daAnno !== da.aAnno) {
+            label += ' — ' + MESI[da.aMese - 1] + ' ' + da.aAnno;
+        }
+        result.innerHTML = '<h4 style="margin-bottom:var(--space-1); color:var(--color-primary);">' + label + '</h4>' + html;
     }
 
     // ============================================================
