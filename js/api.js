@@ -1355,6 +1355,48 @@ ENI.API = (function() {
         return result.data || [];
     }
 
+    // --- Spese cassa per periodo (per tesoreria previsione) ---
+
+    async function getSpeseCassaPeriodo(da, a) {
+        var query = getClient()
+            .from('spese_cassa')
+            .select('data, importo');
+
+        if (da) query = query.gte('data', da);
+        if (a) query = query.lte('data', a);
+
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // --- Totale 4TS Card per mese (crediti cumulativi dalla cassa) ---
+
+    async function get4TSCardMese(anno, mese) {
+        var primoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-01';
+        var ultimoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-' +
+            new Date(anno, mese, 0).getDate();
+
+        var result = await getClient()
+            .from('cassa')
+            .select('data, crediti_4tscard')
+            .gte('data', primoGiorno)
+            .lte('data', ultimoGiorno);
+
+        if (result.error) throw new Error(result.error.message);
+
+        var totale = 0;
+        (result.data || []).forEach(function(c) {
+            if (c.crediti_4tscard && Array.isArray(c.crediti_4tscard)) {
+                c.crediti_4tscard.forEach(function(item) {
+                    totale += parseFloat(item.importo) || 0;
+                });
+            }
+        });
+
+        return totale;
+    }
+
     // --- Scadenze Tesoreria (per alert badge) ---
 
     async function getScadenzeTesoreria(giorniAvanti) {
@@ -1500,6 +1542,8 @@ ENI.API = (function() {
         pagaPagamentoProgrammato: pagaPagamentoProgrammato,
         annullaPagamentoProgrammato: annullaPagamentoProgrammato,
         getScadenzeTesoreria: getScadenzeTesoreria,
-        getCarichiCarburante: getCarichiCarburante
+        getCarichiCarburante: getCarichiCarburante,
+        getSpeseCassaPeriodo: getSpeseCassaPeriodo,
+        get4TSCardMese: get4TSCardMese
     };
 })();

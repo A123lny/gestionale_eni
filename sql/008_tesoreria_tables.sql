@@ -88,6 +88,11 @@ ALTER TABLE movimenti_banca ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagamenti_ricorrenti ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagamenti_programmati ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow all for categorie_tesoreria" ON categorie_tesoreria;
+DROP POLICY IF EXISTS "Allow all for movimenti_banca" ON movimenti_banca;
+DROP POLICY IF EXISTS "Allow all for pagamenti_ricorrenti" ON pagamenti_ricorrenti;
+DROP POLICY IF EXISTS "Allow all for pagamenti_programmati" ON pagamenti_programmati;
+
 CREATE POLICY "Allow all for categorie_tesoreria" ON categorie_tesoreria FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for movimenti_banca" ON movimenti_banca FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for pagamenti_ricorrenti" ON pagamenti_ricorrenti FOR ALL USING (true) WITH CHECK (true);

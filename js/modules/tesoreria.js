@@ -124,14 +124,26 @@ ENI.Modules.Tesoreria = (function() {
         da150gg.setDate(da150gg.getDate() - 150);
         var da150ggStr = da150gg.toISOString().split('T')[0];
 
+        // Media spese cassa e crediti 4TS per previsione
+        var da30gg = new Date(oggi);
+        da30gg.setDate(da30gg.getDate() - 30);
+        var da30ggStr = da30gg.toISOString().split('T')[0];
+        var oggiStrFull = oggi.toISOString().split('T')[0];
+
+        // 4TS: mese precedente (i clienti pagano entro il 15 del mese successivo)
+        var mesePrev4ts = oggi.getMonth(); // 0-based, quindi e' il mese precedente se usiamo come 1-based
+        var annoPrev4ts = oggi.getFullYear();
+        if (mesePrev4ts === 0) { mesePrev4ts = 12; annoPrev4ts--; }
+
         var results = await Promise.all([
             ENI.API.getUltimoSaldoBanca(),
             ENI.API.getMovimentiBanca({ da: periodoRange.da, a: periodoRange.a, asc: true }),
             ENI.API.getPagamentiRicorrenti(true),
             ENI.API.getPagamentiProgrammati('programmato'),
             ENI.API.getCarichiCarburante(da150ggStr, null),
-            // Ultimi 30gg di movimenti banca per media giornaliera accrediti
-            _getAccreditiBanca30gg()
+            _getAccreditiBanca30gg(),
+            ENI.API.getSpeseCassaPeriodo(da30ggStr, oggiStrFull),
+            ENI.API.get4TSCardMese(annoPrev4ts, mesePrev4ts)
         ]);
 
         var ultimoSaldo = results[0];
@@ -140,6 +152,15 @@ ENI.Modules.Tesoreria = (function() {
         var programmati = results[3];
         var carichi = results[4] || [];
         var accrediti30gg = results[5];
+        var speseCassa30gg = results[6] || [];
+        var totale4TSMesePrecedente = results[7] || 0;
+
+        // Media giornaliera spese cassa
+        var totSpeseCassa = speseCassa30gg.reduce(function(s, sp) { return s + (parseFloat(sp.importo) || 0); }, 0);
+        var mediaSpeseCassaGiorno = totSpeseCassa > 0 ? totSpeseCassa / 30 : 0;
+
+        // Entrata 4TS prevista: se siamo prima del 15, il credito del mese precedente e' in arrivo
+        var entrata4TS = { importo: totale4TSMesePrecedente, inArrivo: oggi.getDate() <= 15 && totale4TSMesePrecedente > 0 };
 
         // Auto-scadenze da carichi
         var autoScadenze = _getAutoScadenzeCarichi(carichi);
@@ -152,7 +173,7 @@ ENI.Modules.Tesoreria = (function() {
         var scadenzeCount = _contaScadenzeProssime(ricorrenti, programmati, autoScadenze, 7);
 
         // Uscite/entrate previste 30gg
-        var prev30 = _calcolaPrevisto30gg(ricorrenti, programmati, autoScadenze, accrediti30gg);
+        var prev30 = _calcolaPrevisto30gg(ricorrenti, programmati, autoScadenze, accrediti30gg, mediaSpeseCassaGiorno, entrata4TS);
 
         // Castelletto: SOLO movimenti banca
         var flussi = _buildFlussi(movimenti);
@@ -187,13 +208,13 @@ ENI.Modules.Tesoreria = (function() {
             // Previsione
             '<div class="cassa-section">' +
                 '<div class="cassa-section-title">\u{1F52E} Previsione Cash Flow (3 mesi)</div>' +
-                _renderPrevisione(saldoBanca, ricorrenti, programmati, autoScadenze, accrediti30gg) +
+                _renderPrevisione(saldoBanca, ricorrenti, programmati, autoScadenze, accrediti30gg, mediaSpeseCassaGiorno, entrata4TS) +
             '</div>' +
 
             // Prossime scadenze
             '<div class="cassa-section">' +
                 '<div class="cassa-section-title">\u23F0 Prossime Scadenze (30 giorni)</div>' +
-                _renderProssimeScadenze(ricorrenti, programmati, autoScadenze) +
+                _renderProssimeScadenze(ricorrenti, programmati, autoScadenze, entrata4TS) +
             '</div>';
 
         _setupDashboardListeners();
@@ -264,7 +285,7 @@ ENI.Modules.Tesoreria = (function() {
         return html;
     }
 
-    function _renderPrevisione(saldoAttuale, ricorrenti, programmati, autoScadenze, accrediti30gg) {
+    function _renderPrevisione(saldoAttuale, ricorrenti, programmati, autoScadenze, accrediti30gg, mediaSpeseCassaGiorno, entrata4TS) {
         // Media giornaliera dagli accrediti bancari reali (ultimi 30gg)
         var mediaGiornaliera = 0;
         if (accrediti30gg.totale > 0 && accrediti30gg.giorni > 0) {
@@ -283,6 +304,17 @@ ENI.Modules.Tesoreria = (function() {
 
             var entratePreviste = mediaGiornaliera * giorniRimanenti;
             var uscitePreviste = 0;
+
+            // Spese cassa (contanti) previste per il mese
+            uscitePreviste += (mediaSpeseCassaGiorno || 0) * giorniRimanenti;
+
+            // Entrata 4TS Card: i clienti pagano entro il 15 del mese successivo
+            // Se questo mese e' quello in cui arriva il pagamento e siamo prima del 15
+            if (entrata4TS && entrata4TS.importo > 0) {
+                if (m === 0 && entrata4TS.inArrivo) {
+                    entratePreviste += entrata4TS.importo;
+                }
+            }
 
             // Ricorrenti
             ricorrenti.forEach(function(r) {
@@ -335,25 +367,46 @@ ENI.Modules.Tesoreria = (function() {
 
         html += '</tbody></table></div>';
 
+        var notePrev = [];
         if (mediaGiornaliera > 0) {
-            html += '<div class="text-sm text-muted" style="margin-top:var(--space-2);">' +
-                'Media accrediti giornalieri (ultimi 30gg): ' + ENI.UI.formatValuta(mediaGiornaliera) +
-                ' (basata su ' + accrediti30gg.giorni + ' giorni con movimenti)</div>';
+            notePrev.push('Media accrediti giornalieri (30gg): ' + ENI.UI.formatValuta(mediaGiornaliera));
         } else {
-            html += '<div class="text-sm text-muted" style="margin-top:var(--space-2);">' +
-                'Importa movimenti bancari per calcolare la media incassi giornaliera</div>';
+            notePrev.push('Importa movimenti bancari per calcolare la media incassi giornaliera');
         }
+        if (mediaSpeseCassaGiorno > 0) {
+            notePrev.push('Media spese contanti giornaliere (30gg): ' + ENI.UI.formatValuta(mediaSpeseCassaGiorno));
+        }
+        if (entrata4TS && entrata4TS.importo > 0 && entrata4TS.inArrivo) {
+            notePrev.push('Credito 4TS Card in arrivo entro il 15: ' + ENI.UI.formatValuta(entrata4TS.importo));
+        }
+
+        html += '<div class="text-sm text-muted" style="margin-top:var(--space-2);">' +
+            notePrev.join(' &bull; ') + '</div>';
 
         return html;
     }
 
-    function _renderProssimeScadenze(ricorrenti, programmati, autoScadenze) {
+    function _renderProssimeScadenze(ricorrenti, programmati, autoScadenze, entrata4TS) {
         var scadenze = [];
         var oggi = new Date();
         var limite = new Date();
         limite.setDate(limite.getDate() + 30);
         var oggiStr = ENI.UI.oggiISO();
         var limiteStr = limite.toISOString().split('T')[0];
+
+        // Entrata 4TS Card: pagamento atteso entro il 15 del mese corrente
+        if (entrata4TS && entrata4TS.importo > 0 && entrata4TS.inArrivo) {
+            var data15 = oggi.getFullYear() + '-' + String(oggi.getMonth() + 1).padStart(2, '0') + '-15';
+            if (data15 >= oggiStr && data15 <= limiteStr) {
+                scadenze.push({
+                    data: data15,
+                    descrizione: 'Incasso 4TS Card (mese precedente)',
+                    importo: entrata4TS.importo,
+                    tipo: 'entrata',
+                    fonte: '4tscard'
+                });
+            }
+        }
 
         // Programmati
         programmati.forEach(function(p) {
@@ -404,7 +457,8 @@ ENI.Modules.Tesoreria = (function() {
         var html = '<div class="tesoreria-scadenze-list">';
         scadenze.forEach(function(s) {
             var badgeClass = s.tipo === 'uscita' ? 'badge-danger' : 'badge-success';
-            var fonteBadge = s.fonte === 'carico' ? 'tesoreria-badge-carico' : (s.fonte === 'ricorrente' ? 'tesoreria-badge-ricorrente' : 'tesoreria-badge-programmato');
+            var fonteBadgeMap = { carico: 'tesoreria-badge-carico', ricorrente: 'tesoreria-badge-ricorrente', programmato: 'tesoreria-badge-programmato', '4tscard': 'tesoreria-badge-4tscard' };
+            var fonteBadge = fonteBadgeMap[s.fonte] || 'tesoreria-badge-programmato';
             var giorniMancanti = Math.ceil((new Date(s.data) - oggi) / (1000 * 60 * 60 * 24));
             var urgenza = giorniMancanti <= 3 ? ' tesoreria-scadenza-urgente' : (giorniMancanti <= 7 ? ' tesoreria-scadenza-prossima' : '');
 
@@ -1738,7 +1792,7 @@ ENI.Modules.Tesoreria = (function() {
     // HELPER: Calcolo previsto 30gg (per KPI)
     // ============================================================
 
-    function _calcolaPrevisto30gg(ricorrenti, programmati, autoScadenze, accrediti30gg) {
+    function _calcolaPrevisto30gg(ricorrenti, programmati, autoScadenze, accrediti30gg, mediaSpeseCassaGiorno, entrata4TS) {
         var oggi = new Date();
         var limite = new Date();
         limite.setDate(limite.getDate() + 30);
@@ -1775,6 +1829,17 @@ ENI.Modules.Tesoreria = (function() {
             }
         });
 
+        // Spese cassa (contanti) - non passano dalla banca
+        if (mediaSpeseCassaGiorno > 0) {
+            uscite += mediaSpeseCassaGiorno * 30;
+        }
+
+        // Entrata 4TS Card prevista
+        if (entrata4TS && entrata4TS.importo > 0 && entrata4TS.inArrivo) {
+            entrate += entrata4TS.importo;
+            nEntrate++;
+        }
+
         // Entrate da media accrediti
         var mediaGiornaliera = accrediti30gg.totale > 0 ? accrediti30gg.totale / accrediti30gg.giorni : 0;
         entrate += mediaGiornaliera * 30;
@@ -1782,7 +1847,7 @@ ENI.Modules.Tesoreria = (function() {
         return {
             uscite: uscite,
             entrate: entrate,
-            dettaglioUscite: nUscite + ' pagamenti',
+            dettaglioUscite: nUscite + ' pagamenti' + (mediaSpeseCassaGiorno > 0 ? ' + spese cassa' : ''),
             dettaglioEntrate: nEntrate + ' fissi + media giornaliera'
         };
     }
@@ -1832,7 +1897,7 @@ ENI.Modules.Tesoreria = (function() {
     }
 
     function _fonteLabelMap(fonte) {
-        var map = { banca: 'Banca', ricorrente: 'Ricorrente', programmato: 'Programmato', carico: 'Carico' };
+        var map = { banca: 'Banca', ricorrente: 'Ricorrente', programmato: 'Programmato', carico: 'Carico', '4tscard': '4TS Card' };
         return map[fonte] || fonte;
     }
 

@@ -2166,6 +2166,13 @@
     font-weight: var(--font-weight-medium);
 }
 
+/* --- Badge Fonte: 4TS Card --- */
+.tesoreria-badge-4tscard {
+    background: #dcfce7;
+    color: #166534;
+    font-weight: var(--font-weight-medium);
+}
+
 /* --- Badge Fonte: Banche --- */
 .tesoreria-badge-carisp {
     background: #dbeafe;
