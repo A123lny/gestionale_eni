@@ -1175,6 +1175,202 @@ ENI.API = (function() {
         return record;
     }
 
+    // ============================================================
+    // TESORERIA (Cash Flow)
+    // ============================================================
+
+    // --- Categorie Tesoreria ---
+
+    async function getCategorieTesoreria() {
+        var cached = ENI.State.cacheGet('categorie_tesoreria');
+        if (cached) return cached;
+        var data = await getAll('categorie_tesoreria', {
+            order: { col: 'ordine', asc: true }
+        });
+        ENI.State.cacheSet('categorie_tesoreria', data);
+        return data;
+    }
+
+    async function salvaCategoriaTesoreria(dati) {
+        var record = await insert('categorie_tesoreria', dati);
+        ENI.State.cacheClear('categorie_tesoreria');
+        await scriviLog('Creata_Categoria_Tesoreria', 'Tesoreria', dati.nome);
+        return record;
+    }
+
+    async function aggiornaCategoriaTesoreria(id, dati) {
+        var record = await update('categorie_tesoreria', id, dati);
+        ENI.State.cacheClear('categorie_tesoreria');
+        await scriviLog('Modificata_Categoria_Tesoreria', 'Tesoreria', dati.nome || id);
+        return record;
+    }
+
+    async function eliminaCategoriaTesoreria(id, nome) {
+        await remove('categorie_tesoreria', id);
+        ENI.State.cacheClear('categorie_tesoreria');
+        await scriviLog('Eliminata_Categoria_Tesoreria', 'Tesoreria', nome);
+        return true;
+    }
+
+    // --- Movimenti Banca ---
+
+    async function getMovimentiBanca(options) {
+        options = options || {};
+        var query = getClient().from('movimenti_banca').select('*');
+
+        if (options.banca) query = query.eq('banca', options.banca);
+        if (options.da) query = query.gte('data_operazione', options.da);
+        if (options.a) query = query.lte('data_operazione', options.a);
+        if (options.categoria) query = query.eq('categoria', options.categoria);
+
+        query = query.order('data_operazione', { ascending: options.asc !== false });
+        if (options.limit) query = query.limit(options.limit);
+
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getHashMovimentiEsistenti(dataInizio, dataFine) {
+        var result = await getClient()
+            .from('movimenti_banca')
+            .select('hash_movimento')
+            .gte('data_operazione', dataInizio)
+            .lte('data_operazione', dataFine);
+        if (result.error) throw new Error(result.error.message);
+        return (result.data || []).map(function(r) { return r.hash_movimento; });
+    }
+
+    async function importaMovimentiBanca(movimenti) {
+        if (!movimenti || movimenti.length === 0) return [];
+        var result = await getClient().from('movimenti_banca').insert(movimenti).select();
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Import_Movimenti_Banca', 'Tesoreria',
+            movimenti.length + ' movimenti importati - Banca: ' + movimenti[0].banca);
+        return result.data;
+    }
+
+    async function aggiornaMovimentoBanca(id, dati) {
+        return await update('movimenti_banca', id, dati);
+    }
+
+    async function eliminaMovimentoBanca(id) {
+        await remove('movimenti_banca', id);
+        return true;
+    }
+
+    async function getUltimoSaldoBanca() {
+        var result = await getClient()
+            .from('movimenti_banca')
+            .select('saldo_progressivo, data_operazione, banca')
+            .not('saldo_progressivo', 'is', null)
+            .order('data_operazione', { ascending: false })
+            .limit(1);
+        if (result.error) throw new Error(result.error.message);
+        return (result.data && result.data.length > 0) ? result.data[0] : null;
+    }
+
+    // --- Pagamenti Ricorrenti ---
+
+    async function getPagamentiRicorrenti(soloAttivi) {
+        var options = { order: { col: 'created_at', asc: false } };
+        if (soloAttivi) {
+            options.filters = [{ op: 'eq', col: 'attivo', val: true }];
+        }
+        return await getAll('pagamenti_ricorrenti', options);
+    }
+
+    async function salvaPagamentoRicorrente(dati) {
+        var record = await insert('pagamenti_ricorrenti', dati);
+        await scriviLog('Creato_Pagamento_Ricorrente', 'Tesoreria',
+            dati.descrizione + ' - ' + ENI.UI.formatValuta(dati.importo) + ' (' + dati.frequenza + ')');
+        return record;
+    }
+
+    async function aggiornaPagamentoRicorrente(id, dati) {
+        var record = await update('pagamenti_ricorrenti', id, dati);
+        await scriviLog('Modificato_Pagamento_Ricorrente', 'Tesoreria', dati.descrizione || id);
+        return record;
+    }
+
+    async function eliminaPagamentoRicorrente(id, descrizione) {
+        await remove('pagamenti_ricorrenti', id);
+        await scriviLog('Eliminato_Pagamento_Ricorrente', 'Tesoreria', descrizione);
+        return true;
+    }
+
+    // --- Pagamenti Programmati ---
+
+    async function getPagamentiProgrammati(filtroStato) {
+        var options = { order: { col: 'data_scadenza', asc: true } };
+        if (filtroStato && filtroStato !== 'tutti') {
+            options.filters = [{ op: 'eq', col: 'stato', val: filtroStato }];
+        }
+        return await getAll('pagamenti_programmati', options);
+    }
+
+    async function salvaPagamentoProgrammato(dati) {
+        var record = await insert('pagamenti_programmati', dati);
+        await scriviLog('Creato_Pagamento_Programmato', 'Tesoreria',
+            dati.descrizione + ' - ' + ENI.UI.formatValuta(dati.importo) + ' scad. ' + dati.data_scadenza);
+        return record;
+    }
+
+    async function aggiornaPagamentoProgrammato(id, dati) {
+        var record = await update('pagamenti_programmati', id, dati);
+        await scriviLog('Modificato_Pagamento_Programmato', 'Tesoreria', dati.descrizione || id);
+        return record;
+    }
+
+    async function pagaPagamentoProgrammato(id, pagamento) {
+        var record = await update('pagamenti_programmati', id, {
+            stato: 'pagato',
+            data_pagamento: ENI.UI.oggiISO()
+        });
+        await scriviLog('Pagato_Pagamento_Programmato', 'Tesoreria',
+            pagamento.descrizione + ' - ' + ENI.UI.formatValuta(pagamento.importo));
+        return record;
+    }
+
+    async function annullaPagamentoProgrammato(id, pagamento) {
+        var record = await update('pagamenti_programmati', id, { stato: 'annullato' });
+        await scriviLog('Annullato_Pagamento_Programmato', 'Tesoreria', pagamento.descrizione);
+        return record;
+    }
+
+    // --- Scadenze Tesoreria (per alert badge) ---
+
+    async function getScadenzeTesoreria(giorniAvanti) {
+        giorniAvanti = giorniAvanti || 7;
+        var oggi = ENI.UI.oggiISO();
+        var limite = new Date();
+        limite.setDate(limite.getDate() + giorniAvanti);
+        var limiteISO = limite.toISOString().split('T')[0];
+
+        // Pagamenti programmati in scadenza
+        var programmati = await getClient()
+            .from('pagamenti_programmati')
+            .select('id, descrizione, importo, tipo, data_scadenza')
+            .eq('stato', 'programmato')
+            .gte('data_scadenza', oggi)
+            .lte('data_scadenza', limiteISO);
+
+        if (programmati.error) throw new Error(programmati.error.message);
+
+        // Pagamenti ricorrenti attivi - restituiamo quelli attivi, il calcolo delle date avviene lato client
+        var ricorrenti = await getClient()
+            .from('pagamenti_ricorrenti')
+            .select('id, descrizione, importo, tipo, frequenza, giorno_scadenza, mese_riferimento')
+            .eq('attivo', true);
+
+        if (ricorrenti.error) throw new Error(ricorrenti.error.message);
+
+        return {
+            programmati: programmati.data || [],
+            ricorrenti: ricorrenti.data || []
+        };
+    }
+
     // API pubblica
     return {
         init: init,
@@ -1265,6 +1461,27 @@ ENI.API = (function() {
         eliminaPrezzoCliente: eliminaPrezzoCliente,
         // Vendita da lavaggio
         salvaVenditaDaLavaggio: salvaVenditaDaLavaggio,
-        getVenditaPerLavaggio: getVenditaPerLavaggio
+        getVenditaPerLavaggio: getVenditaPerLavaggio,
+        // Tesoreria
+        getCategorieTesoreria: getCategorieTesoreria,
+        salvaCategoriaTesoreria: salvaCategoriaTesoreria,
+        aggiornaCategoriaTesoreria: aggiornaCategoriaTesoreria,
+        eliminaCategoriaTesoreria: eliminaCategoriaTesoreria,
+        getMovimentiBanca: getMovimentiBanca,
+        getHashMovimentiEsistenti: getHashMovimentiEsistenti,
+        importaMovimentiBanca: importaMovimentiBanca,
+        aggiornaMovimentoBanca: aggiornaMovimentoBanca,
+        eliminaMovimentoBanca: eliminaMovimentoBanca,
+        getUltimoSaldoBanca: getUltimoSaldoBanca,
+        getPagamentiRicorrenti: getPagamentiRicorrenti,
+        salvaPagamentoRicorrente: salvaPagamentoRicorrente,
+        aggiornaPagamentoRicorrente: aggiornaPagamentoRicorrente,
+        eliminaPagamentoRicorrente: eliminaPagamentoRicorrente,
+        getPagamentiProgrammati: getPagamentiProgrammati,
+        salvaPagamentoProgrammato: salvaPagamentoProgrammato,
+        aggiornaPagamentoProgrammato: aggiornaPagamentoProgrammato,
+        pagaPagamentoProgrammato: pagaPagamentoProgrammato,
+        annullaPagamentoProgrammato: annullaPagamentoProgrammato,
+        getScadenzeTesoreria: getScadenzeTesoreria
     };
 })();

@@ -308,6 +308,30 @@ ENI.App = (function() {
         } catch(e) {
             // Silenzioso
         }
+
+        // Tesoreria: check scadenze per pulse animation
+        _updateTesoreriaBadge();
+    }
+
+    async function _updateTesoreriaBadge() {
+        try {
+            if (!ENI.Modules.Tesoreria || !ENI.Modules.Tesoreria.checkScadenze) return;
+            var scadenzeCount = await ENI.Modules.Tesoreria.checkScadenze();
+
+            // Toggle classe sul section toggle di amministrazione
+            var sectionToggle = document.querySelector('[data-section-toggle="amministrazione"]');
+            if (sectionToggle) {
+                sectionToggle.classList.toggle('has-scadenze', scadenzeCount > 0);
+            }
+
+            // Toggle classe sulla voce Tesoreria
+            var tesoreriaItem = document.querySelector('.nav-item[data-route="tesoreria"]');
+            if (tesoreriaItem) {
+                tesoreriaItem.classList.toggle('has-scadenze', scadenzeCount > 0);
+            }
+        } catch(e) {
+            // Silenzioso
+        }
     }
 
     // API pubblica
