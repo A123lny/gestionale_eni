@@ -1338,6 +1338,23 @@ ENI.API = (function() {
         return record;
     }
 
+    // --- Carichi Carburante (per auto-scadenze tesoreria) ---
+
+    async function getCarichiCarburante(da, a) {
+        var query = getClient()
+            .from('carichi_carburante')
+            .select('id, data, litri_fiscali, litri_fisici, prezzo_mp, accisa, costo_carico_totale, prodotto_id, note');
+
+        if (da) query = query.gte('data', da);
+        if (a) query = query.lte('data', a);
+
+        query = query.order('data', { ascending: true });
+
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
     // --- Scadenze Tesoreria (per alert badge) ---
 
     async function getScadenzeTesoreria(giorniAvanti) {
@@ -1482,6 +1499,7 @@ ENI.API = (function() {
         aggiornaPagamentoProgrammato: aggiornaPagamentoProgrammato,
         pagaPagamentoProgrammato: pagaPagamentoProgrammato,
         annullaPagamentoProgrammato: annullaPagamentoProgrammato,
-        getScadenzeTesoreria: getScadenzeTesoreria
+        getScadenzeTesoreria: getScadenzeTesoreria,
+        getCarichiCarburante: getCarichiCarburante
     };
 })();

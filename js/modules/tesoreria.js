@@ -1,6 +1,7 @@
 // ============================================================
-// TITANWASH - Modulo Tesoreria (Cash Flow)
-// Gestione flussi di cassa, movimenti banca, pagamenti
+// TITANWASH - Modulo Tesoreria v2 (Cash Flow Banca-Centrica)
+// Castelletto = solo movimenti banca importati
+// Previsione = ricorrenti + auto-scadenze carichi + programmati
 // ============================================================
 
 var ENI = ENI || {};
@@ -26,6 +27,10 @@ ENI.Modules.Tesoreria = (function() {
     var _bancaFiltro = '';
     var _movimentiDa = '';
     var _movimentiA = '';
+
+    // Import state
+    var _importParsedData = null; // { headers, rows, objects }
+    var _importMapping = {};
 
     // ============================================================
     // RENDER PRINCIPALE
@@ -109,43 +114,48 @@ ENI.Modules.Tesoreria = (function() {
     // ============================================================
 
     async function _renderDashboard(content) {
-        // Carica dati in parallelo
-        var oggi = ENI.UI.oggiISO();
         var anno = _annoCorrente;
         var mese = _meseCorrente;
-
         var periodoRange = _getPeriodoRange(anno, mese, _periodoVista);
+
+        // Carica ultimi 150 giorni di carichi per auto-scadenze (monofase 120gg)
+        var oggi = new Date();
+        var da150gg = new Date(oggi);
+        da150gg.setDate(da150gg.getDate() - 150);
+        var da150ggStr = da150gg.toISOString().split('T')[0];
 
         var results = await Promise.all([
             ENI.API.getUltimoSaldoBanca(),
-            ENI.API.getCassaPerData(oggi).catch(function() { return null; }),
             ENI.API.getMovimentiBanca({ da: periodoRange.da, a: periodoRange.a, asc: true }),
             ENI.API.getPagamentiRicorrenti(true),
             ENI.API.getPagamentiProgrammati('programmato'),
-            _getCassaPeriodo(periodoRange.da, periodoRange.a),
-            _getSpesePeriodo(periodoRange.da, periodoRange.a),
-            _getCreditiIncassatiPeriodo(periodoRange.da, periodoRange.a)
+            ENI.API.getCarichiCarburante(da150ggStr, null),
+            // Ultimi 30gg di movimenti banca per media giornaliera accrediti
+            _getAccreditiBanca30gg()
         ]);
 
         var ultimoSaldo = results[0];
-        var cassaOggi = results[1];
-        var movimenti = results[2];
-        var ricorrenti = results[3];
-        var programmati = results[4];
-        var cassePeriodo = results[5];
-        var spesePeriodo = results[6];
-        var creditiPeriodo = results[7];
+        var movimenti = results[1];
+        var ricorrenti = results[2];
+        var programmati = results[3];
+        var carichi = results[4] || [];
+        var accrediti30gg = results[5];
+
+        // Auto-scadenze da carichi
+        var autoScadenze = _getAutoScadenzeCarichi(carichi);
 
         // KPI
         var saldoBanca = ultimoSaldo ? Number(ultimoSaldo.saldo_progressivo || 0) : 0;
-        var cassaContanti = cassaOggi ? Number(cassaOggi.totale_contanti || 0) - Number(cassaOggi.totale_spese || 0) : 0;
-        var liquiditaTotale = saldoBanca + cassaContanti;
 
-        // Conta scadenze prossime 7gg
-        var scadenzeCount = _contaScadenzeProssime(ricorrenti, programmati, 7);
+        // Scadenze nei prossimi 7gg e 30gg
+        var oggiStr = ENI.UI.oggiISO();
+        var scadenzeCount = _contaScadenzeProssime(ricorrenti, programmati, autoScadenze, 7);
 
-        // Costruisci castelletto
-        var flussi = _buildFlussi(movimenti, cassePeriodo, spesePeriodo, creditiPeriodo, ricorrenti, programmati, periodoRange);
+        // Uscite/entrate previste 30gg
+        var prev30 = _calcolaPrevisto30gg(ricorrenti, programmati, autoScadenze, accrediti30gg);
+
+        // Castelletto: SOLO movimenti banca
+        var flussi = _buildFlussi(movimenti);
 
         content.innerHTML =
             // Selettore periodo
@@ -162,31 +172,30 @@ ENI.Modules.Tesoreria = (function() {
 
             // KPI Cards
             '<div class="tesoreria-kpi-grid">' +
-                _renderKpiCard('Saldo Banca', saldoBanca, ultimoSaldo ? ultimoSaldo.banca.toUpperCase() : '-', 'info') +
-                _renderKpiCard('Cassa Contanti', cassaContanti, 'Oggi', 'success') +
-                _renderKpiCard('Liquidit\u00e0 Totale', liquiditaTotale, 'Banca + Cassa', liquiditaTotale >= 0 ? 'success' : 'danger') +
+                _renderKpiCard('Saldo Banca', saldoBanca, ultimoSaldo ? ultimoSaldo.banca.toUpperCase() + ' - ' + ENI.UI.formatData(ultimoSaldo.data_operazione) : 'Nessun dato', 'info') +
+                _renderKpiCard('Uscite Previste 30gg', prev30.uscite, prev30.dettaglioUscite, 'danger') +
+                _renderKpiCard('Entrate Previste 30gg', prev30.entrate, prev30.dettaglioEntrate, 'success') +
                 _renderKpiCard('Scadenze 7gg', null, scadenzeCount + ' pagament' + (scadenzeCount === 1 ? 'o' : 'i'), scadenzeCount > 0 ? 'warning' : 'success', scadenzeCount) +
             '</div>' +
 
             // Castelletto
             '<div class="cassa-section">' +
-                '<div class="cassa-section-title">\u{1F4CA} Castelletto - Flusso di Cassa</div>' +
+                '<div class="cassa-section-title">\u{1F4CA} Castelletto - Movimenti Banca</div>' +
                 _renderCastellettoTable(flussi) +
             '</div>' +
 
             // Previsione
             '<div class="cassa-section">' +
-                '<div class="cassa-section-title">\u{1F52E} Previsione Cash Flow</div>' +
-                _renderPrevisione(saldoBanca, ricorrenti, programmati, cassePeriodo) +
+                '<div class="cassa-section-title">\u{1F52E} Previsione Cash Flow (3 mesi)</div>' +
+                _renderPrevisione(saldoBanca, ricorrenti, programmati, autoScadenze, accrediti30gg) +
             '</div>' +
 
             // Prossime scadenze
             '<div class="cassa-section">' +
                 '<div class="cassa-section-title">\u23F0 Prossime Scadenze (30 giorni)</div>' +
-                _renderProssimeScadenze(ricorrenti, programmati) +
+                _renderProssimeScadenze(ricorrenti, programmati, autoScadenze) +
             '</div>';
 
-        // Event listeners
         _setupDashboardListeners();
     }
 
@@ -204,12 +213,16 @@ ENI.Modules.Tesoreria = (function() {
 
     function _renderCastellettoTable(flussi) {
         if (!flussi || flussi.length === 0) {
-            return '<div class="empty-state"><p class="empty-state-text">Nessun movimento nel periodo selezionato</p></div>';
+            return '<div class="empty-state">' +
+                '<div class="empty-state-icon">\u{1F4E5}</div>' +
+                '<p class="empty-state-text">Nessun movimento bancario nel periodo</p>' +
+                '<p class="text-sm text-muted">Importa un estratto conto dalla tab "Movimenti Banca"</p>' +
+            '</div>';
         }
 
         var html = '<div class="table-responsive"><table class="table">' +
             '<thead><tr>' +
-                '<th>Data</th><th>Descrizione</th><th>Fonte</th>' +
+                '<th>Data</th><th>Descrizione</th><th>Banca</th>' +
                 '<th style="text-align:right;">Entrata</th>' +
                 '<th style="text-align:right;">Uscita</th>' +
                 '<th style="text-align:right;">Saldo</th>' +
@@ -222,7 +235,7 @@ ENI.Modules.Tesoreria = (function() {
             html += '<tr class="' + rowClass + '">' +
                 '<td>' + ENI.UI.formatData(f.data) + '</td>' +
                 '<td>' + ENI.UI.escapeHtml(f.descrizione) + '</td>' +
-                '<td><span class="badge badge-sm tesoreria-badge-' + f.fonte + '">' + _fonteLabelMap(f.fonte) + '</span></td>' +
+                '<td><span class="badge badge-sm tesoreria-badge-' + f.banca + '">' + (f.banca || '').toUpperCase() + '</span></td>' +
                 '<td style="text-align:right;">' + (f.importo > 0 ? ENI.UI.formatValuta(f.importo) : '') + '</td>' +
                 '<td style="text-align:right;">' + (f.importo < 0 ? ENI.UI.formatValuta(Math.abs(f.importo)) : '') + '</td>' +
                 '<td style="text-align:right;font-weight:600;" class="' + saldoClass + '">' + ENI.UI.formatValuta(f.saldo) + '</td>' +
@@ -251,12 +264,11 @@ ENI.Modules.Tesoreria = (function() {
         return html;
     }
 
-    function _renderPrevisione(saldoAttuale, ricorrenti, programmati, cassePeriodo) {
-        // Calcola media incassi giornalieri dagli ultimi dati cassa
+    function _renderPrevisione(saldoAttuale, ricorrenti, programmati, autoScadenze, accrediti30gg) {
+        // Media giornaliera dagli accrediti bancari reali (ultimi 30gg)
         var mediaGiornaliera = 0;
-        if (cassePeriodo && cassePeriodo.length > 0) {
-            var totIncassi = cassePeriodo.reduce(function(s, c) { return s + Number(c.totale_incassato || 0); }, 0);
-            mediaGiornaliera = totIncassi / cassePeriodo.length;
+        if (accrediti30gg.totale > 0 && accrediti30gg.giorni > 0) {
+            mediaGiornaliera = accrediti30gg.totale / accrediti30gg.giorni;
         }
 
         var oggi = new Date();
@@ -266,25 +278,34 @@ ENI.Modules.Tesoreria = (function() {
             var meseTarget = new Date(oggi.getFullYear(), oggi.getMonth() + m + 1, 0);
             var giorniNelMese = meseTarget.getDate();
             var giorniRimanenti = m === 0 ? giorniNelMese - oggi.getDate() : giorniNelMese;
+            var meseNum = meseTarget.getMonth() + 1;
+            var annoNum = meseTarget.getFullYear();
 
             var entratePreviste = mediaGiornaliera * giorniRimanenti;
             var uscitePreviste = 0;
 
-            // Aggiungi ricorrenti
+            // Ricorrenti
             ricorrenti.forEach(function(r) {
-                if (r.tipo === 'uscita' && _ricorrenteCadeInMese(r, meseTarget.getMonth() + 1, meseTarget.getFullYear())) {
-                    uscitePreviste += Number(r.importo);
-                } else if (r.tipo === 'entrata' && _ricorrenteCadeInMese(r, meseTarget.getMonth() + 1, meseTarget.getFullYear())) {
-                    entratePreviste += Number(r.importo);
+                if (_ricorrenteCadeInMese(r, meseNum, annoNum)) {
+                    if (r.tipo === 'uscita') uscitePreviste += Number(r.importo);
+                    else entratePreviste += Number(r.importo);
                 }
             });
 
-            // Aggiungi programmati
+            // Programmati
             programmati.forEach(function(p) {
                 var scadenza = new Date(p.data_scadenza);
-                if (scadenza.getMonth() === meseTarget.getMonth() && scadenza.getFullYear() === meseTarget.getFullYear()) {
+                if (scadenza.getMonth() + 1 === meseNum && scadenza.getFullYear() === annoNum) {
                     if (p.tipo === 'uscita') uscitePreviste += Number(p.importo);
                     else entratePreviste += Number(p.importo);
+                }
+            });
+
+            // Auto-scadenze carichi
+            autoScadenze.forEach(function(s) {
+                var scadData = new Date(s.data_scadenza);
+                if (scadData.getMonth() + 1 === meseNum && scadData.getFullYear() === annoNum) {
+                    uscitePreviste += s.importo;
                 }
             });
 
@@ -316,23 +337,27 @@ ENI.Modules.Tesoreria = (function() {
 
         if (mediaGiornaliera > 0) {
             html += '<div class="text-sm text-muted" style="margin-top:var(--space-2);">' +
-                'Media incassi giornalieri: ' + ENI.UI.formatValuta(mediaGiornaliera) +
-                ' (basata su ' + cassePeriodo.length + ' giorni di dati)</div>';
+                'Media accrediti giornalieri (ultimi 30gg): ' + ENI.UI.formatValuta(mediaGiornaliera) +
+                ' (basata su ' + accrediti30gg.giorni + ' giorni con movimenti)</div>';
+        } else {
+            html += '<div class="text-sm text-muted" style="margin-top:var(--space-2);">' +
+                'Importa movimenti bancari per calcolare la media incassi giornaliera</div>';
         }
 
         return html;
     }
 
-    function _renderProssimeScadenze(ricorrenti, programmati) {
+    function _renderProssimeScadenze(ricorrenti, programmati, autoScadenze) {
         var scadenze = [];
         var oggi = new Date();
         var limite = new Date();
         limite.setDate(limite.getDate() + 30);
+        var oggiStr = ENI.UI.oggiISO();
+        var limiteStr = limite.toISOString().split('T')[0];
 
         // Programmati
         programmati.forEach(function(p) {
-            var scad = new Date(p.data_scadenza);
-            if (scad >= oggi && scad <= limite) {
+            if (p.data_scadenza >= oggiStr && p.data_scadenza <= limiteStr) {
                 scadenze.push({
                     data: p.data_scadenza,
                     descrizione: p.descrizione,
@@ -343,7 +368,7 @@ ENI.Modules.Tesoreria = (function() {
             }
         });
 
-        // Ricorrenti: genera date per il prossimo mese
+        // Ricorrenti
         ricorrenti.forEach(function(r) {
             var prossimeDate = _getProssimeDateRicorrente(r, oggi, limite);
             prossimeDate.forEach(function(d) {
@@ -357,6 +382,19 @@ ENI.Modules.Tesoreria = (function() {
             });
         });
 
+        // Auto-scadenze carichi carburante
+        autoScadenze.forEach(function(s) {
+            if (s.data_scadenza >= oggiStr && s.data_scadenza <= limiteStr) {
+                scadenze.push({
+                    data: s.data_scadenza,
+                    descrizione: s.descrizione,
+                    importo: s.importo,
+                    tipo: 'uscita',
+                    fonte: 'carico'
+                });
+            }
+        });
+
         scadenze.sort(function(a, b) { return a.data.localeCompare(b.data); });
 
         if (scadenze.length === 0) {
@@ -366,6 +404,7 @@ ENI.Modules.Tesoreria = (function() {
         var html = '<div class="tesoreria-scadenze-list">';
         scadenze.forEach(function(s) {
             var badgeClass = s.tipo === 'uscita' ? 'badge-danger' : 'badge-success';
+            var fonteBadge = s.fonte === 'carico' ? 'tesoreria-badge-carico' : (s.fonte === 'ricorrente' ? 'tesoreria-badge-ricorrente' : 'tesoreria-badge-programmato');
             var giorniMancanti = Math.ceil((new Date(s.data) - oggi) / (1000 * 60 * 60 * 24));
             var urgenza = giorniMancanti <= 3 ? ' tesoreria-scadenza-urgente' : (giorniMancanti <= 7 ? ' tesoreria-scadenza-prossima' : '');
 
@@ -377,7 +416,7 @@ ENI.Modules.Tesoreria = (function() {
                 '<div class="tesoreria-scadenza-info">' +
                     '<div class="tesoreria-scadenza-desc">' + ENI.UI.escapeHtml(s.descrizione) + '</div>' +
                     '<span class="badge ' + badgeClass + '">' + s.tipo + '</span>' +
-                    '<span class="badge badge-outline">' + s.fonte + '</span>' +
+                    '<span class="badge ' + fonteBadge + '">' + _fonteLabelMap(s.fonte) + '</span>' +
                 '</div>' +
                 '<div class="tesoreria-scadenza-importo ' + (s.tipo === 'uscita' ? 'text-danger' : 'text-success') + '">' +
                     (s.tipo === 'uscita' ? '-' : '+') + ENI.UI.formatValuta(s.importo) +
@@ -390,13 +429,11 @@ ENI.Modules.Tesoreria = (function() {
     }
 
     function _setupDashboardListeners() {
-        // Navigazione periodo
         var prevBtn = document.getElementById('teso-prev');
         var nextBtn = document.getElementById('teso-next');
         if (prevBtn) prevBtn.addEventListener('click', function() { _navigaPeriodo(-1); });
         if (nextBtn) nextBtn.addEventListener('click', function() { _navigaPeriodo(1); });
 
-        // Toggle periodo
         document.querySelectorAll('.tesoreria-periodo-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 _periodoVista = btn.dataset.periodo;
@@ -424,7 +461,7 @@ ENI.Modules.Tesoreria = (function() {
     }
 
     // ============================================================
-    // TAB: MOVIMENTI BANCA
+    // TAB: MOVIMENTI BANCA (con Import Mapper Colonne)
     // ============================================================
 
     async function _renderMovimenti(content) {
@@ -440,7 +477,6 @@ ENI.Modules.Tesoreria = (function() {
         var oggi = ENI.UI.oggiISO();
 
         content.innerHTML =
-            // Import zone
             (puoScrivere ? _renderImportZone() : '') +
 
             // Filtri
@@ -479,18 +515,18 @@ ENI.Modules.Tesoreria = (function() {
             '<div class="cassa-section-title">\u{1F4E5} Importa Estratto Conto</div>' +
             '<div class="tesoreria-import-content">' +
                 '<div style="display:flex; gap:var(--space-3); align-items:end; flex-wrap:wrap;">' +
-                    '<div><label class="form-label">Banca</label>' +
+                    '<div><label class="form-label">Banca *</label>' +
                         '<select class="form-select" id="import-banca">' +
                             '<option value="carisp">Cassa di Risparmio</option>' +
                             '<option value="bsi">BSI</option>' +
                         '</select>' +
                     '</div>' +
                     '<div>' +
-                        '<label class="form-label">File CSV o Excel</label>' +
+                        '<label class="form-label">File CSV o Excel *</label>' +
                         '<input type="file" class="form-input" id="import-file" accept=".csv,.xlsx,.xls">' +
                     '</div>' +
-                    '<button class="btn btn-primary" id="btn-import" disabled>Importa</button>' +
                 '</div>' +
+                '<div id="import-mapper" style="margin-top:var(--space-3);"></div>' +
                 '<div id="import-preview" style="margin-top:var(--space-3);"></div>' +
                 '<div id="import-result" style="margin-top:var(--space-3);"></div>' +
             '</div>' +
@@ -516,7 +552,7 @@ ENI.Modules.Tesoreria = (function() {
                 '<td>' + ENI.UI.formatData(m.data_operazione) + '</td>' +
                 '<td>' + (m.data_valuta ? ENI.UI.formatData(m.data_valuta) : '-') + '</td>' +
                 '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;">' + ENI.UI.escapeHtml(m.descrizione) + '</td>' +
-                '<td><span class="badge badge-sm">' + m.banca.toUpperCase() + '</span></td>' +
+                '<td><span class="badge badge-sm tesoreria-badge-' + m.banca + '">' + m.banca.toUpperCase() + '</span></td>' +
                 '<td>' + (m.categoria ? '<span class="badge badge-outline badge-sm">' + ENI.UI.escapeHtml(m.categoria) + '</span>' : '-') + '</td>' +
                 '<td style="text-align:right;font-weight:600;" class="' + importoClass + '">' + ENI.UI.formatValuta(m.importo) + '</td>' +
                 '<td style="text-align:right;">' + (m.saldo_progressivo != null ? ENI.UI.formatValuta(m.saldo_progressivo) : '-') + '</td>' +
@@ -550,46 +586,161 @@ ENI.Modules.Tesoreria = (function() {
             });
         }
 
-        // File import
+        // File import: quando cambia il file, parsa e mostra il column mapper
         var fileInput = document.getElementById('import-file');
-        var btnImport = document.getElementById('btn-import');
-
         if (fileInput) {
             fileInput.addEventListener('change', function() {
                 if (fileInput.files.length > 0) {
-                    btnImport.disabled = false;
-                    _previewFile(fileInput.files[0]);
-                } else {
-                    btnImport.disabled = true;
+                    _onFileSelected(fileInput.files[0]);
                 }
-            });
-        }
-
-        if (btnImport) {
-            btnImport.addEventListener('click', function() {
-                var file = fileInput.files[0];
-                if (!file) return;
-                var banca = document.getElementById('import-banca').value;
-                _importFile(file, banca);
             });
         }
     }
 
-    // --- Import CSV/Excel ---
+    // ============================================================
+    // IMPORT: Column Mapper Flow
+    // ============================================================
 
-    async function _previewFile(file) {
+    async function _onFileSelected(file) {
+        var mapperEl = document.getElementById('import-mapper');
         var previewEl = document.getElementById('import-preview');
-        if (!previewEl) return;
-        previewEl.innerHTML = '<div class="spinner"></div>';
+        var resultEl = document.getElementById('import-result');
+        if (!mapperEl) return;
+
+        mapperEl.innerHTML = '<div class="flex items-center gap-2"><div class="spinner"></div> Lettura file...</div>';
+        if (previewEl) previewEl.innerHTML = '';
+        if (resultEl) resultEl.innerHTML = '';
+        _importParsedData = null;
+        _importMapping = {};
 
         try {
-            var movimenti = await _parseFile(file);
-            if (movimenti.length === 0) {
-                previewEl.innerHTML = '<div class="text-warning">Nessun movimento trovato nel file</div>';
+            var parsed = await _parseFileRaw(file);
+            _importParsedData = parsed;
+
+            if (!parsed.headers || parsed.headers.length === 0 || parsed.rows.length === 0) {
+                mapperEl.innerHTML = '<div class="text-warning">Il file sembra vuoto o non contiene dati validi.</div>';
                 return;
             }
 
-            var html = '<div class="text-sm text-muted">Anteprima: ' + movimenti.length + ' movimenti trovati (primi 5)</div>' +
+            var banca = document.getElementById('import-banca').value;
+
+            // Prova a caricare mapping salvato
+            var savedMapping = _loadSavedMapping(banca);
+            var suggerimenti = _suggestColumnMapping(parsed.headers);
+
+            // Usa mapping salvato se disponibile, altrimenti suggerimenti
+            _importMapping = savedMapping || suggerimenti;
+
+            _renderColumnMapper(mapperEl, parsed.headers, parsed.rows.slice(0, 4), banca);
+        } catch(e) {
+            mapperEl.innerHTML = '<div class="text-danger">Errore lettura file: ' + ENI.UI.escapeHtml(e.message) + '</div>';
+        }
+    }
+
+    function _renderColumnMapper(container, headers, sampleRows, banca) {
+        var ruoli = [
+            { value: '', label: '(Ignora)' },
+            { value: 'data_operazione', label: 'Data Operazione *' },
+            { value: 'data_valuta', label: 'Data Valuta' },
+            { value: 'descrizione', label: 'Descrizione *' },
+            { value: 'importo', label: 'Importo (+/-)' },
+            { value: 'dare', label: 'Dare (uscite)' },
+            { value: 'avere', label: 'Avere (entrate)' },
+            { value: 'saldo', label: 'Saldo' }
+        ];
+
+        var html = '<div class="tesoreria-mapper">' +
+            '<div class="tesoreria-mapper-title">Mappa le colonne del file</div>' +
+            '<p class="text-sm text-muted" style="margin-bottom:var(--space-2);">Assegna un ruolo a ogni colonna. Colonne con * sono obbligatorie. Per importo usa "Importo (+/-)" se e\' una colonna unica, oppure "Dare/Avere" se sono separate.</p>' +
+            '<div class="table-responsive"><table class="table table-sm tesoreria-mapper-table">' +
+            '<thead><tr>';
+
+        // Riga dropdown
+        headers.forEach(function(h, idx) {
+            var currentVal = '';
+            // Trova se questa colonna e' gia' mappata
+            for (var key in _importMapping) {
+                if (_importMapping[key] === h || _importMapping[key] === idx) {
+                    currentVal = key;
+                }
+            }
+
+            var options = ruoli.map(function(r) {
+                return '<option value="' + r.value + '"' + (currentVal === r.value ? ' selected' : '') + '>' + r.label + '</option>';
+            }).join('');
+
+            html += '<th style="min-width:120px;"><select class="form-select form-select-sm tesoreria-mapper-select" data-col-idx="' + idx + '">' +
+                options + '</select><div class="text-xs text-muted" style="margin-top:2px;">' + ENI.UI.escapeHtml(h) + '</div></th>';
+        });
+
+        html += '</tr></thead><tbody>';
+
+        // Righe sample
+        sampleRows.forEach(function(row) {
+            html += '<tr>';
+            headers.forEach(function(h) {
+                var val = row[h] != null ? String(row[h]).substring(0, 30) : '';
+                html += '<td class="text-sm">' + ENI.UI.escapeHtml(val) + '</td>';
+            });
+            html += '</tr>';
+        });
+
+        html += '</tbody></table></div>' +
+            '<div style="display:flex; gap:var(--space-2); margin-top:var(--space-3); flex-wrap:wrap;">' +
+                '<button class="btn btn-outline btn-sm" id="btn-salva-mapping">Salva mappatura per ' + banca.toUpperCase() + '</button>' +
+                '<button class="btn btn-primary" id="btn-conferma-mapping">Anteprima e Importa</button>' +
+            '</div>' +
+        '</div>';
+
+        container.innerHTML = html;
+
+        // Listeners
+        document.getElementById('btn-salva-mapping').addEventListener('click', function() {
+            _readMappingFromUI();
+            _saveMappingToStorage(banca, _importMapping);
+            ENI.UI.success('Mappatura salvata per ' + banca.toUpperCase());
+        });
+
+        document.getElementById('btn-conferma-mapping').addEventListener('click', function() {
+            _readMappingFromUI();
+            _showMappedPreview();
+        });
+    }
+
+    function _readMappingFromUI() {
+        _importMapping = {};
+        var headers = _importParsedData ? _importParsedData.headers : [];
+        document.querySelectorAll('.tesoreria-mapper-select').forEach(function(sel) {
+            var idx = parseInt(sel.dataset.colIdx);
+            var ruolo = sel.value;
+            if (ruolo && headers[idx]) {
+                _importMapping[ruolo] = headers[idx];
+            }
+        });
+    }
+
+    function _showMappedPreview() {
+        var previewEl = document.getElementById('import-preview');
+        if (!previewEl || !_importParsedData) return;
+
+        // Valida mapping
+        var hasData = _importMapping.data_operazione;
+        var hasImporto = _importMapping.importo || (_importMapping.dare || _importMapping.avere);
+        var hasDesc = _importMapping.descrizione;
+
+        if (!hasData || !hasImporto) {
+            previewEl.innerHTML = '<div class="text-danger">Devi assegnare almeno "Data Operazione" e "Importo" (oppure "Dare"/"Avere").</div>';
+            return;
+        }
+
+        try {
+            var movimenti = _mapRowsWithMapping(_importParsedData.objects, _importMapping);
+            if (movimenti.length === 0) {
+                previewEl.innerHTML = '<div class="text-warning">Nessun movimento valido trovato con questa mappatura.</div>';
+                return;
+            }
+
+            var html = '<div class="text-sm" style="margin-bottom:var(--space-2);"><strong>' + movimenti.length + ' movimenti trovati</strong> (primi 5):</div>' +
                 '<div class="table-responsive"><table class="table table-sm">' +
                 '<thead><tr><th>Data</th><th>Descrizione</th><th>Importo</th><th>Saldo</th></tr></thead><tbody>';
 
@@ -606,33 +757,35 @@ ENI.Modules.Tesoreria = (function() {
             if (movimenti.length > 5) {
                 html += '<div class="text-sm text-muted">... e altri ' + (movimenti.length - 5) + ' movimenti</div>';
             }
+            html += '<button class="btn btn-success" id="btn-esegui-import" style="margin-top:var(--space-2);">Importa ' + movimenti.length + ' movimenti</button>';
 
             previewEl.innerHTML = html;
+
+            document.getElementById('btn-esegui-import').addEventListener('click', function() {
+                _eseguiImport(movimenti);
+            });
         } catch(e) {
-            previewEl.innerHTML = '<div class="text-danger">Errore lettura file: ' + ENI.UI.escapeHtml(e.message) + '</div>';
+            previewEl.innerHTML = '<div class="text-danger">Errore nella mappatura: ' + ENI.UI.escapeHtml(e.message) + '</div>';
         }
     }
 
-    async function _importFile(file, banca) {
+    async function _eseguiImport(movimenti) {
         var resultEl = document.getElementById('import-result');
-        var btnImport = document.getElementById('btn-import');
+        var btnImport = document.getElementById('btn-esegui-import');
         if (!resultEl) return;
+
+        var banca = document.getElementById('import-banca').value;
+        var fileName = document.getElementById('import-file').files[0].name;
 
         resultEl.innerHTML = '<div class="flex items-center gap-2"><div class="spinner"></div> Importazione in corso...</div>';
         if (btnImport) btnImport.disabled = true;
 
         try {
-            var movimenti = await _parseFile(file);
-            if (movimenti.length === 0) {
-                resultEl.innerHTML = '<div class="text-warning">Nessun movimento trovato nel file</div>';
-                return;
-            }
-
             // Genera hash e aggiungi metadati
             var dateRange = _getDateRange(movimenti);
             movimenti.forEach(function(m) {
                 m.banca = banca;
-                m.file_origine = file.name;
+                m.file_origine = fileName;
                 m.hash_movimento = _generateHash(m.data_operazione, m.data_valuta, m.importo, m.descrizione);
             });
 
@@ -643,7 +796,7 @@ ENI.Modules.Tesoreria = (function() {
 
             var nuovi = movimenti.filter(function(m) { return !hashSet[m.hash_movimento]; });
 
-            // Rimuovi duplicati interni al file (stesso hash)
+            // Rimuovi duplicati interni al file
             var hashVisti = {};
             nuovi = nuovi.filter(function(m) {
                 if (hashVisti[m.hash_movimento]) return false;
@@ -653,7 +806,7 @@ ENI.Modules.Tesoreria = (function() {
 
             if (nuovi.length === 0) {
                 resultEl.innerHTML = '<div class="tesoreria-import-result tesoreria-import-info">' +
-                    '<strong>Nessun nuovo movimento.</strong> Tutti i ' + movimenti.length + ' movimenti erano gi\u00e0 presenti nel database.' +
+                    '<strong>Nessun nuovo movimento.</strong> Tutti i ' + movimenti.length + ' movimenti erano gi\u00e0 presenti.' +
                 '</div>';
                 return;
             }
@@ -675,7 +828,6 @@ ENI.Modules.Tesoreria = (function() {
                 (duplicati > 0 ? 'Duplicati ignorati: <strong>' + duplicati + '</strong>' : '') +
             '</div>';
 
-            // Ricarica lista
             setTimeout(function() { _loadTab(); }, 1500);
 
         } catch(e) {
@@ -683,22 +835,22 @@ ENI.Modules.Tesoreria = (function() {
                 '<strong>Errore importazione:</strong> ' + ENI.UI.escapeHtml(e.message) +
             '</div>';
             console.error('Import error:', e);
-        } finally {
-            if (btnImport) btnImport.disabled = false;
         }
     }
 
-    async function _parseFile(file) {
+    // --- Parsing helpers ---
+
+    async function _parseFileRaw(file) {
         var ext = file.name.split('.').pop().toLowerCase();
         if (ext === 'csv') {
-            return await _parseCSV(file);
+            return await _parseCSVRaw(file);
         } else if (ext === 'xlsx' || ext === 'xls') {
-            return await _parseExcel(file);
+            return await _parseExcelRaw(file);
         }
-        throw new Error('Formato file non supportato. Usa CSV o Excel (.xlsx/.xls)');
+        throw new Error('Formato non supportato. Usa CSV o Excel (.xlsx/.xls)');
     }
 
-    function _parseCSV(file) {
+    function _parseCSVRaw(file) {
         return new Promise(function(resolve, reject) {
             Papa.parse(file, {
                 header: true,
@@ -706,15 +858,14 @@ ENI.Modules.Tesoreria = (function() {
                 encoding: 'UTF-8',
                 complete: function(results) {
                     if (results.errors.length > 0 && results.data.length === 0) {
-                        reject(new Error('Errore parsing CSV: ' + results.errors[0].message));
+                        reject(new Error('Errore CSV: ' + results.errors[0].message));
                         return;
                     }
-                    try {
-                        var movimenti = _mapCSVRows(results.data, results.meta.fields);
-                        resolve(movimenti);
-                    } catch(e) {
-                        reject(e);
-                    }
+                    resolve({
+                        headers: results.meta.fields || [],
+                        rows: results.data.slice(0, 5), // solo per preview nella mapper table
+                        objects: results.data // tutti i dati
+                    });
                 },
                 error: function(err) {
                     reject(new Error('Errore lettura CSV: ' + err.message));
@@ -723,7 +874,7 @@ ENI.Modules.Tesoreria = (function() {
         });
     }
 
-    function _parseExcel(file) {
+    function _parseExcelRaw(file) {
         return new Promise(function(resolve, reject) {
             var reader = new FileReader();
             reader.onload = function(e) {
@@ -733,11 +884,10 @@ ENI.Modules.Tesoreria = (function() {
                     var data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' });
 
                     if (data.length < 2) {
-                        resolve([]);
+                        resolve({ headers: [], rows: [], objects: [] });
                         return;
                     }
 
-                    // Prima riga = header
                     var headers = data[0].map(function(h) { return String(h || '').trim(); });
                     var rows = data.slice(1).filter(function(r) { return r.some(function(c) { return c != null && c !== ''; }); });
 
@@ -747,10 +897,13 @@ ENI.Modules.Tesoreria = (function() {
                         return obj;
                     });
 
-                    var movimenti = _mapCSVRows(objects, headers);
-                    resolve(movimenti);
+                    resolve({
+                        headers: headers,
+                        rows: objects.slice(0, 5),
+                        objects: objects
+                    });
                 } catch(err) {
-                    reject(new Error('Errore parsing Excel: ' + err.message));
+                    reject(new Error('Errore Excel: ' + err.message));
                 }
             };
             reader.onerror = function() { reject(new Error('Errore lettura file')); };
@@ -758,26 +911,32 @@ ENI.Modules.Tesoreria = (function() {
         });
     }
 
-    function _mapCSVRows(rows, fields) {
-        // Auto-detect column mapping
-        var mapping = _detectColumnMapping(fields);
-
-        if (!mapping.data_operazione || !mapping.importo) {
-            throw new Error('Impossibile rilevare le colonne del file. Assicurati che il file contenga almeno colonne per Data e Importo.');
-        }
+    function _mapRowsWithMapping(objects, mapping) {
+        var hasImportoSingolo = !!mapping.importo;
+        var hasDareAvere = !!(mapping.dare || mapping.avere);
 
         var movimenti = [];
-        rows.forEach(function(row) {
+        objects.forEach(function(row) {
             var dataOp = _parseDataItaliana(row[mapping.data_operazione]);
-            if (!dataOp) return; // Skip righe senza data valida
+            if (!dataOp) return;
 
-            var importo = _parseImporto(row, mapping);
+            var importo;
+            if (hasImportoSingolo) {
+                importo = _parseNumero(row[mapping.importo]);
+            } else if (hasDareAvere) {
+                var dare = mapping.dare ? _parseNumero(row[mapping.dare]) : 0;
+                var avere = mapping.avere ? _parseNumero(row[mapping.avere]) : 0;
+                if (dare && dare > 0) importo = -dare;
+                else if (avere && avere > 0) importo = avere;
+                else importo = dare || avere || 0;
+            }
             if (importo === null || isNaN(importo)) return;
 
+            var desc = mapping.descrizione ? (row[mapping.descrizione] || '').trim() : 'Movimento';
             var mov = {
                 data_operazione: dataOp,
                 data_valuta: mapping.data_valuta ? _parseDataItaliana(row[mapping.data_valuta]) : dataOp,
-                descrizione: (row[mapping.descrizione] || '').trim(),
+                descrizione: desc,
                 importo: importo,
                 saldo_progressivo: mapping.saldo ? _parseNumero(row[mapping.saldo]) : null
             };
@@ -788,90 +947,57 @@ ENI.Modules.Tesoreria = (function() {
         return movimenti;
     }
 
-    function _detectColumnMapping(fields) {
+    // --- Column mapping persistence ---
+
+    function _suggestColumnMapping(fields) {
         var mapping = {};
         var fieldsLower = fields.map(function(f) { return (f || '').toLowerCase().trim(); });
 
-        // Data operazione
-        var dataPatterns = ['data operazione', 'data op', 'data op.', 'data', 'date', 'data_operazione', 'data contabile'];
-        dataPatterns.some(function(p) {
-            var idx = fieldsLower.indexOf(p);
-            if (idx !== -1) { mapping.data_operazione = fields[idx]; return true; }
-            return false;
-        });
+        var patterns = {
+            data_operazione: ['data operazione', 'data op', 'data op.', 'data', 'date', 'data_operazione', 'data contabile'],
+            data_valuta: ['data valuta', 'data val', 'data val.', 'valuta', 'data_valuta'],
+            descrizione: ['descrizione', 'causale', 'description', 'dettagli', 'descrizione operazione', 'motivo'],
+            importo: ['importo', 'amount', 'importo eur', 'importo euro'],
+            dare: ['dare', 'addebito', 'addebiti', 'debit', 'uscite', 'uscita'],
+            avere: ['avere', 'accredito', 'accrediti', 'credit', 'entrate', 'entrata'],
+            saldo: ['saldo', 'saldo contabile', 'saldo disponibile', 'balance', 'saldo progressivo']
+        };
 
-        // Data valuta
-        var valutaPatterns = ['data valuta', 'data val', 'data val.', 'valuta', 'data_valuta'];
-        valutaPatterns.some(function(p) {
-            var idx = fieldsLower.indexOf(p);
-            if (idx !== -1) { mapping.data_valuta = fields[idx]; return true; }
-            return false;
-        });
-
-        // Descrizione
-        var descPatterns = ['descrizione', 'causale', 'description', 'dettagli', 'descrizione operazione', 'motivo'];
-        descPatterns.some(function(p) {
-            var idx = fieldsLower.indexOf(p);
-            if (idx !== -1) { mapping.descrizione = fields[idx]; return true; }
-            return false;
-        });
-
-        // Importo (singolo o dare/avere separati)
-        var importoPatterns = ['importo', 'amount', 'importo eur', 'importo euro'];
-        var darePatterns = ['dare', 'addebito', 'addebiti', 'debit', 'uscite', 'uscita'];
-        var averePatterns = ['avere', 'accredito', 'accrediti', 'credit', 'entrate', 'entrata'];
-
-        importoPatterns.some(function(p) {
-            var idx = fieldsLower.indexOf(p);
-            if (idx !== -1) { mapping.importo = fields[idx]; return true; }
-            return false;
-        });
-
-        if (!mapping.importo) {
-            // Prova dare/avere separati
-            darePatterns.some(function(p) {
+        Object.keys(patterns).forEach(function(ruolo) {
+            patterns[ruolo].some(function(p) {
                 var idx = fieldsLower.indexOf(p);
-                if (idx !== -1) { mapping.dare = fields[idx]; return true; }
+                if (idx !== -1) { mapping[ruolo] = fields[idx]; return true; }
                 return false;
             });
-            averePatterns.some(function(p) {
-                var idx = fieldsLower.indexOf(p);
-                if (idx !== -1) { mapping.avere = fields[idx]; return true; }
-                return false;
-            });
-            if (mapping.dare || mapping.avere) {
-                mapping.importo = '__dare_avere__';
-            }
+        });
+
+        // Se troviamo dare/avere ma non importo, non serviamo importo
+        if (!mapping.importo && (mapping.dare || mapping.avere)) {
+            // ok, usera' dare/avere
         }
-
-        // Saldo
-        var saldoPatterns = ['saldo', 'saldo contabile', 'saldo disponibile', 'balance', 'saldo progressivo'];
-        saldoPatterns.some(function(p) {
-            var idx = fieldsLower.indexOf(p);
-            if (idx !== -1) { mapping.saldo = fields[idx]; return true; }
-            return false;
-        });
 
         return mapping;
     }
 
-    function _parseImporto(row, mapping) {
-        if (mapping.importo === '__dare_avere__') {
-            var dare = mapping.dare ? _parseNumero(row[mapping.dare]) : 0;
-            var avere = mapping.avere ? _parseNumero(row[mapping.avere]) : 0;
-            if (dare && dare > 0) return -dare;
-            if (avere && avere > 0) return avere;
-            return dare || avere || 0;
-        }
-        return _parseNumero(row[mapping.importo]);
+    function _loadSavedMapping(banca) {
+        try {
+            var saved = localStorage.getItem('tesoreria-mapping-' + banca);
+            return saved ? JSON.parse(saved) : null;
+        } catch(e) { return null; }
     }
+
+    function _saveMappingToStorage(banca, mapping) {
+        try {
+            localStorage.setItem('tesoreria-mapping-' + banca, JSON.stringify(mapping));
+        } catch(e) { /* ignore */ }
+    }
+
+    // --- Parsing utilities ---
 
     function _parseNumero(val) {
         if (val == null || val === '') return null;
         var s = String(val).trim();
-        // Rimuovi simbolo valuta
         s = s.replace(/[€\s]/g, '');
-        // Formato italiano: 1.234,56 -> 1234.56
         if (s.indexOf(',') !== -1 && s.indexOf('.') !== -1) {
             if (s.lastIndexOf('.') < s.lastIndexOf(',')) {
                 s = s.replace(/\./g, '').replace(',', '.');
@@ -887,12 +1013,10 @@ ENI.Modules.Tesoreria = (function() {
         if (!val) return null;
         var s = String(val).trim();
 
-        // Formato ISO: 2024-01-15
         if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
             return s.substring(0, 10);
         }
 
-        // Formato italiano: 15/01/2024 o 15-01-2024
         var match = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
         if (match) {
             var g = match[1].padStart(2, '0');
@@ -905,15 +1029,13 @@ ENI.Modules.Tesoreria = (function() {
     }
 
     function _generateHash(dataOp, dataVal, importo, descrizione) {
-        // Simple hash: concatenation + basic hashing
         var str = (dataOp || '') + '|' + (dataVal || '') + '|' + String(importo || 0) + '|' + (descrizione || '').trim().toLowerCase();
         var hash = 0;
         for (var i = 0; i < str.length; i++) {
             var char = str.charCodeAt(i);
             hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32bit int
+            hash = hash & hash;
         }
-        // Usa anche una parte della stringa per ridurre collisioni
         return 'h' + Math.abs(hash).toString(36) + '_' + str.length + '_' + (dataOp || '').replace(/-/g, '');
     }
 
@@ -991,10 +1113,7 @@ ENI.Modules.Tesoreria = (function() {
         });
 
         html += '</tbody></table></div>';
-
-        // Setup action listeners after a tick
         setTimeout(function() { _setupRicorrentiActions(); }, 0);
-
         return html;
     }
 
@@ -1049,12 +1168,10 @@ ENI.Modules.Tesoreria = (function() {
 
     function _showRicorrenteForm(existing) {
         var isEdit = !!existing;
-        var catOptions = _categorie
-            .filter(function(c) { return c.tipo !== 'entrambi' || true; })
-            .map(function(c) {
-                var sel = existing && existing.categoria === c.nome ? ' selected' : '';
-                return '<option value="' + ENI.UI.escapeHtml(c.nome) + '"' + sel + '>' + (c.icona || '') + ' ' + ENI.UI.escapeHtml(c.nome) + '</option>';
-            }).join('');
+        var catOptions = _categorie.map(function(c) {
+            var sel = existing && existing.categoria === c.nome ? ' selected' : '';
+            return '<option value="' + ENI.UI.escapeHtml(c.nome) + '"' + sel + '>' + (c.icona || '') + ' ' + ENI.UI.escapeHtml(c.nome) + '</option>';
+        }).join('');
 
         var html =
             '<div style="display:flex; flex-direction:column; gap:var(--space-3);">' +
@@ -1203,7 +1320,6 @@ ENI.Modules.Tesoreria = (function() {
         });
 
         html += '</tbody></table></div>';
-
         setTimeout(function() { _setupProgrammatiActions(); }, 0);
         return html;
     }
@@ -1218,9 +1334,7 @@ ENI.Modules.Tesoreria = (function() {
                     await ENI.API.pagaPagamentoProgrammato(id, p);
                     ENI.UI.success('Pagamento segnato come pagato');
                     _loadTab();
-                } catch(e) {
-                    ENI.UI.error('Errore: ' + e.message);
-                }
+                } catch(e) { ENI.UI.error('Errore: ' + e.message); }
             });
         });
 
@@ -1241,9 +1355,7 @@ ENI.Modules.Tesoreria = (function() {
                     await ENI.API.annullaPagamentoProgrammato(id, p);
                     ENI.UI.success('Pagamento annullato');
                     _loadTab();
-                } catch(e) {
-                    ENI.UI.error('Errore: ' + e.message);
-                }
+                } catch(e) { ENI.UI.error('Errore: ' + e.message); }
             });
         });
 
@@ -1265,9 +1377,7 @@ ENI.Modules.Tesoreria = (function() {
                         ENI.UI.closeModal(modal);
                         ENI.UI.success('Pagamento eliminato');
                         _loadTab();
-                    } catch(e) {
-                        ENI.UI.error('Errore: ' + e.message);
-                    }
+                    } catch(e) { ENI.UI.error('Errore: ' + e.message); }
                 });
             });
         });
@@ -1335,9 +1445,7 @@ ENI.Modules.Tesoreria = (function() {
                 }
                 ENI.UI.closeModal(modal);
                 _loadTab();
-            } catch(e) {
-                ENI.UI.error('Errore: ' + e.message);
-            }
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
         });
     }
 
@@ -1392,7 +1500,6 @@ ENI.Modules.Tesoreria = (function() {
         });
 
         html += '</tbody></table></div>';
-
         setTimeout(function() { _setupCategorieActions(); }, 0);
         return html;
     }
@@ -1423,9 +1530,7 @@ ENI.Modules.Tesoreria = (function() {
                         ENI.UI.closeModal(modal);
                         ENI.UI.success('Categoria eliminata');
                         _loadTab();
-                    } catch(e) {
-                        ENI.UI.error('Errore: ' + e.message);
-                    }
+                    } catch(e) { ENI.UI.error('Errore: ' + e.message); }
                 });
             });
         });
@@ -1482,125 +1587,204 @@ ENI.Modules.Tesoreria = (function() {
                 }
                 ENI.UI.closeModal(modal);
                 _loadTab();
-            } catch(e) {
-                ENI.UI.error('Errore: ' + e.message);
-            }
+            } catch(e) { ENI.UI.error('Errore: ' + e.message); }
         });
     }
 
     // ============================================================
-    // HELPER: Cash Flow Calculation
+    // HELPER: Cash Flow - SOLO Movimenti Banca
     // ============================================================
 
-    function _buildFlussi(movimentiBanca, cassePeriodo, spesePeriodo, creditiPeriodo, ricorrenti, programmati, periodoRange) {
+    function _buildFlussi(movimentiBanca) {
         var flussi = [];
 
-        // 1. Movimenti banca
         movimentiBanca.forEach(function(m) {
             flussi.push({
                 data: m.data_operazione,
                 descrizione: m.descrizione,
                 importo: Number(m.importo),
-                fonte: 'banca'
+                banca: m.banca || '',
+                saldo: m.saldo_progressivo != null ? Number(m.saldo_progressivo) : null
             });
         });
-
-        // 2. Corrispettivi giornalieri (cassa)
-        if (cassePeriodo) {
-            cassePeriodo.forEach(function(c) {
-                var totIncassato = Number(c.totale_incassato || 0);
-                if (totIncassato > 0) {
-                    flussi.push({
-                        data: c.data,
-                        descrizione: 'Corrispettivi giornalieri',
-                        importo: totIncassato,
-                        fonte: 'cassa'
-                    });
-                }
-            });
-        }
-
-        // 3. Spese cassa
-        if (spesePeriodo) {
-            spesePeriodo.forEach(function(s) {
-                flussi.push({
-                    data: s.data,
-                    descrizione: 'Spesa: ' + (s.descrizione || 'Spese cassa'),
-                    importo: -Math.abs(Number(s.importo || 0)),
-                    fonte: 'spese'
-                });
-            });
-        }
-
-        // 4. Crediti incassati
-        if (creditiPeriodo) {
-            creditiPeriodo.forEach(function(c) {
-                flussi.push({
-                    data: c.data_incasso,
-                    descrizione: 'Incasso credito: ' + (c.nome_cliente || c.codice),
-                    importo: Number(c.importo),
-                    fonte: 'crediti'
-                });
-            });
-        }
 
         // Ordina per data
         flussi.sort(function(a, b) { return a.data.localeCompare(b.data); });
 
-        // Calcola saldo progressivo (castelletto)
-        var saldo = 0;
-        flussi.forEach(function(f) {
-            saldo += f.importo;
-            f.saldo = saldo;
-        });
+        // Se non abbiamo saldo dalla banca, calcoliamolo progressivamente
+        var hasSaldo = flussi.some(function(f) { return f.saldo != null; });
+        if (!hasSaldo) {
+            var saldo = 0;
+            flussi.forEach(function(f) {
+                saldo += f.importo;
+                f.saldo = saldo;
+            });
+        } else {
+            // Riempi eventuali buchi nel saldo
+            var lastSaldo = 0;
+            flussi.forEach(function(f) {
+                if (f.saldo != null) {
+                    lastSaldo = f.saldo;
+                } else {
+                    lastSaldo += f.importo;
+                    f.saldo = lastSaldo;
+                }
+            });
+        }
 
         return flussi;
     }
 
-    async function _getCassaPeriodo(da, a) {
+    // ============================================================
+    // HELPER: Auto-Scadenze da Carichi Carburante
+    // ============================================================
+
+    function _getAutoScadenzeCarichi(carichi) {
+        var scadenze = [];
+        if (!carichi || carichi.length === 0) return scadenze;
+
+        carichi.forEach(function(c) {
+            var dataCarico = new Date(c.data);
+            var litriFiscali = parseFloat(c.litri_fiscali) || 0;
+            var prezzoMp = parseFloat(c.prezzo_mp) || 0;
+            var accisa = parseFloat(c.accisa) || 0;
+
+            if (litriFiscali <= 0) return;
+
+            var prodotto = c.prodotto_id || 'carburante';
+
+            // 1. RID Fornitore: materia prima, +5 giorni
+            var dataRid = new Date(dataCarico);
+            dataRid.setDate(dataRid.getDate() + 5);
+            var importoRid = litriFiscali * prezzoMp;
+            if (importoRid > 0) {
+                scadenze.push({
+                    data_scadenza: _dateToISO(dataRid),
+                    descrizione: 'RID ' + prodotto + ' (' + _fmtNum(litriFiscali, 0) + 'lt, carico ' + ENI.UI.formatData(c.data) + ')',
+                    importo: Math.round(importoRid * 100) / 100,
+                    tipo_scadenza: 'rid'
+                });
+            }
+
+            // 2. Accise + Monofase accise: +24 giorni
+            var dataAccise = new Date(dataCarico);
+            dataAccise.setDate(dataAccise.getDate() + 24);
+            var importoAccise = litriFiscali * accisa * 1.21;
+            if (importoAccise > 0) {
+                scadenze.push({
+                    data_scadenza: _dateToISO(dataAccise),
+                    descrizione: 'Accise+IVA ' + prodotto + ' (' + _fmtNum(litriFiscali, 0) + 'lt, carico ' + ENI.UI.formatData(c.data) + ')',
+                    importo: Math.round(importoAccise * 100) / 100,
+                    tipo_scadenza: 'accise'
+                });
+            }
+
+            // 3. Monofase materia prima: +120 giorni
+            var dataMonofase = new Date(dataCarico);
+            dataMonofase.setDate(dataMonofase.getDate() + 120);
+            var importoMonofase = litriFiscali * prezzoMp * 0.21;
+            if (importoMonofase > 0) {
+                scadenze.push({
+                    data_scadenza: _dateToISO(dataMonofase),
+                    descrizione: 'Monofase MP ' + prodotto + ' (' + _fmtNum(litriFiscali, 0) + 'lt, carico ' + ENI.UI.formatData(c.data) + ')',
+                    importo: Math.round(importoMonofase * 100) / 100,
+                    tipo_scadenza: 'monofase'
+                });
+            }
+        });
+
+        // Ordina per data scadenza
+        scadenze.sort(function(a, b) { return a.data_scadenza.localeCompare(b.data_scadenza); });
+
+        return scadenze;
+    }
+
+    // ============================================================
+    // HELPER: Media Accrediti Bancari (ultimi 30gg)
+    // ============================================================
+
+    async function _getAccreditiBanca30gg() {
         try {
-            var result = await ENI.API.getClient()
-                .from('cassa')
-                .select('data, totale_incassato, totale_venduto, totale_contanti, totale_spese')
-                .gte('data', da)
-                .lte('data', a)
-                .order('data', { ascending: true });
-            if (result.error) throw new Error(result.error.message);
-            return result.data || [];
+            var oggi = new Date();
+            var da30 = new Date(oggi);
+            da30.setDate(da30.getDate() - 30);
+
+            var movimenti = await ENI.API.getMovimentiBanca({
+                da: da30.toISOString().split('T')[0],
+                a: oggi.toISOString().split('T')[0],
+                asc: true
+            });
+
+            // Somma solo accrediti (importo > 0)
+            var totAccrediti = 0;
+            var giorniConMovimenti = {};
+            movimenti.forEach(function(m) {
+                if (Number(m.importo) > 0) {
+                    totAccrediti += Number(m.importo);
+                }
+                giorniConMovimenti[m.data_operazione] = true;
+            });
+
+            return {
+                totale: totAccrediti,
+                giorni: Object.keys(giorniConMovimenti).length || 1
+            };
         } catch(e) {
-            return [];
+            return { totale: 0, giorni: 1 };
         }
     }
 
-    async function _getSpesePeriodo(da, a) {
-        try {
-            var result = await ENI.API.getClient()
-                .from('spese_cassa')
-                .select('data, descrizione, importo, categoria')
-                .gte('data', da)
-                .lte('data', a)
-                .order('data', { ascending: true });
-            if (result.error) throw new Error(result.error.message);
-            return result.data || [];
-        } catch(e) {
-            return [];
-        }
-    }
+    // ============================================================
+    // HELPER: Calcolo previsto 30gg (per KPI)
+    // ============================================================
 
-    async function _getCreditiIncassatiPeriodo(da, a) {
-        try {
-            var result = await ENI.API.getClient()
-                .from('crediti')
-                .select('codice, nome_cliente, importo, data_incasso')
-                .eq('stato', 'Incassato')
-                .gte('data_incasso', da)
-                .lte('data_incasso', a)
-                .order('data_incasso', { ascending: true });
-            if (result.error) throw new Error(result.error.message);
-            return result.data || [];
-        } catch(e) {
-            return [];
-        }
+    function _calcolaPrevisto30gg(ricorrenti, programmati, autoScadenze, accrediti30gg) {
+        var oggi = new Date();
+        var limite = new Date();
+        limite.setDate(limite.getDate() + 30);
+        var oggiStr = ENI.UI.oggiISO();
+        var limiteStr = limite.toISOString().split('T')[0];
+
+        var uscite = 0;
+        var entrate = 0;
+        var nUscite = 0;
+        var nEntrate = 0;
+
+        // Programmati
+        programmati.forEach(function(p) {
+            if (p.data_scadenza >= oggiStr && p.data_scadenza <= limiteStr) {
+                if (p.tipo === 'uscita') { uscite += Number(p.importo); nUscite++; }
+                else { entrate += Number(p.importo); nEntrate++; }
+            }
+        });
+
+        // Ricorrenti
+        ricorrenti.forEach(function(r) {
+            var date = _getProssimeDateRicorrente(r, oggi, limite);
+            date.forEach(function() {
+                if (r.tipo === 'uscita') { uscite += Number(r.importo); nUscite++; }
+                else { entrate += Number(r.importo); nEntrate++; }
+            });
+        });
+
+        // Auto-scadenze carichi
+        autoScadenze.forEach(function(s) {
+            if (s.data_scadenza >= oggiStr && s.data_scadenza <= limiteStr) {
+                uscite += s.importo;
+                nUscite++;
+            }
+        });
+
+        // Entrate da media accrediti
+        var mediaGiornaliera = accrediti30gg.totale > 0 ? accrediti30gg.totale / accrediti30gg.giorni : 0;
+        entrate += mediaGiornaliera * 30;
+
+        return {
+            uscite: uscite,
+            entrate: entrate,
+            dettaglioUscite: nUscite + ' pagamenti',
+            dettaglioEntrate: nEntrate + ' fissi + media giornaliera'
+        };
     }
 
     // ============================================================
@@ -1648,8 +1832,16 @@ ENI.Modules.Tesoreria = (function() {
     }
 
     function _fonteLabelMap(fonte) {
-        var map = { banca: 'Banca', cassa: 'Cassa', spese: 'Spese', crediti: 'Crediti', ricorrente: 'Ricorrente', programmato: 'Programmato' };
+        var map = { banca: 'Banca', ricorrente: 'Ricorrente', programmato: 'Programmato', carico: 'Carico' };
         return map[fonte] || fonte;
+    }
+
+    function _dateToISO(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function _fmtNum(n, dec) {
+        return Number(n).toLocaleString('it-IT', { minimumFractionDigits: dec, maximumFractionDigits: dec });
     }
 
     function _ricorrenteCadeInMese(ricorrente, mese, anno) {
@@ -1659,7 +1851,6 @@ ENI.Modules.Tesoreria = (function() {
             return ricorrente.mese_riferimento.indexOf(mese) !== -1;
         }
 
-        // Default: trimestrale = ogni 3 mesi da data_inizio
         if (ricorrente.frequenza === 'trimestrale') {
             var inizio = new Date(ricorrente.data_inizio);
             var meseInizio = inizio.getMonth() + 1;
@@ -1683,7 +1874,7 @@ ENI.Modules.Tesoreria = (function() {
     function _getProssimeDateRicorrente(ricorrente, da, a) {
         var date = [];
         var current = new Date(da);
-        current.setDate(1); // Inizio dal primo del mese corrente
+        current.setDate(1);
 
         while (current <= a) {
             var mese = current.getMonth() + 1;
@@ -1694,7 +1885,6 @@ ENI.Modules.Tesoreria = (function() {
                 var dataScad = anno + '-' + String(mese).padStart(2, '0') + '-' + String(giorno).padStart(2, '0');
 
                 if (dataScad >= da.toISOString().split('T')[0] && dataScad <= a.toISOString().split('T')[0]) {
-                    // Verifica anche data_inizio e data_fine
                     if (dataScad >= ricorrente.data_inizio && (!ricorrente.data_fine || dataScad <= ricorrente.data_fine)) {
                         date.push(dataScad);
                     }
@@ -1707,7 +1897,7 @@ ENI.Modules.Tesoreria = (function() {
         return date;
     }
 
-    function _contaScadenzeProssime(ricorrenti, programmati, giorni) {
+    function _contaScadenzeProssime(ricorrenti, programmati, autoScadenze, giorni) {
         var count = 0;
         var oggi = new Date();
         var limite = new Date();
@@ -1728,11 +1918,18 @@ ENI.Modules.Tesoreria = (function() {
             count += date.length;
         });
 
+        // Auto-scadenze carichi
+        autoScadenze.forEach(function(s) {
+            if (s.data_scadenza >= oggiStr && s.data_scadenza <= limiteStr) {
+                count++;
+            }
+        });
+
         return count;
     }
 
     // ============================================================
-    // CHECK SCADENZE (per alert badge)
+    // CHECK SCADENZE (per alert badge in navbar)
     // ============================================================
 
     async function checkScadenze() {
@@ -1743,7 +1940,7 @@ ENI.Modules.Tesoreria = (function() {
             // Programmati
             count += data.programmati.length;
 
-            // Ricorrenti: calcola quanti cadono nei prossimi 7 giorni
+            // Ricorrenti
             var oggi = new Date();
             var limite = new Date();
             limite.setDate(limite.getDate() + 7);
@@ -1752,6 +1949,24 @@ ENI.Modules.Tesoreria = (function() {
                 var date = _getProssimeDateRicorrente(r, oggi, limite);
                 count += date.length;
             });
+
+            // Auto-scadenze da carichi carburante
+            try {
+                var da150 = new Date(oggi);
+                da150.setDate(da150.getDate() - 150);
+                var carichi = await ENI.API.getCarichiCarburante(da150.toISOString().split('T')[0], null);
+                var autoScadenze = _getAutoScadenzeCarichi(carichi);
+                var oggiStr = ENI.UI.oggiISO();
+                var limiteStr = limite.toISOString().split('T')[0];
+
+                autoScadenze.forEach(function(s) {
+                    if (s.data_scadenza >= oggiStr && s.data_scadenza <= limiteStr) {
+                        count++;
+                    }
+                });
+            } catch(e) {
+                // Silenzioso: se carichi non disponibili, ignora
+            }
 
             return count;
         } catch(e) {

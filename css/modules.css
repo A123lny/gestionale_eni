@@ -2097,3 +2097,88 @@
     font-weight: var(--font-weight-bold);
     color: var(--color-warning);
 }
+
+/* --- Column Mapper (Import) --- */
+.tesoreria-mapper {
+    background: var(--bg-card);
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin: var(--space-4) 0;
+}
+
+.tesoreria-mapper-title {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: var(--space-3);
+}
+
+.tesoreria-mapper-table {
+    font-size: var(--font-size-xs);
+    border: 1px solid var(--color-gray-200);
+}
+
+.tesoreria-mapper-table th {
+    background: var(--bg-secondary);
+    padding: var(--space-2) !important;
+    vertical-align: top;
+}
+
+.tesoreria-mapper-table td {
+    padding: var(--space-1) var(--space-2) !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+
+.tesoreria-mapper-select {
+    font-size: var(--font-size-xs) !important;
+    padding: var(--space-1) var(--space-2) !important;
+    min-width: 110px;
+}
+
+@media (max-width: 768px) {
+    .tesoreria-mapper {
+        padding: var(--space-2);
+    }
+    .tesoreria-mapper-table td {
+        max-width: 100px;
+    }
+}
+
+/* --- Import Content Zone --- */
+.tesoreria-import-content {
+    padding: var(--space-4);
+    text-align: center;
+}
+
+.tesoreria-import-content p {
+    margin-bottom: var(--space-2);
+    color: var(--text-secondary);
+}
+
+/* --- Badge Fonte: Carico Carburante --- */
+.tesoreria-badge-carico {
+    background: #fef3c7;
+    color: #92400e;
+    font-weight: var(--font-weight-medium);
+}
+
+/* --- Badge Fonte: Banche --- */
+.tesoreria-badge-carisp {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.tesoreria-badge-bsi {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+/* Fallback per altre banche non mappate */
+[class*="tesoreria-badge-"]:not(.tesoreria-badge-banca):not(.tesoreria-badge-cassa):not(.tesoreria-badge-spese):not(.tesoreria-badge-crediti):not(.tesoreria-badge-ricorrente):not(.tesoreria-badge-programmato):not(.tesoreria-badge-carico):not(.tesoreria-badge-carisp):not(.tesoreria-badge-bsi) {
+    background: #f0f9ff;
+    color: #0369a1;
+}
