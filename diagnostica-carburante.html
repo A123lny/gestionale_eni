@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnostica Carburanti - Titanwash</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; padding: 1rem; }
+        h1 { color: #38bdf8; margin-bottom: 0.5rem; }
+        h2 { color: #f59e0b; margin: 1.5rem 0 0.5rem; border-bottom: 1px solid #334155; padding-bottom: 0.25rem; }
+        h3 { color: #818cf8; margin: 1rem 0 0.5rem; }
+        .subtitle { color: #94a3b8; font-size: 0.9rem; margin-bottom: 1rem; }
+        .loading { text-align: center; padding: 3rem; color: #94a3b8; }
+        .spinner { display: inline-block; width: 2rem; height: 2rem; border: 3px solid #334155; border-top-color: #38bdf8; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Tabs */
+        .tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .tab-btn { padding: 0.5rem 1rem; border: 1px solid #334155; border-radius: 0.375rem; background: #1e293b; color: #94a3b8; cursor: pointer; font-size: 0.85rem; }
+        .tab-btn:hover { background: #334155; }
+        .tab-btn.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; font-weight: 600; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Cards */
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem; }
+        .card-title { font-weight: 600; color: #f8fafc; margin-bottom: 0.5rem; }
+
+        /* Summary cards grid */
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+        .summary-card { background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.75rem; }
+        .summary-label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; }
+        .summary-value { font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem; }
+        .summary-detail { font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; }
+
+        /* Tables */
+        .table-wrap { overflow-x: auto; margin-bottom: 1rem; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        th { background: #334155; color: #f8fafc; padding: 0.5rem; text-align: left; white-space: nowrap; position: sticky; top: 0; }
+        td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #1e293b; white-space: nowrap; }
+        tr:hover { background: #1e293b; }
+        tr.highlight { background: #422006 !important; }
+
+        /* Colors */
+        .text-green { color: #4ade80; }
+        .text-red { color: #f87171; }
+        .text-yellow { color: #fbbf24; }
+        .text-blue { color: #60a5fa; }
+        .text-purple { color: #a78bfa; }
+        .text-orange { color: #fb923c; }
+        .text-dim { color: #64748b; }
+        .bg-warning { background: #422006 !important; }
+        .bg-danger { background: #450a0a !important; }
+        .bg-ok { background: #052e16 !important; }
+
+        /* Alert boxes */
+        .alert { padding: 0.75rem 1rem; border-radius: 0.375rem; margin-bottom: 0.75rem; font-size: 0.85rem; }
+        .alert-danger { background: #450a0a; border: 1px solid #991b1b; color: #fca5a5; }
+        .alert-warning { background: #422006; border: 1px solid #92400e; color: #fde68a; }
+        .alert-info { background: #0c2d48; border: 1px solid #1e3a5f; color: #93c5fd; }
+        .alert-success { background: #052e16; border: 1px solid #166534; color: #86efac; }
+
+        /* Timeline */
+        .timeline-entry { display: grid; grid-template-columns: 100px 80px 1fr; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid #1e293b; font-size: 0.82rem; }
+        .timeline-type { font-weight: 600; }
+        .type-carico { color: #4ade80; }
+        .type-vendita { color: #f87171; }
+        .type-conguaglio { color: #fbbf24; }
+
+        .formula { background: #0f172a; border: 1px solid #334155; border-radius: 0.25rem; padding: 0.5rem; font-family: monospace; font-size: 0.8rem; margin: 0.25rem 0; overflow-x: auto; }
+
+        #error-box { display: none; }
+
+        /* Print */
+        @media print {
+            body { background: #fff; color: #000; }
+            .card { border: 1px solid #ccc; }
+            th { background: #eee; color: #000; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Diagnostica Carburanti</h1>
+    <p class="subtitle">Analisi step-by-step dei calcoli di marginalita — interrogazione diretta database</p>
+
+    <div id="error-box" class="alert alert-danger"></div>
+    <div id="main-content">
+        <div class="loading"><div class="spinner"></div><p style="margin-top:1rem;">Caricamento dati da Supabase...</p></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script>
+    (async function() {
+        'use strict';
+
+        // ============================================================
+        // CONFIG — stesse credenziali del gestionale
+        // ============================================================
+        var SUPABASE_URL = 'https://upwkodrmfljgikmstogy.supabase.co';
+        var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwd2tvZHJtZmxqZ2lrbXN0b2d5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyNzMwMTEsImV4cCI6MjA4Njg0OTAxMX0.BVhpeBdiX75TFdlAsqpLQgWR7bG6MABCMWWt2zUkXqQ';
+
+        var sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        var mainEl = document.getElementById('main-content');
+        var errorEl = document.getElementById('error-box');
+
+        // ============================================================
+        // UTILITA
+        // ============================================================
+        function round2(n) { return Math.round(n * 100) / 100; }
+        function round4(n) { return Math.round(n * 10000) / 10000; }
+        function round6(n) { return Math.round(n * 1000000) / 1000000; }
+        function fmt(n, dec) { return n != null ? Number(n).toFixed(dec || 6) : '-'; }
+        function fmtEur(n) { return n != null ? '€ ' + Number(n).toFixed(2) : '-'; }
+        function fmtDate(d) { if (!d) return '-'; var p = d.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+        function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        function showError(msg) {
+            errorEl.style.display = 'block';
+            errorEl.innerHTML = '<strong>Errore:</strong> ' + esc(msg);
+        }
+
+        // ============================================================
+        // CARICA TUTTI I DATI
+        // ============================================================
+        var data = {};
+        try {
+            var [prodRes, configRes, giacRes, carichiRes, venditeProdRes, venditeRes, prezziRes, congRes, acciseRes, rimborsiRes] = await Promise.all([
+                sb.from('prodotti_carburante').select('*').eq('attivo', true).order('ordine'),
+                sb.from('config_carburanti').select('*'),
+                sb.from('giacenze_iniziali').select('*'),
+                sb.from('carichi_carburante').select('*').order('data', { ascending: true }),
+                sb.from('vendite_per_prodotto').select('*'),
+                sb.from('vendite_giornaliere').select('*').order('data_inizio', { ascending: true }),
+                sb.from('prezzi_pompa').select('*').order('data_inizio', { ascending: false }),
+                sb.from('conguagli_eni').select('*').order('data', { ascending: true }),
+                sb.from('accise_storico').select('*').order('data_inizio', { ascending: true }),
+                sb.from('rimborsi_stato').select('*')
+            ]);
+
+            data.prodotti = prodRes.data || [];
+            data.config = {};
+            (configRes.data || []).forEach(function(r) { data.config[r.chiave] = r.valore; });
+            data.giacenze = giacRes.data || [];
+            data.carichi = carichiRes.data || [];
+            data.venditeProd = venditeProdRes.data || [];
+            data.vendite = venditeRes.data || [];
+            data.prezzi = prezziRes.data || [];
+            data.conguagli = congRes.data || [];
+            data.accise = acciseRes.data || [];
+            data.rimborsi = rimborsiRes.data || [];
+
+            // Index vendite by id
+            data.venditeById = {};
+            data.vendite.forEach(function(v) { data.venditeById[v.id] = v; });
+
+        } catch(e) {
+            showError('Impossibile caricare i dati: ' + e.message);
+            return;
+        }
+
+        if (data.prodotti.length === 0) {
+            mainEl.innerHTML = '<div class="alert alert-warning">Nessun prodotto carburante trovato nel database.</div>';
+            return;
+        }
+
+        // ============================================================
+        // CALCOLA STATO PER OGNI PRODOTTO (replica esatta di calcoli.js)
+        // ============================================================
+        var diagnostica = {};
+
+        data.prodotti.forEach(function(prod) {
+            var diag = {
+                prodotto: prod,
+                giacenza_iniziale: null,
+                carichi: [],
+                vendite: [],
+                conguagli: [],
+                eventi: [],
+                timeline: [],   // step-by-step con stato prima/dopo
+                prezzi_pompa: [],
+                accise: [],
+                anomalie: []
+            };
+
+            // Giacenza iniziale
+            var gi = data.giacenze.find(function(g) { return g.prodotto_id === prod.id; });
+            diag.giacenza_iniziale = gi ? { litri: parseFloat(gi.litri_fisici) || 0, costo_medio: parseFloat(gi.costo_medio) || 0 } : { litri: 0, costo_medio: 0 };
+
+            // Carichi
+            diag.carichi = data.carichi.filter(function(c) { return c.prodotto_id === prod.id; });
+
+            // Vendite con date
+            diag.vendite = data.venditeProd.filter(function(vp) { return vp.prodotto_id === prod.id; }).map(function(vp) {
+                var vendita = data.venditeById[vp.vendita_id];
+                return {
+                    raw: vp,
+                    data: vendita ? vendita.data_inizio : null,
+                    litri: parseFloat(vp.litri) || 0,
+                    prezzo_pompa: parseFloat(vp.prezzo_pompa) || 0,
+                    costo_medio_ref: parseFloat(vp.costo_medio_ref) || 0
+                };
+            }).filter(function(v) { return v.data; });
+
+            // Conguagli
+            diag.conguagli = data.conguagli.filter(function(c) { return c.prodotto_id === prod.id; });
+
+            // Prezzi pompa
+            diag.prezzi_pompa = data.prezzi.filter(function(p) { return p.prodotto_id === prod.id; });
+
+            // Accise
+            diag.accise = data.accise.filter(function(a) { return a.prodotto_id === prod.id; });
+
+            // ---- Costruisci eventi cronologici ----
+            var eventi = [];
+            diag.carichi.forEach(function(c) {
+                eventi.push({
+                    tipo: 'carico', data: c.data,
+                    litri_fisici: parseFloat(c.litri_fisici) || 0,
+                    litri_fiscali: parseFloat(c.litri_fiscali) || 0,
+                    prezzo_mp: parseFloat(c.prezzo_mp) || 0,
+                    accisa: parseFloat(c.accisa) || 0,
+                    raw: c
+                });
+            });
+            diag.vendite.forEach(function(v) {
+                eventi.push({ tipo: 'vendita', data: v.data, litri: v.litri, prezzo_pompa: v.prezzo_pompa, raw: v });
+            });
+            diag.conguagli.forEach(function(cg) {
+                eventi.push({ tipo: 'conguaglio', data: cg.data, importo_mp: parseFloat(cg.importo_mp) || 0, raw: cg });
+            });
+            eventi.sort(function(a, b) { return a.data < b.data ? -1 : a.data > b.data ? 1 : 0; });
+            diag.eventi = eventi;
+
+            // ---- Replay step-by-step ----
+            var giacenza = diag.giacenza_iniziale.litri;
+            var costo_medio = diag.giacenza_iniziale.costo_medio;
+            var margine_acc = 0;
+            var litri_venduti_tot = 0;
+            var pc_maturato = 0;
+            var margine_target = parseFloat(data.config.margine_target) || 0.05;
+
+            diag.timeline.push({
+                step: 0, tipo: 'INIZIALE', data: '-',
+                dettaglio: 'Giacenza iniziale',
+                giacenza_prima: '-', cm_prima: '-',
+                giacenza_dopo: round2(giacenza), cm_dopo: round6(costo_medio),
+                margine_unitario: '-', margine_vendita: '-',
+                formula: 'Giacenza: ' + fmt(giacenza, 2) + ' lt, Costo medio: ' + fmt(costo_medio, 6) + ' €/lt',
+                anomalia: null
+            });
+
+            // Check iniziale
+            if (giacenza > 0 && costo_medio === 0) {
+                diag.anomalie.push({ tipo: 'CRITICO', msg: 'Giacenza iniziale di ' + fmt(giacenza, 0) + ' litri ma costo medio = 0! Questo abbassa enormemente il costo medio ponderato.' });
+            }
+            if (giacenza === 0 && costo_medio === 0) {
+                diag.anomalie.push({ tipo: 'INFO', msg: 'Nessuna giacenza iniziale impostata. Il costo medio partira dal primo carico.' });
+            }
+
+            eventi.forEach(function(ev, idx) {
+                var step = { step: idx + 1, tipo: ev.tipo.toUpperCase(), data: fmtDate(ev.data), anomalia: null };
+                var giac_prima = round2(giacenza);
+                var cm_prima = round6(costo_medio);
+
+                if (ev.tipo === 'carico') {
+                    var costo_tot = ev.litri_fiscali * (ev.prezzo_mp + ev.accisa) * 1.21;
+                    var costo_lt = ev.litri_fisici > 0 ? costo_tot / ev.litri_fisici : 0;
+                    costo_lt = round6(costo_lt);
+                    costo_tot = round2(costo_tot);
+
+                    // Media ponderata
+                    var nuovo_cm;
+                    if (giacenza <= 0) {
+                        giacenza = ev.litri_fisici;
+                        nuovo_cm = costo_lt;
+                    } else {
+                        var val_vecchi = giacenza * costo_medio;
+                        var val_nuovi = ev.litri_fisici * costo_lt;
+                        giacenza = giacenza + ev.litri_fisici;
+                        nuovo_cm = giacenza > 0 ? (val_vecchi + val_nuovi) / giacenza : 0;
+                    }
+                    costo_medio = round6(nuovo_cm);
+                    giacenza = round2(giacenza);
+
+                    var diff_litri = ev.litri_fisici - ev.litri_fiscali;
+                    var diff_pct = ev.litri_fiscali > 0 ? ((ev.litri_fisici - ev.litri_fiscali) / ev.litri_fiscali * 100) : 0;
+
+                    step.dettaglio = fmt(ev.litri_fisici, 0) + ' lt fisici, ' + fmt(ev.litri_fiscali, 0) + ' lt fiscali';
+                    step.formula = 'Costo tot = ' + fmt(ev.litri_fiscali, 0) + ' × (' + fmt(ev.prezzo_mp, 6) + ' + ' + fmt(ev.accisa, 5) + ') × 1.21 = ' + fmtEur(costo_tot) + '\n' +
+                                   'Costo/lt fisico = ' + fmtEur(costo_tot) + ' / ' + fmt(ev.litri_fisici, 0) + ' = ' + fmt(costo_lt, 6) + ' €/lt\n' +
+                                   'Diff litri (fisici-fiscali): ' + fmt(diff_litri, 0) + ' (' + fmt(diff_pct, 2) + '%)\n' +
+                                   'Nuovo CM = (' + fmt(giac_prima, 0) + '×' + fmt(cm_prima, 6) + ' + ' + fmt(ev.litri_fisici, 0) + '×' + fmt(costo_lt, 6) + ') / ' + fmt(giacenza, 0) + ' = ' + fmt(costo_medio, 6);
+
+                    step.giacenza_prima = giac_prima;
+                    step.cm_prima = cm_prima;
+                    step.giacenza_dopo = giacenza;
+                    step.cm_dopo = costo_medio;
+                    step.margine_unitario = '-';
+                    step.margine_vendita = '-';
+
+                    // Anomalie carico
+                    if (Math.abs(diff_pct) > 3) {
+                        var anom = 'Differenza litri fisici/fiscali del ' + fmt(diff_pct, 1) + '% — molto alta!';
+                        step.anomalia = anom;
+                        diag.anomalie.push({ tipo: 'WARNING', msg: '[' + fmtDate(ev.data) + '] CARICO: ' + anom });
+                    }
+                    if (ev.prezzo_mp === 0) {
+                        step.anomalia = 'Prezzo MP = 0!';
+                        diag.anomalie.push({ tipo: 'CRITICO', msg: '[' + fmtDate(ev.data) + '] CARICO: prezzo materia prima = 0. Il costo risulta basato solo su accisa.' });
+                    }
+                    if (ev.accisa === 0) {
+                        step.anomalia = (step.anomalia || '') + ' Accisa = 0!';
+                        diag.anomalie.push({ tipo: 'CRITICO', msg: '[' + fmtDate(ev.data) + '] CARICO: accisa = 0. Il costo e sottostimato.' });
+                    }
+
+                } else if (ev.tipo === 'vendita') {
+                    var marg_unit = round6(ev.prezzo_pompa - costo_medio);
+                    var marg_tot = round2(marg_unit * ev.litri);
+                    giacenza = round2(Math.max(0, giacenza - ev.litri));
+                    margine_acc += marg_tot;
+                    litri_venduti_tot += ev.litri;
+                    if (prod.ha_pc) pc_maturato += round2(ev.litri * 0.0522);
+
+                    step.dettaglio = fmt(ev.litri, 0) + ' lt a ' + fmt(ev.prezzo_pompa, 4) + ' €/lt';
+                    step.formula = 'Margine unit. = ' + fmt(ev.prezzo_pompa, 4) + ' - ' + fmt(cm_prima, 6) + ' = ' + fmt(marg_unit, 6) + ' €/lt\n' +
+                                   'Margine tot. = ' + fmt(marg_unit, 6) + ' × ' + fmt(ev.litri, 0) + ' = ' + fmtEur(marg_tot);
+
+                    step.giacenza_prima = giac_prima;
+                    step.cm_prima = cm_prima;
+                    step.giacenza_dopo = giacenza;
+                    step.cm_dopo = costo_medio;
+                    step.margine_unitario = marg_unit;
+                    step.margine_vendita = marg_tot;
+
+                    // Anomalie vendita
+                    if (marg_unit > 0.10) {
+                        step.anomalia = 'Margine > 10 cent/lt!';
+                        diag.anomalie.push({ tipo: 'WARNING', msg: '[' + fmtDate(ev.data) + '] VENDITA ' + prod.nome + ': margine unitario = ' + fmt(marg_unit, 4) + ' €/lt (>' + '10 cent). Prezzo pompa=' + fmt(ev.prezzo_pompa, 4) + ', Costo medio=' + fmt(cm_prima, 6) });
+                    }
+                    if (marg_unit < 0) {
+                        step.anomalia = 'VENDITA IN PERDITA!';
+                        diag.anomalie.push({ tipo: 'CRITICO', msg: '[' + fmtDate(ev.data) + '] VENDITA ' + prod.nome + ': vendita in PERDITA, margine = ' + fmt(marg_unit, 4) + ' €/lt' });
+                    }
+                    if (ev.litri > giacenza + ev.litri + 500) {
+                        step.anomalia = (step.anomalia || '') + ' Vendita > giacenza!';
+                    }
+
+                } else if (ev.tipo === 'conguaglio') {
+                    var imp = ev.importo_mp;
+                    if (giacenza > 0) {
+                        costo_medio = round6(costo_medio + (imp / giacenza));
+                    }
+                    step.dettaglio = (imp < 0 ? 'CREDITO' : 'DEBITO') + ' ' + fmtEur(Math.abs(imp));
+                    step.formula = 'Nuovo CM = ' + fmt(cm_prima, 6) + ' + (' + fmt(imp, 2) + ' / ' + fmt(giac_prima, 0) + ') = ' + fmt(costo_medio, 6);
+                    step.giacenza_prima = giac_prima;
+                    step.cm_prima = cm_prima;
+                    step.giacenza_dopo = giacenza;
+                    step.cm_dopo = costo_medio;
+                    step.margine_unitario = '-';
+                    step.margine_vendita = '-';
+                }
+
+                diag.timeline.push(step);
+            });
+
+            // Stato finale
+            diag.stato_finale = {
+                giacenza: giacenza,
+                costo_medio: costo_medio,
+                margine_acc: round2(margine_acc),
+                litri_venduti: round2(litri_venduti_tot),
+                pc_maturato: round2(pc_maturato),
+                margine_target: margine_target
+            };
+
+            // Prezzo pompa corrente
+            var pp = diag.prezzi_pompa.length > 0 ? parseFloat(diag.prezzi_pompa[0].prezzo) || 0 : 0;
+            diag.stato_finale.prezzo_pompa = pp;
+            diag.stato_finale.margine_corrente = pp > 0 ? round6(pp - costo_medio) : null;
+            diag.stato_finale.prezzo_consigliato = round4(costo_medio + margine_target);
+
+            // Margine medio per litro
+            diag.stato_finale.margine_medio_lt = litri_venduti_tot > 0 ? round6(margine_acc / litri_venduti_tot) : 0;
+
+            diagnostica[prod.id] = diag;
+        });
+
+        // ============================================================
+        // RENDER
+        // ============================================================
+        var html = '';
+
+        // Tabs per prodotto
+        html += '<div class="tabs" id="prod-tabs">';
+        data.prodotti.forEach(function(p, i) {
+            html += '<button class="tab-btn' + (i === 0 ? ' active' : '') + '" data-prod="' + p.id + '">' + esc(p.nome) + '</button>';
+        });
+        html += '</div>';
+
+        data.prodotti.forEach(function(prod, pidx) {
+            var diag = diagnostica[prod.id];
+            var s = diag.stato_finale;
+            html += '<div class="tab-content' + (pidx === 0 ? ' active' : '') + '" id="tab-' + prod.id + '">';
+
+            // ---- ANOMALIE ----
+            if (diag.anomalie.length > 0) {
+                html += '<h2>Anomalie Rilevate (' + diag.anomalie.length + ')</h2>';
+                diag.anomalie.forEach(function(a) {
+                    var cls = a.tipo === 'CRITICO' ? 'alert-danger' : a.tipo === 'WARNING' ? 'alert-warning' : 'alert-info';
+                    html += '<div class="alert ' + cls + '"><strong>' + a.tipo + ':</strong> ' + esc(a.msg) + '</div>';
+                });
+            } else {
+                html += '<div class="alert alert-success"><strong>Nessuna anomalia rilevata</strong> per ' + esc(prod.nome) + '</div>';
+            }
+
+            // ---- RIEPILOGO ----
+            html += '<h2>Stato Attuale</h2>';
+            html += '<div class="summary-grid">';
+            html += '<div class="summary-card"><div class="summary-label">Giacenza Teorica</div><div class="summary-value text-blue">' + fmt(s.giacenza, 2) + ' lt</div></div>';
+            html += '<div class="summary-card"><div class="summary-label">Costo Medio</div><div class="summary-value">' + fmt(s.costo_medio, 6) + ' €/lt</div></div>';
+            html += '<div class="summary-card"><div class="summary-label">Prezzo Pompa</div><div class="summary-value text-blue">' + fmt(s.prezzo_pompa, 4) + ' €/lt</div></div>';
+            var mcClass = s.margine_corrente > 0.10 ? 'text-red' : s.margine_corrente > 0.05 ? 'text-yellow' : 'text-green';
+            html += '<div class="summary-card"><div class="summary-label">Margine Corrente</div><div class="summary-value ' + mcClass + '">' + (s.margine_corrente != null ? fmt(s.margine_corrente, 4) + ' €/lt' : '-') + '</div>' +
+                    '<div class="summary-detail">' + (s.margine_corrente != null ? (s.margine_corrente * 100).toFixed(2) + ' cent/lt' : '') + '</div></div>';
+            html += '<div class="summary-card"><div class="summary-label">Prezzo Consigliato</div><div class="summary-value text-purple">' + fmt(s.prezzo_consigliato, 4) + ' €/lt</div><div class="summary-detail">Target margine: ' + fmt(s.margine_target, 2) + ' €/lt</div></div>';
+            html += '<div class="summary-card"><div class="summary-label">Margine Medio/lt</div><div class="summary-value ' + (s.margine_medio_lt > 0.10 ? 'text-red' : 'text-green') + '">' + fmt(s.margine_medio_lt, 4) + ' €/lt</div><div class="summary-detail">' + (s.margine_medio_lt * 100).toFixed(2) + ' cent/lt su ' + fmt(s.litri_venduti, 0) + ' lt</div></div>';
+            html += '<div class="summary-card"><div class="summary-label">Margine Accumulato</div><div class="summary-value">' + fmtEur(s.margine_acc) + '</div></div>';
+            html += '<div class="summary-card"><div class="summary-label">PC Maturato</div><div class="summary-value text-green">' + fmtEur(s.pc_maturato) + '</div></div>';
+            html += '</div>';
+
+            // ---- CONFIG & ACCISE ----
+            html += '<h2>Parametri Utilizzati</h2>';
+            html += '<div class="card"><div class="summary-grid">';
+            html += '<div class="summary-card"><div class="summary-label">Margine Target</div><div class="summary-value">' + fmt(parseFloat(data.config.margine_target) || 0.05, 4) + ' €/lt</div></div>';
+            html += '<div class="summary-card"><div class="summary-label">Aliquota Monofase</div><div class="summary-value">' + ((parseFloat(data.config.aliquota_monofase) || 0.21) * 100).toFixed(0) + '%</div></div>';
+            html += '<div class="summary-card"><div class="summary-label">Storno PC</div><div class="summary-value">' + fmt(parseFloat(data.config.storno_pc) || 0.0522, 4) + ' €/lt</div></div>';
+            html += '</div>';
+            if (diag.accise.length > 0) {
+                html += '<h3>Storico Accise per ' + esc(prod.nome) + '</h3>';
+                html += '<table><tr><th>Da</th><th>A</th><th>Accisa €/lt</th><th>Note</th></tr>';
+                diag.accise.forEach(function(a) {
+                    html += '<tr><td>' + fmtDate(a.data_inizio) + '</td><td>' + (a.data_fine ? fmtDate(a.data_fine) : 'Attuale') + '</td><td>' + fmt(a.accisa, 5) + '</td><td>' + esc(a.note || '') + '</td></tr>';
+                });
+                html += '</table>';
+            } else {
+                html += '<div class="alert alert-warning">Nessuna accisa trovata per ' + esc(prod.nome) + '! Le accise nei carichi potrebbero essere manuali.</div>';
+            }
+            html += '</div>';
+
+            // ---- GIACENZA INIZIALE ----
+            html += '<h2>Giacenza Iniziale</h2>';
+            html += '<div class="card">';
+            html += '<p>Litri: <strong>' + fmt(diag.giacenza_iniziale.litri, 2) + '</strong> — Costo medio: <strong>' + fmt(diag.giacenza_iniziale.costo_medio, 6) + ' €/lt</strong></p>';
+            if (diag.giacenza_iniziale.litri > 0 && diag.giacenza_iniziale.costo_medio === 0) {
+                html += '<div class="alert alert-danger" style="margin-top:0.5rem">PROBLEMA: Hai una giacenza iniziale ma il costo medio e 0. Questo abbassa tutto il costo medio ponderato!</div>';
+            }
+            html += '</div>';
+
+            // ---- TIMELINE STEP-BY-STEP ----
+            html += '<h2>Timeline Calcoli Step-by-Step (' + diag.timeline.length + ' eventi)</h2>';
+            html += '<div class="table-wrap"><table>';
+            html += '<tr><th>#</th><th>Tipo</th><th>Data</th><th>Dettaglio</th><th>Giac. Prima</th><th>CM Prima</th><th>Giac. Dopo</th><th>CM Dopo</th><th>Marg. Unit.</th><th>Marg. Tot.</th><th>Anomalia</th></tr>';
+            diag.timeline.forEach(function(t) {
+                var rowClass = t.anomalia ? (t.tipo === 'VENDITA' && t.margine_unitario > 0.10 ? 'bg-warning' : t.anomalia.indexOf('PERDITA') >= 0 ? 'bg-danger' : '') : '';
+                html += '<tr class="' + rowClass + '">';
+                html += '<td>' + t.step + '</td>';
+                html += '<td class="type-' + t.tipo.toLowerCase() + '">' + t.tipo + '</td>';
+                html += '<td>' + t.data + '</td>';
+                html += '<td>' + esc(t.dettaglio || '') + '</td>';
+                html += '<td>' + (t.giacenza_prima !== '-' ? fmt(t.giacenza_prima, 2) : '-') + '</td>';
+                html += '<td>' + (t.cm_prima !== '-' ? fmt(t.cm_prima, 6) : '-') + '</td>';
+                html += '<td>' + fmt(t.giacenza_dopo, 2) + '</td>';
+                html += '<td>' + fmt(t.cm_dopo, 6) + '</td>';
+                html += '<td class="' + (t.margine_unitario !== '-' && t.margine_unitario > 0.10 ? 'text-red' : t.margine_unitario !== '-' && t.margine_unitario < 0 ? 'text-red' : 'text-green') + '">' + (t.margine_unitario !== '-' ? fmt(t.margine_unitario, 4) : '-') + '</td>';
+                html += '<td>' + (t.margine_vendita !== '-' ? fmtEur(t.margine_vendita) : '-') + '</td>';
+                html += '<td class="text-yellow">' + (t.anomalia ? esc(t.anomalia) : '') + '</td>';
+                html += '</tr>';
+            });
+            html += '</table></div>';
+
+            // ---- DETTAGLIO FORMULE ----
+            html += '<h2>Dettaglio Formule per ogni evento</h2>';
+            diag.timeline.forEach(function(t) {
+                if (t.formula) {
+                    html += '<div class="card" style="padding:0.5rem 0.75rem;margin-bottom:0.5rem;">';
+                    html += '<strong class="type-' + t.tipo.toLowerCase() + '">Step ' + t.step + ' — ' + t.tipo + '</strong> (' + t.data + ')';
+                    html += '<div class="formula">' + esc(t.formula).replace(/\n/g, '<br>') + '</div>';
+                    html += '</div>';
+                }
+            });
+
+            // ---- TABELLA CARICHI DETTAGLIATA ----
+            html += '<h2>Dettaglio Carichi (' + diag.carichi.length + ')</h2>';
+            if (diag.carichi.length > 0) {
+                html += '<div class="table-wrap"><table>';
+                html += '<tr><th>Data</th><th>Lt Fisici</th><th>Lt Fiscali</th><th>Diff %</th><th>Prezzo MP</th><th>Accisa</th><th>MP+Acc</th><th>×1.21</th><th>Costo Tot</th><th>Costo/lt</th><th>CM Risult.</th></tr>';
+                diag.carichi.forEach(function(c) {
+                    var lf = parseFloat(c.litri_fisici) || 0;
+                    var lfis = parseFloat(c.litri_fiscali) || 0;
+                    var mp = parseFloat(c.prezzo_mp) || 0;
+                    var acc = parseFloat(c.accisa) || 0;
+                    var diffPct = lfis > 0 ? ((lf - lfis) / lfis * 100) : 0;
+                    var mpAcc = mp + acc;
+                    var x121 = mpAcc * 1.21;
+                    var costoTot = lfis * mpAcc * 1.21;
+                    var costoLt = lf > 0 ? costoTot / lf : 0;
+                    var diffCls = Math.abs(diffPct) > 3 ? 'text-red' : Math.abs(diffPct) > 1 ? 'text-yellow' : '';
+                    html += '<tr>';
+                    html += '<td>' + fmtDate(c.data) + '</td>';
+                    html += '<td>' + fmt(lf, 0) + '</td>';
+                    html += '<td>' + fmt(lfis, 0) + '</td>';
+                    html += '<td class="' + diffCls + '">' + fmt(diffPct, 2) + '%</td>';
+                    html += '<td>' + fmt(mp, 6) + '</td>';
+                    html += '<td>' + fmt(acc, 5) + '</td>';
+                    html += '<td>' + fmt(mpAcc, 6) + '</td>';
+                    html += '<td>' + fmt(x121, 6) + '</td>';
+                    html += '<td>' + fmtEur(costoTot) + '</td>';
+                    html += '<td class="text-blue">' + fmt(costoLt, 6) + '</td>';
+                    html += '<td>' + fmt(parseFloat(c.costo_medio_risultante) || 0, 6) + '</td>';
+                    html += '</tr>';
+                });
+                html += '</table></div>';
+            } else {
+                html += '<div class="alert alert-warning">Nessun carico trovato.</div>';
+            }
+
+            // ---- TABELLA VENDITE DETTAGLIATA ----
+            html += '<h2>Dettaglio Vendite (' + diag.vendite.length + ')</h2>';
+            if (diag.vendite.length > 0) {
+                html += '<div class="table-wrap"><table>';
+                html += '<tr><th>Data</th><th>Litri</th><th>Prezzo Pompa</th><th>CM Ref (salvato)</th><th>Margine Unit.</th><th>Margine Tot.</th></tr>';
+                diag.vendite.sort(function(a, b) { return a.data < b.data ? -1 : 1; });
+                diag.vendite.forEach(function(v) {
+                    // Il margine qui usa il costo_medio_ref salvato al momento della vendita
+                    var marg = round6(v.prezzo_pompa - v.costo_medio_ref);
+                    var margTot = round2(marg * v.litri);
+                    var cls = marg > 0.10 ? 'text-red' : marg < 0 ? 'text-red' : 'text-green';
+                    html += '<tr class="' + (marg > 0.10 ? 'bg-warning' : marg < 0 ? 'bg-danger' : '') + '">';
+                    html += '<td>' + fmtDate(v.data) + '</td>';
+                    html += '<td>' + fmt(v.litri, 0) + '</td>';
+                    html += '<td>' + fmt(v.prezzo_pompa, 4) + '</td>';
+                    html += '<td>' + fmt(v.costo_medio_ref, 6) + '</td>';
+                    html += '<td class="' + cls + '">' + fmt(marg, 4) + ' (' + (marg * 100).toFixed(2) + ' cent)</td>';
+                    html += '<td>' + fmtEur(margTot) + '</td>';
+                    html += '</tr>';
+                });
+                html += '</table></div>';
+            } else {
+                html += '<div class="alert alert-info">Nessuna vendita trovata.</div>';
+            }
+
+            // ---- PREZZI POMPA STORICO ----
+            html += '<h2>Storico Prezzi Pompa</h2>';
+            if (diag.prezzi_pompa.length > 0) {
+                html += '<div class="table-wrap"><table>';
+                html += '<tr><th>Da</th><th>Prezzo €/lt</th><th>Note</th></tr>';
+                diag.prezzi_pompa.forEach(function(p) {
+                    html += '<tr><td>' + fmtDate(p.data_inizio) + '</td><td>' + fmt(parseFloat(p.prezzo), 4) + '</td><td>' + esc(p.note || '') + '</td></tr>';
+                });
+                html += '</table></div>';
+            }
+
+            // ---- CONGUAGLI ----
+            html += '<h2>Conguagli ENI</h2>';
+            if (diag.conguagli.length > 0) {
+                html += '<div class="table-wrap"><table>';
+                html += '<tr><th>Data</th><th>Tipo</th><th>Importo MP</th><th>Note</th></tr>';
+                diag.conguagli.forEach(function(c) {
+                    var imp = parseFloat(c.importo_mp) || 0;
+                    html += '<tr><td>' + fmtDate(c.data) + '</td><td class="' + (imp < 0 ? 'text-green' : 'text-red') + '">' + (imp < 0 ? 'Credito' : 'Debito') + '</td><td>' + fmtEur(Math.abs(imp)) + '</td><td>' + esc(c.note || '') + '</td></tr>';
+                });
+                html += '</table></div>';
+            } else {
+                html += '<div class="alert alert-warning">Nessun conguaglio inserito. Se ENI ha emesso note di credito/debito, il costo medio non e stato rettificato!</div>';
+            }
+
+            html += '</div>'; // tab-content
+        });
+
+        mainEl.innerHTML = html;
+
+        // Tab switching
+        document.querySelectorAll('#prod-tabs .tab-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('#prod-tabs .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+                document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+                btn.classList.add('active');
+                document.getElementById('tab-' + btn.dataset.prod).classList.add('active');
+            });
+        });
+
+    })();
+    </script>
+</body>
+</html>
