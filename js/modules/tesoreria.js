@@ -1027,21 +1027,22 @@ ENI.Modules.Tesoreria = (function() {
                 var id = btn.dataset.delRic;
                 var p = _pagamentiRicorrenti.find(function(r) { return r.id === id; });
                 if (!p) return;
-                ENI.UI.showModal(
-                    'Elimina Pagamento',
-                    '<p>Eliminare il pagamento ricorrente <strong>' + ENI.UI.escapeHtml(p.descrizione) + '</strong>?</p>',
-                    async function() {
-                        try {
-                            await ENI.API.eliminaPagamentoRicorrente(id, p.descrizione);
-                            ENI.UI.closeModal();
-                            ENI.UI.success('Pagamento eliminato');
-                            _loadTab();
-                        } catch(e) {
-                            ENI.UI.error('Errore: ' + e.message);
-                        }
-                    },
-                    'Elimina'
-                );
+                var modal = ENI.UI.showModal({
+                    title: 'Elimina Pagamento',
+                    body: '<p>Eliminare il pagamento ricorrente <strong>' + ENI.UI.escapeHtml(p.descrizione) + '</strong>?</p>',
+                    footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                            '<button class="btn btn-danger" id="btn-conferma-del-ric">Elimina</button>'
+                });
+                modal.querySelector('#btn-conferma-del-ric').addEventListener('click', async function() {
+                    try {
+                        await ENI.API.eliminaPagamentoRicorrente(id, p.descrizione);
+                        ENI.UI.closeModal(modal);
+                        ENI.UI.success('Pagamento eliminato');
+                        _loadTab();
+                    } catch(e) {
+                        ENI.UI.error('Errore: ' + e.message);
+                    }
+                });
             });
         });
     }
@@ -1091,43 +1092,45 @@ ENI.Modules.Tesoreria = (function() {
                     '<textarea class="form-input" id="ric-note" rows="2">' + (existing ? ENI.UI.escapeHtml(existing.note || '') : '') + '</textarea></div>' +
             '</div>';
 
-        ENI.UI.showModal(
-            isEdit ? 'Modifica Pagamento Ricorrente' : 'Nuovo Pagamento Ricorrente',
-            html,
-            async function() {
-                var dati = {
-                    descrizione: document.getElementById('ric-desc').value.trim(),
-                    importo: parseFloat(document.getElementById('ric-importo').value),
-                    tipo: document.getElementById('ric-tipo').value,
-                    frequenza: document.getElementById('ric-freq').value,
-                    giorno_scadenza: parseInt(document.getElementById('ric-giorno').value),
-                    categoria: document.getElementById('ric-cat').value || null,
-                    data_inizio: document.getElementById('ric-inizio').value,
-                    data_fine: document.getElementById('ric-fine').value || null,
-                    note: document.getElementById('ric-note').value.trim() || null
-                };
+        var btnLabel = isEdit ? 'Salva' : 'Crea';
+        var modal = ENI.UI.showModal({
+            title: isEdit ? 'Modifica Pagamento Ricorrente' : 'Nuovo Pagamento Ricorrente',
+            body: html,
+            footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                    '<button class="btn btn-primary" id="btn-salva-ric">' + btnLabel + '</button>'
+        });
+        modal.querySelector('#btn-salva-ric').addEventListener('click', async function() {
+            var dati = {
+                descrizione: document.getElementById('ric-desc').value.trim(),
+                importo: parseFloat(document.getElementById('ric-importo').value),
+                tipo: document.getElementById('ric-tipo').value,
+                frequenza: document.getElementById('ric-freq').value,
+                giorno_scadenza: parseInt(document.getElementById('ric-giorno').value),
+                categoria: document.getElementById('ric-cat').value || null,
+                data_inizio: document.getElementById('ric-inizio').value,
+                data_fine: document.getElementById('ric-fine').value || null,
+                note: document.getElementById('ric-note').value.trim() || null
+            };
 
-                if (!dati.descrizione || isNaN(dati.importo) || dati.importo <= 0) {
-                    ENI.UI.warning('Compilare descrizione e importo');
-                    return;
-                }
+            if (!dati.descrizione || isNaN(dati.importo) || dati.importo <= 0) {
+                ENI.UI.warning('Compilare descrizione e importo');
+                return;
+            }
 
-                try {
-                    if (isEdit) {
-                        await ENI.API.aggiornaPagamentoRicorrente(existing.id, dati);
-                        ENI.UI.success('Pagamento aggiornato');
-                    } else {
-                        await ENI.API.salvaPagamentoRicorrente(dati);
-                        ENI.UI.success('Pagamento creato');
-                    }
-                    ENI.UI.closeModal();
-                    _loadTab();
-                } catch(e) {
-                    ENI.UI.error('Errore: ' + e.message);
+            try {
+                if (isEdit) {
+                    await ENI.API.aggiornaPagamentoRicorrente(existing.id, dati);
+                    ENI.UI.success('Pagamento aggiornato');
+                } else {
+                    await ENI.API.salvaPagamentoRicorrente(dati);
+                    ENI.UI.success('Pagamento creato');
                 }
-            },
-            isEdit ? 'Salva' : 'Crea'
-        );
+                ENI.UI.closeModal(modal);
+                _loadTab();
+            } catch(e) {
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
     }
 
     // ============================================================
@@ -1249,22 +1252,23 @@ ENI.Modules.Tesoreria = (function() {
                 var id = btn.dataset.delProg;
                 var p = _pagamentiProgrammati.find(function(r) { return r.id === id; });
                 if (!p) return;
-                ENI.UI.showModal(
-                    'Elimina Pagamento',
-                    '<p>Eliminare il pagamento <strong>' + ENI.UI.escapeHtml(p.descrizione) + '</strong>?</p>',
-                    async function() {
-                        try {
-                            await ENI.API.remove('pagamenti_programmati', id);
-                            await ENI.API.scriviLog('Eliminato_Pagamento_Programmato', 'Tesoreria', p.descrizione);
-                            ENI.UI.closeModal();
-                            ENI.UI.success('Pagamento eliminato');
-                            _loadTab();
-                        } catch(e) {
-                            ENI.UI.error('Errore: ' + e.message);
-                        }
-                    },
-                    'Elimina'
-                );
+                var modal = ENI.UI.showModal({
+                    title: 'Elimina Pagamento',
+                    body: '<p>Eliminare il pagamento <strong>' + ENI.UI.escapeHtml(p.descrizione) + '</strong>?</p>',
+                    footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                            '<button class="btn btn-danger" id="btn-conferma-del-prog">Elimina</button>'
+                });
+                modal.querySelector('#btn-conferma-del-prog').addEventListener('click', async function() {
+                    try {
+                        await ENI.API.remove('pagamenti_programmati', id);
+                        await ENI.API.scriviLog('Eliminato_Pagamento_Programmato', 'Tesoreria', p.descrizione);
+                        ENI.UI.closeModal(modal);
+                        ENI.UI.success('Pagamento eliminato');
+                        _loadTab();
+                    } catch(e) {
+                        ENI.UI.error('Errore: ' + e.message);
+                    }
+                });
             });
         });
     }
@@ -1299,40 +1303,42 @@ ENI.Modules.Tesoreria = (function() {
                     '<textarea class="form-input" id="prog-note" rows="2">' + (existing ? ENI.UI.escapeHtml(existing.note || '') : '') + '</textarea></div>' +
             '</div>';
 
-        ENI.UI.showModal(
-            isEdit ? 'Modifica Pagamento' : 'Nuovo Pagamento Programmato',
-            html,
-            async function() {
-                var dati = {
-                    descrizione: document.getElementById('prog-desc').value.trim(),
-                    importo: parseFloat(document.getElementById('prog-importo').value),
-                    tipo: document.getElementById('prog-tipo').value,
-                    data_scadenza: document.getElementById('prog-scadenza').value,
-                    categoria: document.getElementById('prog-cat').value || null,
-                    note: document.getElementById('prog-note').value.trim() || null
-                };
+        var btnLabel = isEdit ? 'Salva' : 'Crea';
+        var modal = ENI.UI.showModal({
+            title: isEdit ? 'Modifica Pagamento' : 'Nuovo Pagamento Programmato',
+            body: html,
+            footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                    '<button class="btn btn-primary" id="btn-salva-prog">' + btnLabel + '</button>'
+        });
+        modal.querySelector('#btn-salva-prog').addEventListener('click', async function() {
+            var dati = {
+                descrizione: document.getElementById('prog-desc').value.trim(),
+                importo: parseFloat(document.getElementById('prog-importo').value),
+                tipo: document.getElementById('prog-tipo').value,
+                data_scadenza: document.getElementById('prog-scadenza').value,
+                categoria: document.getElementById('prog-cat').value || null,
+                note: document.getElementById('prog-note').value.trim() || null
+            };
 
-                if (!dati.descrizione || isNaN(dati.importo) || dati.importo <= 0 || !dati.data_scadenza) {
-                    ENI.UI.warning('Compilare tutti i campi obbligatori');
-                    return;
-                }
+            if (!dati.descrizione || isNaN(dati.importo) || dati.importo <= 0 || !dati.data_scadenza) {
+                ENI.UI.warning('Compilare tutti i campi obbligatori');
+                return;
+            }
 
-                try {
-                    if (isEdit) {
-                        await ENI.API.aggiornaPagamentoProgrammato(existing.id, dati);
-                        ENI.UI.success('Pagamento aggiornato');
-                    } else {
-                        await ENI.API.salvaPagamentoProgrammato(dati);
-                        ENI.UI.success('Pagamento creato');
-                    }
-                    ENI.UI.closeModal();
-                    _loadTab();
-                } catch(e) {
-                    ENI.UI.error('Errore: ' + e.message);
+            try {
+                if (isEdit) {
+                    await ENI.API.aggiornaPagamentoProgrammato(existing.id, dati);
+                    ENI.UI.success('Pagamento aggiornato');
+                } else {
+                    await ENI.API.salvaPagamentoProgrammato(dati);
+                    ENI.UI.success('Pagamento creato');
                 }
-            },
-            isEdit ? 'Salva' : 'Crea'
-        );
+                ENI.UI.closeModal(modal);
+                _loadTab();
+            } catch(e) {
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
     }
 
     // ============================================================
@@ -1405,21 +1411,22 @@ ENI.Modules.Tesoreria = (function() {
                 var id = btn.dataset.delCat;
                 var c = _categorie.find(function(cat) { return cat.id === id; });
                 if (!c) return;
-                ENI.UI.showModal(
-                    'Elimina Categoria',
-                    '<p>Eliminare la categoria <strong>' + ENI.UI.escapeHtml(c.nome) + '</strong>?</p>',
-                    async function() {
-                        try {
-                            await ENI.API.eliminaCategoriaTesoreria(id, c.nome);
-                            ENI.UI.closeModal();
-                            ENI.UI.success('Categoria eliminata');
-                            _loadTab();
-                        } catch(e) {
-                            ENI.UI.error('Errore: ' + e.message);
-                        }
-                    },
-                    'Elimina'
-                );
+                var modal = ENI.UI.showModal({
+                    title: 'Elimina Categoria',
+                    body: '<p>Eliminare la categoria <strong>' + ENI.UI.escapeHtml(c.nome) + '</strong>?</p>',
+                    footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                            '<button class="btn btn-danger" id="btn-conferma-del-cat">Elimina</button>'
+                });
+                modal.querySelector('#btn-conferma-del-cat').addEventListener('click', async function() {
+                    try {
+                        await ENI.API.eliminaCategoriaTesoreria(id, c.nome);
+                        ENI.UI.closeModal(modal);
+                        ENI.UI.success('Categoria eliminata');
+                        _loadTab();
+                    } catch(e) {
+                        ENI.UI.error('Errore: ' + e.message);
+                    }
+                });
             });
         });
     }
@@ -1445,38 +1452,40 @@ ENI.Modules.Tesoreria = (function() {
                     '<input type="number" class="form-input" id="cat-ordine" min="0" value="' + (existing ? existing.ordine : _categorie.length + 1) + '"></div>' +
             '</div>';
 
-        ENI.UI.showModal(
-            isEdit ? 'Modifica Categoria' : 'Nuova Categoria',
-            html,
-            async function() {
-                var dati = {
-                    nome: document.getElementById('cat-nome').value.trim(),
-                    tipo: document.getElementById('cat-tipo').value,
-                    icona: document.getElementById('cat-icona').value.trim() || null,
-                    ordine: parseInt(document.getElementById('cat-ordine').value) || 0
-                };
+        var btnLabel = isEdit ? 'Salva' : 'Crea';
+        var modal = ENI.UI.showModal({
+            title: isEdit ? 'Modifica Categoria' : 'Nuova Categoria',
+            body: html,
+            footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                    '<button class="btn btn-primary" id="btn-salva-cat">' + btnLabel + '</button>'
+        });
+        modal.querySelector('#btn-salva-cat').addEventListener('click', async function() {
+            var dati = {
+                nome: document.getElementById('cat-nome').value.trim(),
+                tipo: document.getElementById('cat-tipo').value,
+                icona: document.getElementById('cat-icona').value.trim() || null,
+                ordine: parseInt(document.getElementById('cat-ordine').value) || 0
+            };
 
-                if (!dati.nome) {
-                    ENI.UI.warning('Inserire il nome della categoria');
-                    return;
-                }
+            if (!dati.nome) {
+                ENI.UI.warning('Inserire il nome della categoria');
+                return;
+            }
 
-                try {
-                    if (isEdit) {
-                        await ENI.API.aggiornaCategoriaTesoreria(existing.id, dati);
-                        ENI.UI.success('Categoria aggiornata');
-                    } else {
-                        await ENI.API.salvaCategoriaTesoreria(dati);
-                        ENI.UI.success('Categoria creata');
-                    }
-                    ENI.UI.closeModal();
-                    _loadTab();
-                } catch(e) {
-                    ENI.UI.error('Errore: ' + e.message);
+            try {
+                if (isEdit) {
+                    await ENI.API.aggiornaCategoriaTesoreria(existing.id, dati);
+                    ENI.UI.success('Categoria aggiornata');
+                } else {
+                    await ENI.API.salvaCategoriaTesoreria(dati);
+                    ENI.UI.success('Categoria creata');
                 }
-            },
-            isEdit ? 'Salva' : 'Crea'
-        );
+                ENI.UI.closeModal(modal);
+                _loadTab();
+            } catch(e) {
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
     }
 
     // ============================================================
