@@ -35,6 +35,11 @@ ENI.Modules.Tesoreria = (function() {
     // Saldi iniziali per banca (salvati in localStorage)
     var _saldiIniziali = _loadSaldiIniziali();
 
+    // Storico & Previsioni state
+    var _storicoDettaglioMese = null; // 'YYYY-MM' or null = summary
+    var _storicoChart = null;
+    var DATA_APERTURA = '2026-02-01';
+
     // ============================================================
     // RENDER PRINCIPALE
     // ============================================================
@@ -66,7 +71,8 @@ ENI.Modules.Tesoreria = (function() {
             { id: 'movimenti', label: 'Movimenti Banca', icon: '\u{1F3E6}' },
             { id: 'ricorrenti', label: 'Ricorrenti', icon: '\u{1F504}' },
             { id: 'programmati', label: 'Programmati', icon: '\u{1F4C5}' },
-            { id: 'categorie', label: 'Categorie', icon: '\u{1F3F7}\uFE0F' }
+            { id: 'categorie', label: 'Categorie', icon: '\u{1F3F7}\uFE0F' },
+            { id: 'storico', label: 'Storico & Previsioni', icon: '\u{1F4C8}' }
         ];
 
         var html = '<div class="tesoreria-tabs">';
@@ -105,6 +111,7 @@ ENI.Modules.Tesoreria = (function() {
                 case 'ricorrenti': await _renderRicorrenti(content); break;
                 case 'programmati': await _renderProgrammati(content); break;
                 case 'categorie': await _renderCategorie(content); break;
+                case 'storico': await _renderStorico(content); break;
             }
         } catch(e) {
             content.innerHTML = '<div class="empty-state"><p class="text-danger">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p></div>';
@@ -2308,6 +2315,451 @@ ENI.Modules.Tesoreria = (function() {
         } catch(e) {
             return 0;
         }
+    }
+
+    // ============================================================
+    // TAB: STORICO & PREVISIONI
+    // ============================================================
+
+    var STORICO_TOOLTIPS = {
+        bankIn: 'Somma degli accrediti bancari (Carisp + BSI) nel mese, dai movimenti importati.',
+        bankOut: 'Somma degli addebiti bancari (Carisp + BSI) nel mese, dai movimenti importati.',
+        cashIn: 'Totale incassato giornaliero dalla chiusura cassa (contanti + POS + buoni + crediti).',
+        cashOut: 'Totale spese contanti registrate nel modulo Spese Cassa.',
+        fuel: 'Costo totale dei carichi carburante ricevuti nel mese (materia prima + accise).',
+        bankIn_prev: 'Media giornaliera accrediti bancari (ultimi 60gg di dati) moltiplicata per i giorni del mese.',
+        bankOut_prev: 'Somma di: pagamenti ricorrenti attivi + pagamenti programmati + auto-scadenze carichi (RID +5gg, Accise +24gg, Monofase +120gg).',
+        cashIn_prev: 'Media giornaliera incassi cassa (ultimi 60gg) moltiplicata per i giorni del mese.',
+        cashOut_prev: 'Media giornaliera spese contanti (ultimi 60gg) moltiplicata per i giorni del mese.',
+        fuel_prev: 'Media mensile del costo carichi carburante calcolata sugli ultimi 3 mesi di attivita\'.',
+        saldo: 'Saldo cumulativo: saldi iniziali banca + somma dei netti mensili. Dipende dalla completezza dei movimenti importati.'
+    };
+
+    function _infoIcon(tooltipKey) {
+        var text = STORICO_TOOLTIPS[tooltipKey] || tooltipKey;
+        return '<span class="storico-info" data-tooltip="' + text.replace(/"/g, '&quot;') + '">i</span>';
+    }
+
+    async function _renderStorico(content) {
+        // Distruggi chart precedente
+        if (_storicoChart) { _storicoChart.destroy(); _storicoChart = null; }
+
+        content.innerHTML = '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div> Caricamento dati storico...</div>';
+
+        try {
+            var oggi = new Date();
+            var oggiStr = ENI.UI.oggiISO();
+
+            // Carica tutti i dati in parallelo
+            var results = await Promise.all([
+                ENI.API.getMovimentiBanca({ da: DATA_APERTURA, asc: true, limit: 5000 }),
+                ENI.API.getCassaPeriodo(DATA_APERTURA, oggiStr),
+                ENI.API.getCarichiCarburante(DATA_APERTURA, null),
+                ENI.API.getSpeseCassaPeriodo(DATA_APERTURA, oggiStr),
+                ENI.API.getPagamentiRicorrenti(true),
+                ENI.API.getPagamentiProgrammati()
+            ]);
+
+            var movBanca = results[0];
+            var cassaRows = results[1];
+            var carichi = results[2] || [];
+            var speseCassa = results[3] || [];
+            var ricorrenti = results[4];
+            var programmati = results[5];
+
+            // Aggrega per mese
+            var mesiData = _aggregateStoricoMensile(movBanca, cassaRows, carichi, speseCassa, ricorrenti, programmati, oggi);
+
+            if (_storicoDettaglioMese) {
+                _renderStoricoDettaglio(content, mesiData, _storicoDettaglioMese);
+            } else {
+                _renderStoricoSummary(content, mesiData);
+            }
+
+        } catch(e) {
+            content.innerHTML = '<div class="empty-state"><p class="text-danger">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p></div>';
+            console.error('Storico error:', e);
+        }
+    }
+
+    function _aggregateStoricoMensile(movBanca, cassaRows, carichi, speseCassa, ricorrenti, programmati, oggi) {
+        var oggiStr = _dateToISO(oggi);
+        var meseCorrente = oggi.getFullYear() + '-' + String(oggi.getMonth() + 1).padStart(2, '0');
+
+        // Range mesi: da DATA_APERTURA a oggi + 3 mesi
+        var mesi = [];
+        var start = new Date(2026, 1, 1); // Feb 2026
+        var end = new Date(oggi.getFullYear(), oggi.getMonth() + 4, 0);
+        var cur = new Date(start);
+        while (cur <= end) {
+            var key = cur.getFullYear() + '-' + String(cur.getMonth() + 1).padStart(2, '0');
+            var giorniNelMese = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate();
+            var tipo = key < meseCorrente ? 'reale' : (key === meseCorrente ? 'corrente' : 'previsione');
+            mesi.push({ key: key, anno: cur.getFullYear(), mese: cur.getMonth() + 1, giorni: giorniNelMese, tipo: tipo,
+                bankIn: 0, bankOut: 0, cashIn: 0, cashOut: 0, fuel: 0, saldo: 0 });
+            cur.setMonth(cur.getMonth() + 1);
+        }
+
+        var meseMap = {};
+        mesi.forEach(function(m) { meseMap[m.key] = m; });
+
+        // Aggrega movimenti banca
+        movBanca.forEach(function(mov) {
+            var key = mov.data_operazione.substring(0, 7);
+            if (meseMap[key]) {
+                var imp = Number(mov.importo);
+                if (imp > 0) meseMap[key].bankIn += imp;
+                else meseMap[key].bankOut += Math.abs(imp);
+            }
+        });
+
+        // Aggrega cassa
+        cassaRows.forEach(function(c) {
+            var key = c.data.substring(0, 7);
+            if (meseMap[key]) {
+                meseMap[key].cashIn += Number(c.totale_incassato || 0);
+            }
+        });
+
+        // Aggrega spese cassa
+        speseCassa.forEach(function(s) {
+            var key = s.data.substring(0, 7);
+            if (meseMap[key]) {
+                meseMap[key].cashOut += Number(s.importo || 0);
+            }
+        });
+
+        // Aggrega carichi carburante
+        carichi.forEach(function(c) {
+            var key = c.data.substring(0, 7);
+            if (meseMap[key]) {
+                meseMap[key].fuel += Number(c.costo_carico_totale || 0);
+            }
+        });
+
+        // Auto-scadenze da carichi
+        var autoScadenze = _getAutoScadenzeCarichi(carichi);
+
+        // --- PREVISIONI per mesi futuri e parte futura del mese corrente ---
+
+        // Medie giornaliere dagli ultimi 60 giorni di dati reali
+        var da60 = new Date(oggi);
+        da60.setDate(da60.getDate() - 60);
+        var da60Str = _dateToISO(da60);
+
+        var bankInRecent = 0, bankDaysRecent = 0;
+        var cashInRecent = 0, cashDaysRecent = 0;
+        var cashOutRecent = 0;
+
+        movBanca.forEach(function(m) {
+            if (m.data_operazione >= da60Str && m.data_operazione <= oggiStr) {
+                if (Number(m.importo) > 0) bankInRecent += Number(m.importo);
+                bankDaysRecent = 60;
+            }
+        });
+
+        cassaRows.forEach(function(c) {
+            if (c.data >= da60Str && c.data <= oggiStr) {
+                cashInRecent += Number(c.totale_incassato || 0);
+                cashDaysRecent = 60;
+            }
+        });
+
+        speseCassa.forEach(function(s) {
+            if (s.data >= da60Str && s.data <= oggiStr) {
+                cashOutRecent += Number(s.importo || 0);
+            }
+        });
+
+        var mediaBankInGiorno = bankDaysRecent > 0 ? bankInRecent / bankDaysRecent : 0;
+        var mediaCashInGiorno = cashDaysRecent > 0 ? cashInRecent / cashDaysRecent : 0;
+        var mediaCashOutGiorno = cashDaysRecent > 0 ? cashOutRecent / cashDaysRecent : 0;
+
+        // Media carichi mensile (ultimi 3 mesi reali)
+        var mesiReali = mesi.filter(function(m) { return m.tipo === 'reale'; });
+        var mediaFuelMese = 0;
+        if (mesiReali.length > 0) {
+            var totFuel = mesiReali.reduce(function(s, m) { return s + m.fuel; }, 0);
+            mediaFuelMese = totFuel / mesiReali.length;
+        }
+
+        // Applica previsioni ai mesi futuri
+        mesi.forEach(function(m) {
+            if (m.tipo === 'previsione') {
+                m.bankIn = mediaBankInGiorno * m.giorni;
+                m.cashIn = mediaCashInGiorno * m.giorni;
+                m.cashOut = mediaCashOutGiorno * m.giorni;
+                m.fuel = mediaFuelMese;
+
+                // Uscite banca: ricorrenti + programmati + auto-scadenze
+                var bankOutPrev = 0;
+                ricorrenti.forEach(function(r) {
+                    if (r.tipo === 'uscita' && _ricorrenteCadeInMese(r, m.mese, m.anno)) {
+                        bankOutPrev += Number(r.importo);
+                    }
+                });
+                programmati.forEach(function(p) {
+                    if (p.stato === 'programmato' && p.tipo === 'uscita') {
+                        var scadKey = p.data_scadenza.substring(0, 7);
+                        if (scadKey === m.key) bankOutPrev += Number(p.importo);
+                    }
+                });
+                // Entrate da ricorrenti e programmati
+                ricorrenti.forEach(function(r) {
+                    if (r.tipo === 'entrata' && _ricorrenteCadeInMese(r, m.mese, m.anno)) {
+                        m.bankIn += Number(r.importo);
+                    }
+                });
+                programmati.forEach(function(p) {
+                    if (p.stato === 'programmato' && p.tipo === 'entrata') {
+                        var scadKey = p.data_scadenza.substring(0, 7);
+                        if (scadKey === m.key) m.bankIn += Number(p.importo);
+                    }
+                });
+                // Auto-scadenze
+                autoScadenze.forEach(function(s) {
+                    var scadKey = s.data_scadenza.substring(0, 7);
+                    if (scadKey === m.key) bankOutPrev += s.importo;
+                });
+                m.bankOut = bankOutPrev;
+
+            } else if (m.tipo === 'corrente') {
+                // Per il mese corrente: dati reali sono gia' aggregati sopra
+                // Non aggiungiamo previsioni, mostriamo solo il dato parziale reale
+            }
+        });
+
+        // Calcola saldo cumulativo
+        var saldoIniziale = 0;
+        var siCarisp = _getSaldoIniziale('carisp');
+        var siBsi = _getSaldoIniziale('bsi');
+        if (siCarisp) saldoIniziale += siCarisp.importo;
+        if (siBsi) saldoIniziale += siBsi.importo;
+
+        var saldoRunning = saldoIniziale;
+        mesi.forEach(function(m) {
+            var nettoBanca = m.bankIn - m.bankOut;
+            saldoRunning += nettoBanca;
+            m.saldo = Math.round(saldoRunning * 100) / 100;
+            m.nettoBanca = Math.round(nettoBanca * 100) / 100;
+        });
+
+        return mesi;
+    }
+
+    function _renderStoricoSummary(content, mesiData) {
+        var html = '<div class="cassa-section">' +
+            '<div class="cassa-section-title">\u{1F4C8} Riepilogo Mensile</div>' +
+            '<p class="text-sm text-muted" style="margin-bottom:var(--space-2);">Clicca su un mese per vedere il dettaglio. I mesi in <span class="storico-badge-previsione">blu</span> sono previsioni.</p>' +
+            '<div class="table-responsive"><table class="table">' +
+            '<thead><tr>' +
+                '<th>Mese</th><th>Tipo</th>' +
+                '<th style="text-align:right;">Banca IN</th>' +
+                '<th style="text-align:right;">Banca OUT</th>' +
+                '<th style="text-align:right;">Cassa IN</th>' +
+                '<th style="text-align:right;">Cassa OUT</th>' +
+                '<th style="text-align:right;">Carichi</th>' +
+                '<th style="text-align:right;">Netto Banca</th>' +
+                '<th style="text-align:right;">Saldo ' + _infoIcon('saldo') + '</th>' +
+            '</tr></thead><tbody>';
+
+        mesiData.forEach(function(m) {
+            var rowClass = 'storico-row-' + m.tipo;
+            var badge = m.tipo === 'reale' ? '<span class="storico-badge-reale">Reale</span>'
+                : (m.tipo === 'corrente' ? '<span class="storico-badge-corrente">In corso</span>'
+                : '<span class="storico-badge-previsione">Previsione</span>');
+            var isPrev = m.tipo === 'previsione';
+            var saldoClass = m.saldo >= 0 ? 'text-success' : 'text-danger';
+            var nettoClass = m.nettoBanca >= 0 ? 'text-success' : 'text-danger';
+
+            html += '<tr class="' + rowClass + '" data-storico-mese="' + m.key + '" style="cursor:pointer;">' +
+                '<td><strong>' + _getNomeMese(m.mese - 1) + ' ' + m.anno + '</strong></td>' +
+                '<td>' + badge + '</td>' +
+                '<td style="text-align:right;">' + ENI.UI.formatValuta(m.bankIn) + (isPrev ? _infoIcon('bankIn_prev') : '') + '</td>' +
+                '<td style="text-align:right;">' + ENI.UI.formatValuta(m.bankOut) + (isPrev ? _infoIcon('bankOut_prev') : '') + '</td>' +
+                '<td style="text-align:right;">' + ENI.UI.formatValuta(m.cashIn) + (isPrev ? _infoIcon('cashIn_prev') : '') + '</td>' +
+                '<td style="text-align:right;">' + ENI.UI.formatValuta(m.cashOut) + (isPrev ? _infoIcon('cashOut_prev') : '') + '</td>' +
+                '<td style="text-align:right;">' + ENI.UI.formatValuta(m.fuel) + (isPrev ? _infoIcon('fuel_prev') : '') + '</td>' +
+                '<td style="text-align:right;font-weight:600;" class="' + nettoClass + '">' + ENI.UI.formatValuta(m.nettoBanca) + '</td>' +
+                '<td style="text-align:right;font-weight:700;" class="' + saldoClass + '">' + ENI.UI.formatValuta(m.saldo) + '</td>' +
+            '</tr>';
+        });
+
+        html += '</tbody></table></div></div>';
+
+        // Grafico
+        html += '<div class="cassa-section">' +
+            '<div class="cassa-section-title">\u{1F4C9} Trend Saldo Banca</div>' +
+            '<div class="storico-chart-container"><canvas id="storico-chart"></canvas></div>' +
+        '</div>';
+
+        content.innerHTML = html;
+
+        // Listeners
+        document.querySelectorAll('[data-storico-mese]').forEach(function(row) {
+            row.addEventListener('click', function() {
+                _storicoDettaglioMese = row.dataset.storicoMese;
+                _loadTab();
+            });
+        });
+
+        // Render chart
+        _renderStoricoChart(mesiData);
+    }
+
+    function _renderStoricoDettaglio(content, mesiData, meseKey) {
+        var m = mesiData.find(function(d) { return d.key === meseKey; });
+        if (!m) { _storicoDettaglioMese = null; _renderStoricoSummary(content, mesiData); return; }
+
+        var badge = m.tipo === 'reale' ? '<span class="storico-badge-reale">Dati Reali</span>'
+            : (m.tipo === 'corrente' ? '<span class="storico-badge-corrente">Mese in Corso</span>'
+            : '<span class="storico-badge-previsione">Previsione</span>');
+        var isPrev = m.tipo === 'previsione';
+
+        var html = '<button class="storico-back-btn" id="btn-storico-back">\u2190 Torna al riepilogo</button>' +
+            '<div class="storico-dettaglio-header">' +
+                '<h3>' + _getNomeMese(m.mese - 1) + ' ' + m.anno + '</h3>' + badge +
+            '</div>';
+
+        // Tabella dettaglio per categoria
+        html += '<div class="cassa-section"><div class="cassa-section-title">Dettaglio per Categoria</div>' +
+            '<div class="table-responsive"><table class="table">' +
+            '<thead><tr><th>Categoria</th><th style="text-align:right;">Entrate</th><th style="text-align:right;">Uscite</th><th>Note</th></tr></thead><tbody>';
+
+        // Banca IN
+        html += '<tr class="storico-separator"><td colspan="4">MOVIMENTI BANCARI</td></tr>';
+        html += '<tr><td>\u{1F3E6} Accrediti Banca' + (isPrev ? _infoIcon('bankIn_prev') : _infoIcon('bankIn')) + '</td>' +
+            '<td style="text-align:right;" class="text-success">' + ENI.UI.formatValuta(m.bankIn) + '</td>' +
+            '<td></td><td class="text-sm text-muted">' + (isPrev ? 'Media giornaliera x ' + m.giorni + ' giorni' : 'Da movimenti importati') + '</td></tr>';
+        html += '<tr><td>\u{1F3E6} Addebiti Banca' + (isPrev ? _infoIcon('bankOut_prev') : _infoIcon('bankOut')) + '</td>' +
+            '<td></td>' +
+            '<td style="text-align:right;" class="text-danger">' + ENI.UI.formatValuta(m.bankOut) + '</td>' +
+            '<td class="text-sm text-muted">' + (isPrev ? 'Ricorrenti + Programmati + Auto-scadenze' : 'Da movimenti importati') + '</td></tr>';
+
+        // Cassa
+        html += '<tr class="storico-separator"><td colspan="4">OPERAZIONI CASSA</td></tr>';
+        html += '<tr><td>\u{1F4B0} Incassi Cassa' + (isPrev ? _infoIcon('cashIn_prev') : _infoIcon('cashIn')) + '</td>' +
+            '<td style="text-align:right;" class="text-success">' + ENI.UI.formatValuta(m.cashIn) + '</td>' +
+            '<td></td><td class="text-sm text-muted">' + (isPrev ? 'Media giornaliera x ' + m.giorni + ' giorni' : 'Da chiusure cassa giornaliere') + '</td></tr>';
+        html += '<tr><td>\u{1F4B8} Spese Cassa' + (isPrev ? _infoIcon('cashOut_prev') : _infoIcon('cashOut')) + '</td>' +
+            '<td></td>' +
+            '<td style="text-align:right;" class="text-danger">' + ENI.UI.formatValuta(m.cashOut) + '</td>' +
+            '<td class="text-sm text-muted">' + (isPrev ? 'Media giornaliera x ' + m.giorni + ' giorni' : 'Da registro spese contanti') + '</td></tr>';
+
+        // Carburante
+        html += '<tr class="storico-separator"><td colspan="4">CARBURANTE</td></tr>';
+        html += '<tr><td>\u26FD Carichi Carburante' + (isPrev ? _infoIcon('fuel_prev') : _infoIcon('fuel')) + '</td>' +
+            '<td></td>' +
+            '<td style="text-align:right;" class="text-danger">' + ENI.UI.formatValuta(m.fuel) + '</td>' +
+            '<td class="text-sm text-muted">' + (isPrev ? 'Media mensile ultimi mesi' : 'Costo totale carichi ricevuti') + '</td></tr>';
+
+        // Totali
+        var totEntrate = m.bankIn + m.cashIn;
+        var totUscite = m.bankOut + m.cashOut + m.fuel;
+        var totNetto = totEntrate - totUscite;
+
+        html += '<tr style="font-weight:700; border-top:2px solid var(--border-color,#e2e8f0);">' +
+            '<td>TOTALE</td>' +
+            '<td style="text-align:right;" class="text-success">' + ENI.UI.formatValuta(totEntrate) + '</td>' +
+            '<td style="text-align:right;" class="text-danger">' + ENI.UI.formatValuta(totUscite) + '</td>' +
+            '<td style="text-align:right;font-weight:700;" class="' + (totNetto >= 0 ? 'text-success' : 'text-danger') + '">Netto: ' + ENI.UI.formatValuta(totNetto) + '</td></tr>';
+
+        html += '</tbody></table></div>';
+
+        // Saldo
+        html += '<div class="tesoreria-totali-row" style="margin-top:var(--space-3);">' +
+            '<div class="tesoreria-totale ' + (m.saldo >= 0 ? 'tesoreria-totale-positivo' : 'tesoreria-totale-negativo') + '">' +
+                '<span>Saldo Banca Cumulativo' + _infoIcon('saldo') + '</span><strong>' + ENI.UI.formatValuta(m.saldo) + '</strong>' +
+            '</div>' +
+        '</div>';
+
+        html += '</div>';
+
+        content.innerHTML = html;
+
+        document.getElementById('btn-storico-back').addEventListener('click', function() {
+            _storicoDettaglioMese = null;
+            _loadTab();
+        });
+    }
+
+    function _renderStoricoChart(mesiData) {
+        var canvas = document.getElementById('storico-chart');
+        if (!canvas || typeof Chart === 'undefined') return;
+
+        var labels = mesiData.map(function(m) { return _getNomeMeseBreve(m.mese - 1) + ' ' + m.anno; });
+        var saldi = mesiData.map(function(m) { return Math.round(m.saldo); });
+        var entrate = mesiData.map(function(m) { return Math.round(m.bankIn); });
+        var uscite = mesiData.map(function(m) { return Math.round(m.bankOut); });
+
+        // Indice primo mese previsione
+        var prevIdx = mesiData.findIndex(function(m) { return m.tipo === 'previsione'; });
+        if (prevIdx === -1) prevIdx = mesiData.length;
+
+        _storicoChart = new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Saldo Banca',
+                        data: saldi,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59,130,246,0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        segment: {
+                            borderDash: function(ctx) { return ctx.p0DataIndex >= prevIdx - 1 ? [6, 4] : undefined; }
+                        }
+                    },
+                    {
+                        label: 'Entrate Banca',
+                        data: entrate,
+                        borderColor: '#22c55e',
+                        backgroundColor: 'transparent',
+                        tension: 0.3,
+                        pointRadius: 3,
+                        borderWidth: 2,
+                        segment: {
+                            borderDash: function(ctx) { return ctx.p0DataIndex >= prevIdx - 1 ? [6, 4] : undefined; }
+                        }
+                    },
+                    {
+                        label: 'Uscite Banca',
+                        data: uscite,
+                        borderColor: '#ef4444',
+                        backgroundColor: 'transparent',
+                        tension: 0.3,
+                        pointRadius: 3,
+                        borderWidth: 2,
+                        segment: {
+                            borderDash: function(ctx) { return ctx.p0DataIndex >= prevIdx - 1 ? [6, 4] : undefined; }
+                        }
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) { return ctx.dataset.label + ': ' + Number(ctx.parsed.y).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }); }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: function(val) { return '\u20AC ' + Number(val).toLocaleString('it-IT'); }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     // API pubblica

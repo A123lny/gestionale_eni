@@ -2189,3 +2189,126 @@
     background: #f0f9ff;
     color: #0369a1;
 }
+
+/* ============================================================
+   STORICO & PREVISIONI
+   ============================================================ */
+
+.storico-row-reale { cursor: pointer; }
+.storico-row-reale:hover { background: var(--bg-hover, #f1f5f9) !important; }
+
+.storico-row-corrente {
+    background: #fffbeb !important;
+    border-left: 4px solid #f59e0b;
+}
+.storico-row-corrente:hover { background: #fef3c7 !important; }
+
+.storico-row-previsione {
+    background: #eff6ff !important;
+    border-left: 4px solid #3b82f6;
+    font-style: italic;
+}
+.storico-row-previsione:hover { background: #dbeafe !important; }
+
+.storico-badge-reale {
+    background: #dcfce7; color: #166534;
+    font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 600;
+}
+.storico-badge-previsione {
+    background: #dbeafe; color: #1e40af;
+    font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; font-style: normal;
+}
+.storico-badge-corrente {
+    background: #fef3c7; color: #92400e;
+    font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 600;
+}
+
+.storico-chart-container {
+    position: relative;
+    height: 320px;
+    width: 100%;
+    margin-top: var(--space-3, 12px);
+}
+
+.storico-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #93c5fd;
+    color: #1e3a5f;
+    font-size: 10px;
+    font-weight: 700;
+    font-style: normal;
+    cursor: help;
+    position: relative;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+.storico-info:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1.4;
+    z-index: 1000;
+    max-width: 320px;
+    min-width: 180px;
+    white-space: normal;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    pointer-events: none;
+}
+.storico-info:hover::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #1e293b;
+    z-index: 1001;
+}
+
+.storico-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: var(--radius-md, 8px);
+    background: var(--bg-surface, #f1f5f9);
+    border: 1px solid var(--border-color, #e2e8f0);
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: var(--space-3, 12px);
+    transition: background 0.15s;
+}
+.storico-back-btn:hover { background: var(--bg-hover, #e2e8f0); }
+
+.storico-dettaglio-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 12px);
+    margin-bottom: var(--space-3, 12px);
+}
+.storico-dettaglio-header h3 { margin: 0; font-size: 1.2rem; }
+
+.storico-separator td {
+    padding: 4px 8px !important;
+    background: #f8fafc;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    border-top: 2px solid #e2e8f0;
+}

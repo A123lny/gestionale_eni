@@ -1338,6 +1338,23 @@ ENI.API = (function() {
         return record;
     }
 
+    // --- Cassa per periodo (per storico tesoreria) ---
+
+    async function getCassaPeriodo(da, a) {
+        var query = getClient()
+            .from('cassa')
+            .select('data, totale_venduto, totale_incassato, totale_spese, totale_crediti, crediti_4tscard');
+
+        if (da) query = query.gte('data', da);
+        if (a) query = query.lte('data', a);
+
+        query = query.order('data', { ascending: true });
+
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
     // --- Carichi Carburante (per auto-scadenze tesoreria) ---
 
     async function getCarichiCarburante(da, a) {
@@ -1544,6 +1561,7 @@ ENI.API = (function() {
         getScadenzeTesoreria: getScadenzeTesoreria,
         getCarichiCarburante: getCarichiCarburante,
         getSpeseCassaPeriodo: getSpeseCassaPeriodo,
-        get4TSCardMese: get4TSCardMese
+        get4TSCardMese: get4TSCardMese,
+        getCassaPeriodo: getCassaPeriodo
     };
 })();
