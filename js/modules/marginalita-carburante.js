@@ -1647,8 +1647,13 @@ ENI.Modules.MarginalitaCarburante = (function() {
 
         var modal = _modal('mc-modal-cong', 'Nuovo Conguaglio ENI',
             '<div class="form-group"><label class="form-label">Modalit\u00E0</label><select class="form-select" id="mc-cong-prod">' + opts + '</select></div>' +
+            '<div class="form-group"><label class="form-label">Tipo Conguaglio</label>' +
+                '<select class="form-select" id="mc-cong-tipo">' +
+                    '<option value="credito">\u{1F7E2} Nota di CREDITO (ENI ti restituisce)</option>' +
+                    '<option value="debito">\u{1F534} Nota di DEBITO (devi pagare di pi\u00F9)</option>' +
+                '</select></div>' +
             _formField('Data', 'mc-cong-data', 'date', _todayStr()) +
-            _formField('Importo Totale MP (\u20AC) (negativo = nota credito, positivo = nota debito)', 'mc-cong-importo', 'number', '', '0.01') +
+            _formField('Importo Totale MP (\u20AC) (inserisci sempre positivo)', 'mc-cong-importo', 'number', '', '0.01') +
             '<div class="form-group"><label class="form-label">Periodo riferimento (per calcolo proporzione litri)</label>' +
                 '<div style="display:flex; gap:var(--space-2);">' +
                     '<input type="date" class="form-input" id="mc-cong-da" value="' + _todayMese1() + '">' +
@@ -1673,15 +1678,22 @@ ENI.Modules.MarginalitaCarburante = (function() {
         inputA.addEventListener('change', aggiornaPreview);
         selectProd.addEventListener('change', aggiornaPreview);
 
+        // Aggiorna preview anche quando cambia tipo
+        document.getElementById('mc-cong-tipo').addEventListener('change', aggiornaPreview);
+
         document.getElementById('mc-cong-salva').addEventListener('click', async function() {
             var prodId = document.getElementById('mc-cong-prod').value;
             var data = document.getElementById('mc-cong-data').value;
-            var importo = parseFloat(document.getElementById('mc-cong-importo').value);
+            var importoRaw = parseFloat(document.getElementById('mc-cong-importo').value);
+            var tipo = document.getElementById('mc-cong-tipo').value;
             var note = document.getElementById('mc-cong-note').value || null;
             var da = document.getElementById('mc-cong-da').value;
             var a = document.getElementById('mc-cong-a').value;
 
-            if (!data || importo === undefined || isNaN(importo)) { ENI.UI.warning('Compila data e importo'); return; }
+            if (!data || importoRaw === undefined || isNaN(importoRaw) || importoRaw <= 0) { ENI.UI.warning('Compila data e importo (valore positivo)'); return; }
+
+            // Credito = negativo (abbassa il costo), Debito = positivo (alza il costo)
+            var importo = tipo === 'credito' ? -Math.abs(importoRaw) : Math.abs(importoRaw);
 
             try {
                 if (prodId === '_tutti') {
@@ -1768,11 +1780,15 @@ ENI.Modules.MarginalitaCarburante = (function() {
         var preview = document.getElementById('mc-cong-preview');
         if (!preview) return;
         var prodId = document.getElementById('mc-cong-prod').value;
-        var importo = parseFloat(document.getElementById('mc-cong-importo').value);
+        var importoRaw = parseFloat(document.getElementById('mc-cong-importo').value);
+        var tipo = document.getElementById('mc-cong-tipo').value;
         var da = document.getElementById('mc-cong-da').value;
         var a = document.getElementById('mc-cong-a').value;
 
-        if (prodId !== '_tutti' || isNaN(importo) || !importo || !da || !a) {
+        // Applica il segno in base al tipo
+        var importo = tipo === 'credito' ? -Math.abs(importoRaw) : Math.abs(importoRaw);
+
+        if (prodId !== '_tutti' || isNaN(importoRaw) || !importoRaw || !da || !a) {
             preview.innerHTML = prodId !== '_tutti' ? '<div class="text-sm text-muted">Importo assegnato direttamente al prodotto selezionato.</div>' : '';
             return;
         }
