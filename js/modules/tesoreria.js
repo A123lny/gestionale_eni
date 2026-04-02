@@ -523,8 +523,8 @@ ENI.Modules.Tesoreria = (function() {
             banca: _bancaFiltro || undefined,
             da: _movimentiDa || undefined,
             a: _movimentiA || undefined,
-            asc: false,
-            limit: 200
+            asc: true,
+            limit: 1000
         });
 
         var puoScrivere = ENI.State.canWrite('tesoreria');
@@ -535,7 +535,10 @@ ENI.Modules.Tesoreria = (function() {
 
             // Filtri
             '<div class="cassa-section">' +
-                '<div class="cassa-section-title">\u{1F50D} Filtri</div>' +
+                '<div class="cassa-section-title">\u{1F50D} Filtri' +
+                    (_bancaFiltro || _movimentiDa || _movimentiA
+                        ? ' <span class="badge badge-warning badge-sm">Filtri attivi</span>' : '') +
+                '</div>' +
                 '<div style="display:flex; gap:var(--space-3); flex-wrap:wrap; align-items:end;">' +
                     '<div><label class="form-label">Banca</label>' +
                         '<select class="form-select" id="filtro-banca">' +
@@ -545,19 +548,21 @@ ENI.Modules.Tesoreria = (function() {
                         '</select>' +
                     '</div>' +
                     '<div><label class="form-label">Da</label>' +
-                        '<input type="date" class="form-input" id="filtro-mov-da" value="' + _movimentiDa + '">' +
+                        '<input type="date" class="form-input" id="filtro-mov-da" value="' + (_movimentiDa || '') + '">' +
                     '</div>' +
                     '<div><label class="form-label">A</label>' +
-                        '<input type="date" class="form-input" id="filtro-mov-a" value="' + _movimentiA + '" max="' + oggi + '">' +
+                        '<input type="date" class="form-input" id="filtro-mov-a" value="' + (_movimentiA || '') + '" max="' + oggi + '">' +
                     '</div>' +
-                    '<button class="btn btn-primary btn-sm" id="btn-filtra-mov">Filtra</button>' +
-                    '<button class="btn btn-outline btn-sm" id="btn-reset-mov">Reset</button>' +
+                    '<button class="btn btn-primary btn-sm" id="btn-filtra-mov">\u{1F50D} Filtra</button>' +
+                    '<button class="btn btn-outline btn-sm" id="btn-reset-mov">\u{1F504} Reset</button>' +
                 '</div>' +
             '</div>' +
 
             // Lista movimenti
             '<div class="cassa-section">' +
-                '<div class="cassa-section-title">\u{1F4CB} Movimenti (' + _movimentiBanca.length + ')</div>' +
+                '<div class="cassa-section-title">\u{1F4CB} Movimenti (' + _movimentiBanca.length + ')' +
+                    (_movimentiBanca.length >= 1000 ? ' <span class="badge badge-warning badge-sm">Limite raggiunto - usa i filtri per date</span>' : '') +
+                '</div>' +
                 _renderMovimentiTable() +
             '</div>';
 
@@ -579,6 +584,10 @@ ENI.Modules.Tesoreria = (function() {
                         '<label class="form-label">File CSV o Excel *</label>' +
                         '<input type="file" class="form-input" id="import-file" accept=".csv,.xlsx,.xls">' +
                     '</div>' +
+                    '<div style="margin-left:auto;">' +
+                        '<button class="btn btn-outline btn-sm text-danger" id="btn-svuota-movimenti" title="Elimina tutti i movimenti importati per reimportarli con la mappatura corretta">' +
+                            '\u{1F5D1}\uFE0F Svuota movimenti importati</button>' +
+                    '</div>' +
                 '</div>' +
                 '<div id="import-mapper" style="margin-top:var(--space-3);"></div>' +
                 '<div id="import-preview" style="margin-top:var(--space-3);"></div>' +
@@ -592,28 +601,78 @@ ENI.Modules.Tesoreria = (function() {
             return '<div class="empty-state"><p class="empty-state-text">Nessun movimento trovato</p></div>';
         }
 
+        // Ordina per data ASC per calcolo saldo progressivo
+        var movOrdinati = _movimentiBanca.slice().sort(function(a, b) {
+            return a.data_operazione.localeCompare(b.data_operazione);
+        });
+
+        // Calcola saldo progressivo se mancante
+        var hasSaldo = movOrdinati.some(function(m) { return m.saldo_progressivo != null; });
+        if (!hasSaldo) {
+            var saldoCalc = 0;
+            movOrdinati.forEach(function(m) {
+                saldoCalc += Number(m.importo);
+                m._saldo_calcolato = saldoCalc;
+            });
+        }
+
+        // Calcola totali
+        var totEntrate = 0, totUscite = 0, nEntrate = 0, nUscite = 0;
+        movOrdinati.forEach(function(m) {
+            var imp = Number(m.importo);
+            if (imp >= 0) { totEntrate += imp; nEntrate++; }
+            else { totUscite += Math.abs(imp); nUscite++; }
+        });
+
+        // Mostra in ordine discendente (piu' recenti prima)
+        var movDisplay = movOrdinati.slice().reverse();
+
         var html = '<div class="table-responsive"><table class="table">' +
             '<thead><tr>' +
                 '<th>Data Op.</th><th>Data Val.</th><th>Descrizione</th><th>Banca</th>' +
                 '<th>Categoria</th>' +
-                '<th style="text-align:right;">Importo</th>' +
+                '<th style="text-align:right;">Entrata</th>' +
+                '<th style="text-align:right;">Uscita</th>' +
                 '<th style="text-align:right;">Saldo</th>' +
             '</tr></thead><tbody>';
 
-        _movimentiBanca.forEach(function(m) {
-            var importoClass = Number(m.importo) >= 0 ? 'text-success' : 'text-danger';
-            html += '<tr>' +
+        movDisplay.forEach(function(m) {
+            var imp = Number(m.importo);
+            var saldo = m.saldo_progressivo != null ? Number(m.saldo_progressivo) : (m._saldo_calcolato != null ? m._saldo_calcolato : null);
+            var saldoClass = saldo != null ? (saldo >= 0 ? 'text-success' : 'text-danger') : '';
+            var rowClass = imp >= 0 ? 'tesoreria-row-entrata' : 'tesoreria-row-uscita';
+
+            html += '<tr class="' + rowClass + '">' +
                 '<td>' + ENI.UI.formatData(m.data_operazione) + '</td>' +
                 '<td>' + (m.data_valuta ? ENI.UI.formatData(m.data_valuta) : '-') + '</td>' +
-                '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;">' + ENI.UI.escapeHtml(m.descrizione) + '</td>' +
+                '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;" title="' + ENI.UI.escapeHtml(m.descrizione) + '">' + ENI.UI.escapeHtml(m.descrizione) + '</td>' +
                 '<td><span class="badge badge-sm tesoreria-badge-' + m.banca + '">' + m.banca.toUpperCase() + '</span></td>' +
                 '<td>' + (m.categoria ? '<span class="badge badge-outline badge-sm">' + ENI.UI.escapeHtml(m.categoria) + '</span>' : '-') + '</td>' +
-                '<td style="text-align:right;font-weight:600;" class="' + importoClass + '">' + ENI.UI.formatValuta(m.importo) + '</td>' +
-                '<td style="text-align:right;">' + (m.saldo_progressivo != null ? ENI.UI.formatValuta(m.saldo_progressivo) : '-') + '</td>' +
+                '<td style="text-align:right;font-weight:600;" class="text-success">' + (imp > 0 ? ENI.UI.formatValuta(imp) : '') + '</td>' +
+                '<td style="text-align:right;font-weight:600;" class="text-danger">' + (imp < 0 ? ENI.UI.formatValuta(Math.abs(imp)) : '') + '</td>' +
+                '<td style="text-align:right;font-weight:600;" class="' + saldoClass + '">' + (saldo != null ? ENI.UI.formatValuta(saldo) : '-') + '</td>' +
             '</tr>';
         });
 
         html += '</tbody></table></div>';
+
+        // Riepilogo totali
+        html += '<div class="tesoreria-totali-row">' +
+            '<div class="tesoreria-totale tesoreria-totale-entrata">' +
+                '<span>Entrate (' + nEntrate + ')</span><strong>' + ENI.UI.formatValuta(totEntrate) + '</strong>' +
+            '</div>' +
+            '<div class="tesoreria-totale tesoreria-totale-uscita">' +
+                '<span>Uscite (' + nUscite + ')</span><strong>' + ENI.UI.formatValuta(totUscite) + '</strong>' +
+            '</div>' +
+            '<div class="tesoreria-totale ' + (totEntrate - totUscite >= 0 ? 'tesoreria-totale-positivo' : 'tesoreria-totale-negativo') + '">' +
+                '<span>Netto</span><strong>' + ENI.UI.formatValuta(totEntrate - totUscite) + '</strong>' +
+            '</div>' +
+        '</div>';
+
+        if (!hasSaldo) {
+            html += '<div class="text-sm text-muted" style="margin-top:var(--space-2);">* Saldo calcolato progressivamente dai movimenti (non presente nel file importato)</div>';
+        }
+
         return html;
     }
 
@@ -647,6 +706,40 @@ ENI.Modules.Tesoreria = (function() {
                 if (fileInput.files.length > 0) {
                     _onFileSelected(fileInput.files[0]);
                 }
+            });
+        }
+
+        // Svuota movimenti importati
+        var btnSvuota = document.getElementById('btn-svuota-movimenti');
+        if (btnSvuota) {
+            btnSvuota.addEventListener('click', function() {
+                var banca = document.getElementById('import-banca').value;
+                var modal = ENI.UI.showModal({
+                    title: 'Svuota Movimenti Importati',
+                    body: '<p>Vuoi eliminare <strong>tutti</strong> i movimenti importati' +
+                        ' per <strong>' + banca.toUpperCase() + '</strong>?</p>' +
+                        '<p class="text-muted">Potrai reimportarli con la mappatura corretta.</p>' +
+                        '<p class="text-danger"><strong>Questa azione non e\' reversibile.</strong></p>',
+                    footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                            '<button class="btn btn-danger" id="btn-conferma-svuota">Elimina Tutti</button>'
+                });
+                modal.querySelector('#btn-conferma-svuota').addEventListener('click', async function() {
+                    try {
+                        var result = await ENI.API.getClient()
+                            .from('movimenti_banca')
+                            .delete()
+                            .eq('banca', banca);
+                        if (result.error) throw new Error(result.error.message);
+                        // Resetta anche la mappatura salvata
+                        try { localStorage.removeItem('tesoreria-mapping-' + banca); } catch(e) {}
+                        await ENI.API.scriviLog('Svuotati_Movimenti_Banca', 'Tesoreria', 'Banca: ' + banca);
+                        ENI.UI.closeModal(modal);
+                        ENI.UI.success('Movimenti ' + banca.toUpperCase() + ' eliminati. Ora puoi reimportare.');
+                        _loadTab();
+                    } catch(e) {
+                        ENI.UI.error('Errore: ' + e.message);
+                    }
+                });
             });
         }
     }
@@ -794,16 +887,31 @@ ENI.Modules.Tesoreria = (function() {
                 return;
             }
 
-            var html = '<div class="text-sm" style="margin-bottom:var(--space-2);"><strong>' + movimenti.length + ' movimenti trovati</strong> (primi 5):</div>' +
+            // Riepilogo anteprima
+            var prevEntrate = 0, prevUscite = 0;
+            movimenti.forEach(function(m) {
+                if (Number(m.importo) >= 0) prevEntrate += Number(m.importo);
+                else prevUscite += Math.abs(Number(m.importo));
+            });
+
+            var html = '<div style="margin-bottom:var(--space-2);">' +
+                '<strong>' + movimenti.length + ' movimenti trovati</strong> &mdash; ' +
+                '<span class="text-success">' + movimenti.filter(function(m) { return Number(m.importo) > 0; }).length + ' entrate (' + ENI.UI.formatValuta(prevEntrate) + ')</span>' +
+                ' &bull; ' +
+                '<span class="text-danger">' + movimenti.filter(function(m) { return Number(m.importo) < 0; }).length + ' uscite (' + ENI.UI.formatValuta(prevUscite) + ')</span>' +
+                '</div>' +
+                '<div class="text-sm text-muted" style="margin-bottom:var(--space-2);">Primi 5 movimenti:</div>' +
                 '<div class="table-responsive"><table class="table table-sm">' +
-                '<thead><tr><th>Data</th><th>Descrizione</th><th>Importo</th><th>Saldo</th></tr></thead><tbody>';
+                '<thead><tr><th>Data</th><th>Descrizione</th><th>Entrata</th><th>Uscita</th><th>Saldo</th></tr></thead><tbody>';
 
             movimenti.slice(0, 5).forEach(function(m) {
+                var imp = Number(m.importo);
                 html += '<tr>' +
                     '<td>' + ENI.UI.escapeHtml(m.data_operazione) + '</td>' +
                     '<td>' + ENI.UI.escapeHtml(m.descrizione || '') + '</td>' +
-                    '<td class="' + (Number(m.importo) >= 0 ? 'text-success' : 'text-danger') + '">' + ENI.UI.formatValuta(m.importo) + '</td>' +
-                    '<td>' + (m.saldo_progressivo != null ? ENI.UI.formatValuta(m.saldo_progressivo) : '-') + '</td>' +
+                    '<td class="text-success" style="text-align:right;">' + (imp > 0 ? ENI.UI.formatValuta(imp) : '') + '</td>' +
+                    '<td class="text-danger" style="text-align:right;">' + (imp < 0 ? ENI.UI.formatValuta(Math.abs(imp)) : '') + '</td>' +
+                    '<td style="text-align:right;">' + (m.saldo_progressivo != null ? ENI.UI.formatValuta(m.saldo_progressivo) : '-') + '</td>' +
                 '</tr>';
             });
 
@@ -811,7 +919,12 @@ ENI.Modules.Tesoreria = (function() {
             if (movimenti.length > 5) {
                 html += '<div class="text-sm text-muted">... e altri ' + (movimenti.length - 5) + ' movimenti</div>';
             }
-            html += '<button class="btn btn-success" id="btn-esegui-import" style="margin-top:var(--space-2);">Importa ' + movimenti.length + ' movimenti</button>';
+
+            html += '<div style="margin-top:var(--space-3); padding:var(--space-2); background:var(--bg-warning-subtle, #fff3cd); border-radius:var(--radius-md); font-size:0.9rem;">' +
+                '<strong>Controlla:</strong> Le entrate sono in verde e le uscite in rosso? Se i segni sono invertiti, torna indietro e cambia la mappatura delle colonne (scambia Dare/Avere oppure usa "Importo (+/-)").' +
+                '</div>';
+
+            html += '<button class="btn btn-success" id="btn-esegui-import" style="margin-top:var(--space-2);">\u2705 Conferma e Importa ' + movimenti.length + ' movimenti</button>';
 
             previewEl.innerHTML = html;
 
@@ -980,11 +1093,17 @@ ENI.Modules.Tesoreria = (function() {
             } else if (hasDareAvere) {
                 var dare = mapping.dare ? _parseNumero(row[mapping.dare]) : 0;
                 var avere = mapping.avere ? _parseNumero(row[mapping.avere]) : 0;
-                if (dare && dare > 0) importo = -dare;
-                else if (avere && avere > 0) importo = avere;
-                else importo = dare || avere || 0;
+                // Dare = uscita (negativo), Avere = entrata (positivo)
+                if (dare && dare !== 0) {
+                    importo = -Math.abs(dare); // dare e' sempre uscita
+                } else if (avere && avere !== 0) {
+                    importo = Math.abs(avere); // avere e' sempre entrata
+                } else {
+                    importo = 0;
+                }
             }
             if (importo === null || isNaN(importo)) return;
+            if (importo === 0) return; // ignora righe senza importo
 
             var desc = mapping.descrizione ? (row[mapping.descrizione] || '').trim() : 'Movimento';
             var mov = {
@@ -1008,13 +1127,13 @@ ENI.Modules.Tesoreria = (function() {
         var fieldsLower = fields.map(function(f) { return (f || '').toLowerCase().trim(); });
 
         var patterns = {
-            data_operazione: ['data operazione', 'data op', 'data op.', 'data', 'date', 'data_operazione', 'data contabile'],
-            data_valuta: ['data valuta', 'data val', 'data val.', 'valuta', 'data_valuta'],
-            descrizione: ['descrizione', 'causale', 'description', 'dettagli', 'descrizione operazione', 'motivo'],
-            importo: ['importo', 'amount', 'importo eur', 'importo euro'],
-            dare: ['dare', 'addebito', 'addebiti', 'debit', 'uscite', 'uscita'],
-            avere: ['avere', 'accredito', 'accrediti', 'credit', 'entrate', 'entrata'],
-            saldo: ['saldo', 'saldo contabile', 'saldo disponibile', 'balance', 'saldo progressivo']
+            data_operazione: ['data operazione', 'data op', 'data op.', 'data', 'date', 'data_operazione', 'data contabile', 'data registrazione', 'data mov', 'data movimento'],
+            data_valuta: ['data valuta', 'data val', 'data val.', 'valuta', 'data_valuta', 'value date'],
+            descrizione: ['descrizione', 'causale', 'description', 'dettagli', 'descrizione operazione', 'motivo', 'descrizione/causale', 'tipo operazione', 'operazione'],
+            importo: ['importo', 'amount', 'importo eur', 'importo euro', 'importo in eur', 'importo in euro', 'movimento', 'importo movimento'],
+            dare: ['dare', 'addebito', 'addebiti', 'debit', 'uscite', 'uscita', 'addebitare', 'importo dare'],
+            avere: ['avere', 'accredito', 'accrediti', 'credit', 'entrate', 'entrata', 'accreditare', 'importo avere'],
+            saldo: ['saldo', 'saldo contabile', 'saldo disponibile', 'balance', 'saldo progressivo', 'saldo finale', 'saldo in euro', 'saldo eur']
         };
 
         Object.keys(patterns).forEach(function(ruolo) {
