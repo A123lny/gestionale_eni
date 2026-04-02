@@ -868,25 +868,25 @@ ENI.Modules.Tesoreria = (function() {
     function _renderColumnMapper(container, headers, sampleRows, banca) {
         var ruoli = [
             { value: '', label: '(Ignora)' },
-            { value: 'data_operazione', label: 'Data Operazione *' },
-            { value: 'data_valuta', label: 'Data Valuta' },
-            { value: 'descrizione', label: 'Descrizione *' },
-            { value: 'importo', label: 'Importo (+/-)' },
-            { value: 'dare', label: 'Dare (uscite)' },
-            { value: 'avere', label: 'Avere (entrate)' },
-            { value: 'saldo', label: 'Saldo' }
+            { value: 'data_operazione', label: '\u{1F4C5} Data Operazione *' },
+            { value: 'data_valuta', label: '\u{1F4C5} Data Valuta' },
+            { value: 'descrizione', label: '\u{1F4DD} Descrizione *' },
+            { value: 'importo', label: '\u{1F4B6} Importo (+/-)' },
+            { value: 'dare', label: '\u{1F534} Dare (uscite)' },
+            { value: 'avere', label: '\u{1F7E2} Avere (entrate)' },
+            { value: 'saldo', label: '\u{1F3E6} Saldo' }
         ];
 
         var html = '<div class="tesoreria-mapper">' +
             '<div class="tesoreria-mapper-title">Mappa le colonne del file</div>' +
-            '<p class="text-sm text-muted" style="margin-bottom:var(--space-2);">Assegna un ruolo a ogni colonna. Colonne con * sono obbligatorie. Per importo usa "Importo (+/-)" se e\' una colonna unica, oppure "Dare/Avere" se sono separate.</p>' +
-            '<div class="table-responsive"><table class="table table-sm tesoreria-mapper-table">' +
-            '<thead><tr>';
+            '<p class="text-sm text-muted" style="margin-bottom:var(--space-2);">Assegna un ruolo a ogni colonna. Colonne con * sono obbligatorie.<br>' +
+            'Per importo usa <strong>"Importo (+/-)"</strong> se e\' una colonna unica, oppure <strong>"Dare/Avere"</strong> se sono separate.</p>';
 
-        // Riga dropdown
+        // Layout VERTICALE: una riga per ogni colonna del CSV
+        html += '<div class="tesoreria-mapper-grid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:var(--space-2); margin-bottom:var(--space-3);">';
+
         headers.forEach(function(h, idx) {
             var currentVal = '';
-            // Trova se questa colonna e' gia' mappata
             for (var key in _importMapping) {
                 if (_importMapping[key] === h || _importMapping[key] === idx) {
                     currentVal = key;
@@ -897,30 +897,45 @@ ENI.Modules.Tesoreria = (function() {
                 return '<option value="' + r.value + '"' + (currentVal === r.value ? ' selected' : '') + '>' + r.label + '</option>';
             }).join('');
 
-            html += '<th style="min-width:120px;"><select class="form-select form-select-sm tesoreria-mapper-select" data-col-idx="' + idx + '">' +
-                options + '</select><div class="text-xs text-muted" style="margin-top:2px;">' + ENI.UI.escapeHtml(h) + '</div></th>';
+            // Prendi un valore di esempio dalla prima riga
+            var esempio = sampleRows.length > 0 && sampleRows[0][h] != null ? String(sampleRows[0][h]).substring(0, 25) : '-';
+
+            var borderColor = currentVal ? 'var(--color-primary, #3b82f6)' : 'var(--border-color, #dee2e6)';
+            var bgColor = currentVal ? 'var(--bg-primary-subtle, #eff6ff)' : 'var(--bg-surface, #f8f9fa)';
+
+            html += '<div style="padding:var(--space-2); border:2px solid ' + borderColor + '; border-radius:var(--radius-md); background:' + bgColor + ';">' +
+                '<div style="font-weight:600; font-size:0.85rem; margin-bottom:4px;">' + ENI.UI.escapeHtml(h) + '</div>' +
+                '<div class="text-xs text-muted" style="margin-bottom:4px;">Es: <em>' + ENI.UI.escapeHtml(esempio) + '</em></div>' +
+                '<select class="form-select form-select-sm tesoreria-mapper-select" data-col-idx="' + idx + '" style="width:100%;">' +
+                    options +
+                '</select>' +
+            '</div>';
         });
 
-        html += '</tr></thead><tbody>';
+        html += '</div>';
 
-        // Righe sample
-        sampleRows.forEach(function(row) {
-            html += '<tr>';
-            headers.forEach(function(h) {
-                var val = row[h] != null ? String(row[h]).substring(0, 30) : '';
-                html += '<td class="text-sm">' + ENI.UI.escapeHtml(val) + '</td>';
-            });
-            html += '</tr>';
-        });
-
-        html += '</tbody></table></div>' +
-            '<div style="display:flex; gap:var(--space-2); margin-top:var(--space-3); flex-wrap:wrap;">' +
-                '<button class="btn btn-outline btn-sm" id="btn-salva-mapping">Salva mappatura per ' + banca.toUpperCase() + '</button>' +
-                '<button class="btn btn-primary" id="btn-conferma-mapping">Anteprima e Importa</button>' +
+        // Pulsanti
+        html += '<div style="display:flex; gap:var(--space-2); flex-wrap:wrap;">' +
+                '<button class="btn btn-outline btn-sm" id="btn-salva-mapping">\u{1F4BE} Salva mappatura per ' + banca.toUpperCase() + '</button>' +
+                '<button class="btn btn-primary" id="btn-conferma-mapping">\u{1F50D} Anteprima e Importa</button>' +
             '</div>' +
         '</div>';
 
         container.innerHTML = html;
+
+        // Evidenzia card quando cambia selezione
+        container.querySelectorAll('.tesoreria-mapper-select').forEach(function(sel) {
+            sel.addEventListener('change', function() {
+                var card = sel.parentElement;
+                if (sel.value) {
+                    card.style.borderColor = 'var(--color-primary, #3b82f6)';
+                    card.style.background = 'var(--bg-primary-subtle, #eff6ff)';
+                } else {
+                    card.style.borderColor = 'var(--border-color, #dee2e6)';
+                    card.style.background = 'var(--bg-surface, #f8f9fa)';
+                }
+            });
+        });
 
         // Listeners
         document.getElementById('btn-salva-mapping').addEventListener('click', function() {
