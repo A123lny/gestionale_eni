@@ -2326,12 +2326,12 @@ ENI.Modules.Tesoreria = (function() {
         bankOut: 'Somma degli addebiti bancari (Carisp + BSI) nel mese, dai movimenti importati.',
         cashIn: 'Totale incassato giornaliero dalla chiusura cassa (contanti + POS + buoni + crediti).',
         cashOut: 'Totale spese contanti registrate nel modulo Spese Cassa.',
-        fuel: 'Costo totale dei carichi carburante ricevuti nel mese (materia prima + accise).',
+        fuel: 'SOLO INFORMATIVO - Costo carichi ricevuti nel mese. Non sommato nel netto perche\' gia\' incluso nelle uscite banca (RID, Accise, Monofase).',
         bankIn_prev: 'Media giornaliera accrediti bancari (ultimi 60gg di dati) moltiplicata per i giorni del mese.',
         bankOut_prev: 'Il maggiore tra: media giornaliera uscite bancarie (60gg) x giorni, oppure scadenze note (ricorrenti + programmati + auto-scadenze carichi RID/Accise/Monofase). Man mano che inserisci ricorrenti e arrivano le scadenze carichi, la previsione diventa piu\' precisa.',
         cashIn_prev: 'Media giornaliera incassi cassa (ultimi 60gg) moltiplicata per i giorni del mese.',
         cashOut_prev: 'Media giornaliera spese contanti (ultimi 60gg) moltiplicata per i giorni del mese.',
-        fuel_prev: 'Media mensile del costo carichi carburante calcolata sugli ultimi 3 mesi di attivita\'.',
+        fuel_prev: 'SOLO INFORMATIVO - Media mensile costo carichi. Non sommato nel netto perche\' gia\' incluso nelle uscite banca previste.',
         saldo: 'Saldo cumulativo: saldi iniziali banca + somma dei netti mensili. Dipende dalla completezza dei movimenti importati.'
     };
 
@@ -2659,12 +2659,13 @@ ENI.Modules.Tesoreria = (function() {
             '<td style="text-align:right;" class="text-danger">' + ENI.UI.formatValuta(m.fuel) + '</td>' +
             '<td class="text-sm text-muted">' + (isPrev ? 'Media mensile ultimi mesi' : 'Costo totale carichi ricevuti') + '</td></tr>';
 
-        // Totali
+        // Totali (carichi NON sommati: sono gia' inclusi nelle uscite banca come RID/Accise/Monofase)
         var totEntrate = m.bankIn + m.cashIn;
-        var totUscite = m.bankOut + m.cashOut + m.fuel;
+        var totUscite = m.bankOut + m.cashOut;
         var totNetto = totEntrate - totUscite;
 
-        html += '<tr style="font-weight:700; border-top:2px solid var(--border-color,#e2e8f0);">' +
+        html += '<tr class="storico-separator"><td colspan="4">RIEPILOGO (i carichi sono gia\' inclusi nelle uscite banca come RID/Accise/Monofase)</td></tr>';
+        html += '<tr style="font-weight:700;">' +
             '<td>TOTALE</td>' +
             '<td style="text-align:right;" class="text-success">' + ENI.UI.formatValuta(totEntrate) + '</td>' +
             '<td style="text-align:right;" class="text-danger">' + ENI.UI.formatValuta(totUscite) + '</td>' +
