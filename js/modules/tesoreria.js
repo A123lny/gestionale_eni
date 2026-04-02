@@ -1016,6 +1016,16 @@ ENI.Modules.Tesoreria = (function() {
                 html += '<div class="text-sm text-muted">... e altri ' + (movimenti.length - 5) + ' movimenti</div>';
             }
 
+            // Mostra righe escluse (saldi, riepiloghi)
+            if (movimenti._righeEscluse && movimenti._righeEscluse.length > 0) {
+                html += '<div style="margin-top:var(--space-3); padding:var(--space-2); background:var(--bg-info-subtle, #e0f2fe); border-radius:var(--radius-md); font-size:0.9rem;">' +
+                    '<strong>\u{1F6AB} ' + movimenti._righeEscluse.length + ' righe escluse</strong> (saldi/riepiloghi banca, non sono movimenti reali):<ul style="margin:4px 0 0 16px;">';
+                movimenti._righeEscluse.forEach(function(r) {
+                    html += '<li>' + ENI.UI.escapeHtml(r.desc) + ' (' + r.data + ')</li>';
+                });
+                html += '</ul></div>';
+            }
+
             html += '<div style="margin-top:var(--space-3); padding:var(--space-2); background:var(--bg-warning-subtle, #fff3cd); border-radius:var(--radius-md); font-size:0.9rem;">' +
                 '<strong>Controlla:</strong> Le entrate sono in verde e le uscite in rosso? Se i segni sono invertiti, torna indietro e cambia la mappatura delle colonne (scambia Dare/Avere oppure usa "Importo (+/-)").' +
                 '</div>';
@@ -1174,14 +1184,33 @@ ENI.Modules.Tesoreria = (function() {
         });
     }
 
+    // Righe di saldo/riepilogo che le banche inseriscono nel CSV
+    // NON sono movimenti reali, vanno escluse dall'import
+    var SALDO_KEYWORDS = ['contabile', 'liquido', 'saldo', 'saldo contabile', 'saldo liquido',
+        'saldo disponibile', 'saldo iniziale', 'saldo finale', 'totale', 'riepilogo'];
+
+    function _isSaldoRow(descrizione) {
+        if (!descrizione) return false;
+        var descLower = descrizione.trim().toLowerCase();
+        return SALDO_KEYWORDS.some(function(kw) { return descLower === kw; });
+    }
+
     function _mapRowsWithMapping(objects, mapping) {
         var hasImportoSingolo = !!mapping.importo;
         var hasDareAvere = !!(mapping.dare || mapping.avere);
 
         var movimenti = [];
+        var righeEscluse = [];
         objects.forEach(function(row) {
             var dataOp = _parseDataItaliana(row[mapping.data_operazione]);
             if (!dataOp) return;
+
+            // Escludi righe di saldo/riepilogo (non sono movimenti)
+            var desc = mapping.descrizione ? (row[mapping.descrizione] || '').trim() : '';
+            if (_isSaldoRow(desc)) {
+                righeEscluse.push({ data: dataOp, desc: desc, motivo: 'Riga di saldo/riepilogo' });
+                return;
+            }
 
             var importo;
             if (hasImportoSingolo) {
@@ -1201,17 +1230,19 @@ ENI.Modules.Tesoreria = (function() {
             if (importo === null || isNaN(importo)) return;
             if (importo === 0) return; // ignora righe senza importo
 
-            var desc = mapping.descrizione ? (row[mapping.descrizione] || '').trim() : 'Movimento';
             var mov = {
                 data_operazione: dataOp,
                 data_valuta: mapping.data_valuta ? _parseDataItaliana(row[mapping.data_valuta]) : dataOp,
-                descrizione: desc,
+                descrizione: desc || 'Movimento',
                 importo: importo,
                 saldo_progressivo: mapping.saldo ? _parseNumero(row[mapping.saldo]) : null
             };
 
             if (mov.descrizione) movimenti.push(mov);
         });
+
+        // Salva righe escluse per mostrare nell'anteprima
+        movimenti._righeEscluse = righeEscluse;
 
         return movimenti;
     }
