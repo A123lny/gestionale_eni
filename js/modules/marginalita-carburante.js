@@ -1521,15 +1521,43 @@ ENI.Modules.MarginalitaCarburante = (function() {
         if (conguagli.length === 0) {
             html += '<p class="empty-state-text">Nessun conguaglio registrato</p>';
         } else {
+            // Raggruppa conguagli per data+note (ripartiti hanno la stessa data e nota base)
             html += '<table class="table cm-table-compact"><thead><tr>' +
                 '<th>Data</th><th>Prodotto</th><th class="text-right">Importo MP</th><th>Note</th><th></th>' +
             '</tr></thead><tbody>';
+
+            // Calcola totale per data (per evidenziare i gruppi ripartiti)
+            var totaliPerData = {};
+            conguagli.forEach(function(c) {
+                var isRipartito = c.note && c.note.indexOf('Ripartito:') !== -1;
+                var key = c.data + (isRipartito ? '_rip' : '_' + c.id);
+                if (!totaliPerData[key]) totaliPerData[key] = { tot: 0, count: 0 };
+                totaliPerData[key].tot += parseFloat(c.importo_mp) || 0;
+                totaliPerData[key].count++;
+            });
+
+            var lastGroupDate = '';
             conguagli.forEach(function(c) {
                 var prodNome = _prodotti.find(function(p) { return p.id === c.prodotto_id; });
                 var importo = parseFloat(c.importo_mp) || 0;
-                html += '<tr>' +
-                    '<td>' + _fmtData(c.data) + '</td>' +
-                    '<td>' + (prodNome ? prodNome.nome : c.prodotto_id) + '</td>' +
+                var isRipartito = c.note && c.note.indexOf('Ripartito:') !== -1;
+                var groupKey = c.data + (isRipartito ? '_rip' : '_' + c.id);
+
+                // Riga di totale gruppo per conguagli ripartiti
+                if (isRipartito && lastGroupDate !== groupKey) {
+                    var totGruppo = totaliPerData[groupKey];
+                    html += '<tr style="background:var(--bg-surface,#f1f5f9); font-weight:600;">' +
+                        '<td>' + _fmtData(c.data) + '</td>' +
+                        '<td>\u{1F4E6} Conguaglio ripartito (' + totGruppo.count + ' prodotti)</td>' +
+                        '<td class="text-right" style="color:' + (totGruppo.tot < 0 ? 'var(--color-success)' : 'var(--color-danger)') + ';">' + _fmtEuro(totGruppo.tot) + '</td>' +
+                        '<td></td><td></td></tr>';
+                    lastGroupDate = groupKey;
+                }
+
+                var rowStyle = isRipartito ? ' style="font-size:0.85rem; opacity:0.85;"' : '';
+                html += '<tr' + rowStyle + '>' +
+                    '<td>' + (isRipartito ? '' : _fmtData(c.data)) + '</td>' +
+                    '<td>' + (isRipartito ? '\u2514 ' : '') + (prodNome ? prodNome.nome : c.prodotto_id) + '</td>' +
                     '<td class="text-right" style="color:' + (importo < 0 ? 'var(--color-success)' : 'var(--color-danger)') + '; font-weight:600;">' + _fmtEuro(importo) + '</td>' +
                     '<td style="font-size:0.75rem;">' + (c.note || '') + '</td>' +
                     '<td><button class="btn-icon mc-del-cong" data-id="' + c.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>' +
@@ -1614,31 +1642,167 @@ ENI.Modules.MarginalitaCarburante = (function() {
     }
 
     function _showConguaglioForm() {
-        var opts = _prodotti.map(function(p) { return '<option value="' + p.id + '">' + p.nome + '</option>'; }).join('');
+        var opts = '<option value="_tutti">Riparti su TUTTI i prodotti (proporzionale ai litri caricati)</option>' +
+            _prodotti.map(function(p) { return '<option value="' + p.id + '">' + p.nome + ' (singolo prodotto)</option>'; }).join('');
 
         var modal = _modal('mc-modal-cong', 'Nuovo Conguaglio ENI',
-            '<div class="form-group"><label class="form-label">Prodotto</label><select class="form-select" id="mc-cong-prod">' + opts + '</select></div>' +
+            '<div class="form-group"><label class="form-label">Modalit\u00E0</label><select class="form-select" id="mc-cong-prod">' + opts + '</select></div>' +
             _formField('Data', 'mc-cong-data', 'date', _todayStr()) +
-            _formField('Importo MP (\u20AC) (negativo = credito, positivo = debito)', 'mc-cong-importo', 'number', '', '0.01') +
+            _formField('Importo Totale MP (\u20AC) (negativo = nota credito, positivo = nota debito)', 'mc-cong-importo', 'number', '', '0.01') +
+            '<div class="form-group"><label class="form-label">Periodo riferimento (per calcolo proporzione litri)</label>' +
+                '<div style="display:flex; gap:var(--space-2);">' +
+                    '<input type="date" class="form-input" id="mc-cong-da" value="' + _todayMese1() + '">' +
+                    '<input type="date" class="form-input" id="mc-cong-a" value="' + _todayStr() + '">' +
+                '</div>' +
+            '</div>' +
+            '<div id="mc-cong-preview" style="margin-top:var(--space-2);"></div>' +
             _formField('Note', 'mc-cong-note', 'text', ''),
             'mc-cong-salva', 'Registra'
         );
         _openModal(modal, 'mc-modal-cong');
+
+        // Mostra anteprima ripartizione quando cambia importo o periodo
+        var inputImporto = document.getElementById('mc-cong-importo');
+        var inputDa = document.getElementById('mc-cong-da');
+        var inputA = document.getElementById('mc-cong-a');
+        var selectProd = document.getElementById('mc-cong-prod');
+
+        function aggiornaPreview() { _updateConguaglioPreview(); }
+        inputImporto.addEventListener('input', aggiornaPreview);
+        inputDa.addEventListener('change', aggiornaPreview);
+        inputA.addEventListener('change', aggiornaPreview);
+        selectProd.addEventListener('change', aggiornaPreview);
 
         document.getElementById('mc-cong-salva').addEventListener('click', async function() {
             var prodId = document.getElementById('mc-cong-prod').value;
             var data = document.getElementById('mc-cong-data').value;
             var importo = parseFloat(document.getElementById('mc-cong-importo').value);
             var note = document.getElementById('mc-cong-note').value || null;
+            var da = document.getElementById('mc-cong-da').value;
+            var a = document.getElementById('mc-cong-a').value;
+
             if (!data || importo === undefined || isNaN(importo)) { ENI.UI.warning('Compila data e importo'); return; }
+
             try {
-                await ENI.API.insert(T.CONGUAGLI, { prodotto_id: prodId, data: data, importo_mp: importo, note: note });
+                if (prodId === '_tutti') {
+                    // Riparti su tutti i prodotti
+                    var ripartizione = await _calcolaRipartizioneConguaglio(importo, da, a);
+                    if (!ripartizione || ripartizione.length === 0) {
+                        ENI.UI.warning('Nessun carico trovato nel periodo selezionato per calcolare la ripartizione');
+                        return;
+                    }
+                    for (var i = 0; i < ripartizione.length; i++) {
+                        await ENI.API.insert(T.CONGUAGLI, {
+                            prodotto_id: ripartizione[i].prodotto_id,
+                            data: data,
+                            importo_mp: ripartizione[i].importo,
+                            note: (note ? note + ' | ' : '') + 'Ripartito: ' + ripartizione[i].percentuale + '% (' + ripartizione[i].litri_caricati.toLocaleString('it-IT') + ' lt su ' + ripartizione[i].litri_totali.toLocaleString('it-IT') + ' lt)'
+                        });
+                    }
+                    ENI.UI.success('Conguaglio ripartito su ' + ripartizione.length + ' prodotti');
+                } else {
+                    // Singolo prodotto
+                    await ENI.API.insert(T.CONGUAGLI, { prodotto_id: prodId, data: data, importo_mp: importo, note: note });
+                    ENI.UI.success('Conguaglio registrato');
+                }
                 _closeModal('mc-modal-cong');
                 await _ricalcolaStato();
                 _renderPage();
-                ENI.UI.success('Conguaglio registrato');
             } catch(e) { ENI.UI.error('Errore: ' + e.message); }
         });
+    }
+
+    function _todayMese1() {
+        var d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-01';
+    }
+
+    async function _calcolaRipartizioneConguaglio(importoTotale, da, a) {
+        // Carica litri caricati per prodotto nel periodo
+        var carichi = await ENI.API.getAll(T.CARICHI, {
+            filters: [
+                { op: 'gte', col: 'data', val: da },
+                { op: 'lte', col: 'data', val: a }
+            ]
+        }) || [];
+
+        // Somma litri fiscali per prodotto
+        var litriPerProdotto = {};
+        var litriTotali = 0;
+        carichi.forEach(function(c) {
+            var lf = parseFloat(c.litri_fiscali) || 0;
+            if (!litriPerProdotto[c.prodotto_id]) litriPerProdotto[c.prodotto_id] = 0;
+            litriPerProdotto[c.prodotto_id] += lf;
+            litriTotali += lf;
+        });
+
+        if (litriTotali === 0) return [];
+
+        var ripartizione = [];
+        var importoAssegnato = 0;
+        var prodIds = Object.keys(litriPerProdotto);
+
+        prodIds.forEach(function(prodId, idx) {
+            var perc = litriPerProdotto[prodId] / litriTotali;
+            var importoProd;
+            if (idx === prodIds.length - 1) {
+                // Ultimo prodotto prende il resto per evitare arrotondamenti
+                importoProd = Math.round((importoTotale - importoAssegnato) * 100) / 100;
+            } else {
+                importoProd = Math.round(importoTotale * perc * 100) / 100;
+            }
+            importoAssegnato += importoProd;
+            ripartizione.push({
+                prodotto_id: prodId,
+                importo: importoProd,
+                litri_caricati: Math.round(litriPerProdotto[prodId]),
+                litri_totali: Math.round(litriTotali),
+                percentuale: Math.round(perc * 10000) / 100
+            });
+        });
+
+        return ripartizione;
+    }
+
+    async function _updateConguaglioPreview() {
+        var preview = document.getElementById('mc-cong-preview');
+        if (!preview) return;
+        var prodId = document.getElementById('mc-cong-prod').value;
+        var importo = parseFloat(document.getElementById('mc-cong-importo').value);
+        var da = document.getElementById('mc-cong-da').value;
+        var a = document.getElementById('mc-cong-a').value;
+
+        if (prodId !== '_tutti' || isNaN(importo) || !importo || !da || !a) {
+            preview.innerHTML = prodId !== '_tutti' ? '<div class="text-sm text-muted">Importo assegnato direttamente al prodotto selezionato.</div>' : '';
+            return;
+        }
+
+        preview.innerHTML = '<div class="text-sm text-muted">Calcolo ripartizione...</div>';
+
+        try {
+            var rip = await _calcolaRipartizioneConguaglio(importo, da, a);
+            if (!rip || rip.length === 0) {
+                preview.innerHTML = '<div class="text-sm text-warning">Nessun carico trovato nel periodo. Seleziona un periodo con carichi.</div>';
+                return;
+            }
+            var html = '<div style="background:var(--bg-surface,#f8f9fa); padding:var(--space-2); border-radius:var(--radius-md); margin-top:var(--space-2);">' +
+                '<div class="text-sm" style="font-weight:600; margin-bottom:4px;">Anteprima ripartizione:</div>' +
+                '<table class="table" style="font-size:0.8rem; margin:0;"><thead><tr><th>Prodotto</th><th class="text-right">Litri</th><th class="text-right">%</th><th class="text-right">Importo</th></tr></thead><tbody>';
+            rip.forEach(function(r) {
+                var prodNome = _prodotti.find(function(p) { return p.id === r.prodotto_id; });
+                var importoClass = r.importo < 0 ? 'color:var(--color-success)' : 'color:var(--color-danger)';
+                html += '<tr>' +
+                    '<td>' + (prodNome ? prodNome.nome : r.prodotto_id) + '</td>' +
+                    '<td class="text-right">' + r.litri_caricati.toLocaleString('it-IT') + '</td>' +
+                    '<td class="text-right">' + r.percentuale + '%</td>' +
+                    '<td class="text-right" style="font-weight:600;' + importoClass + '">' + _fmtEuro(r.importo) + '</td>' +
+                '</tr>';
+            });
+            html += '</tbody></table></div>';
+            preview.innerHTML = html;
+        } catch(e) {
+            preview.innerHTML = '<div class="text-sm text-danger">Errore: ' + e.message + '</div>';
+        }
     }
 
     function _showRimborsoForm() {
