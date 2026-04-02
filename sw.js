@@ -3,7 +3,7 @@
 // Network-first per JS/CSS, cache-first per assets statici
 // ============================================================
 
-const CACHE_NAME = 'titanwash-v32';
+const CACHE_NAME = 'titanwash-v33';
 const BASE = self.registration.scope;
 const STATIC_ASSETS = [
     BASE,

@@ -2328,7 +2328,7 @@ ENI.Modules.Tesoreria = (function() {
         cashOut: 'Totale spese contanti registrate nel modulo Spese Cassa.',
         fuel: 'Costo totale dei carichi carburante ricevuti nel mese (materia prima + accise).',
         bankIn_prev: 'Media giornaliera accrediti bancari (ultimi 60gg di dati) moltiplicata per i giorni del mese.',
-        bankOut_prev: 'Somma di: pagamenti ricorrenti attivi + pagamenti programmati + auto-scadenze carichi (RID +5gg, Accise +24gg, Monofase +120gg).',
+        bankOut_prev: 'Il maggiore tra: media giornaliera uscite bancarie (60gg) x giorni, oppure scadenze note (ricorrenti + programmati + auto-scadenze carichi RID/Accise/Monofase). Man mano che inserisci ricorrenti e arrivano le scadenze carichi, la previsione diventa piu\' precisa.',
         cashIn_prev: 'Media giornaliera incassi cassa (ultimi 60gg) moltiplicata per i giorni del mese.',
         cashOut_prev: 'Media giornaliera spese contanti (ultimi 60gg) moltiplicata per i giorni del mese.',
         fuel_prev: 'Media mensile del costo carichi carburante calcolata sugli ultimi 3 mesi di attivita\'.',
@@ -2447,13 +2447,15 @@ ENI.Modules.Tesoreria = (function() {
         da60.setDate(da60.getDate() - 60);
         var da60Str = _dateToISO(da60);
 
-        var bankInRecent = 0, bankDaysRecent = 0;
+        var bankInRecent = 0, bankOutRecent = 0, bankDaysRecent = 0;
         var cashInRecent = 0, cashDaysRecent = 0;
         var cashOutRecent = 0;
 
         movBanca.forEach(function(m) {
             if (m.data_operazione >= da60Str && m.data_operazione <= oggiStr) {
-                if (Number(m.importo) > 0) bankInRecent += Number(m.importo);
+                var imp = Number(m.importo);
+                if (imp > 0) bankInRecent += imp;
+                else bankOutRecent += Math.abs(imp);
                 bankDaysRecent = 60;
             }
         });
@@ -2472,6 +2474,7 @@ ENI.Modules.Tesoreria = (function() {
         });
 
         var mediaBankInGiorno = bankDaysRecent > 0 ? bankInRecent / bankDaysRecent : 0;
+        var mediaBankOutGiorno = bankDaysRecent > 0 ? bankOutRecent / bankDaysRecent : 0;
         var mediaCashInGiorno = cashDaysRecent > 0 ? cashInRecent / cashDaysRecent : 0;
         var mediaCashOutGiorno = cashDaysRecent > 0 ? cashOutRecent / cashDaysRecent : 0;
 
@@ -2491,17 +2494,19 @@ ENI.Modules.Tesoreria = (function() {
                 m.cashOut = mediaCashOutGiorno * m.giorni;
                 m.fuel = mediaFuelMese;
 
-                // Uscite banca: ricorrenti + programmati + auto-scadenze
-                var bankOutPrev = 0;
+                // Uscite banca: media storica come base + ricorrenti + programmati + auto-scadenze
+                var bankOutBase = mediaBankOutGiorno * m.giorni;
+                var bankOutExtra = 0; // extra da scadenze note (non gia' nella media)
+
                 ricorrenti.forEach(function(r) {
                     if (r.tipo === 'uscita' && _ricorrenteCadeInMese(r, m.mese, m.anno)) {
-                        bankOutPrev += Number(r.importo);
+                        bankOutExtra += Number(r.importo);
                     }
                 });
                 programmati.forEach(function(p) {
                     if (p.stato === 'programmato' && p.tipo === 'uscita') {
                         var scadKey = p.data_scadenza.substring(0, 7);
-                        if (scadKey === m.key) bankOutPrev += Number(p.importo);
+                        if (scadKey === m.key) bankOutExtra += Number(p.importo);
                     }
                 });
                 // Entrate da ricorrenti e programmati
@@ -2516,12 +2521,13 @@ ENI.Modules.Tesoreria = (function() {
                         if (scadKey === m.key) m.bankIn += Number(p.importo);
                     }
                 });
-                // Auto-scadenze
+                // Auto-scadenze carichi
                 autoScadenze.forEach(function(s) {
                     var scadKey = s.data_scadenza.substring(0, 7);
-                    if (scadKey === m.key) bankOutPrev += s.importo;
+                    if (scadKey === m.key) bankOutExtra += s.importo;
                 });
-                m.bankOut = bankOutPrev;
+                // Usa il maggiore tra media storica e scadenze note
+                m.bankOut = Math.max(bankOutBase, bankOutExtra) > 0 ? Math.max(bankOutBase, bankOutExtra) : bankOutBase;
 
             } else if (m.tipo === 'corrente') {
                 // Per il mese corrente: dati reali sono gia' aggregati sopra
