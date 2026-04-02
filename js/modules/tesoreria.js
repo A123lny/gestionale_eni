@@ -32,6 +32,9 @@ ENI.Modules.Tesoreria = (function() {
     var _importParsedData = null; // { headers, rows, objects }
     var _importMapping = {};
 
+    // Saldi iniziali per banca (salvati in localStorage)
+    var _saldiIniziali = _loadSaldiIniziali();
+
     // ============================================================
     // RENDER PRINCIPALE
     // ============================================================
@@ -165,8 +168,19 @@ ENI.Modules.Tesoreria = (function() {
         // Auto-scadenze da carichi
         var autoScadenze = _getAutoScadenzeCarichi(carichi);
 
-        // KPI
-        var saldoBanca = ultimoSaldo ? Number(ultimoSaldo.saldo_progressivo || 0) : 0;
+        // Castelletto: SOLO movimenti banca
+        var flussi = _buildFlussi(movimenti);
+
+        // KPI: saldo banca dall'ultimo movimento importato con saldo, oppure dal castelletto calcolato
+        var saldoBanca = 0;
+        var saldoBancaLabel = 'Nessun dato';
+        if (ultimoSaldo && ultimoSaldo.saldo_progressivo != null) {
+            saldoBanca = Number(ultimoSaldo.saldo_progressivo);
+            saldoBancaLabel = ultimoSaldo.banca.toUpperCase() + ' - ' + ENI.UI.formatData(ultimoSaldo.data_operazione);
+        } else if (flussi.length > 0) {
+            saldoBanca = flussi[flussi.length - 1].saldo || 0;
+            saldoBancaLabel = 'Calcolato al ' + ENI.UI.formatData(flussi[flussi.length - 1].data);
+        }
 
         // Scadenze nei prossimi 7gg e 30gg
         var oggiStr = ENI.UI.oggiISO();
@@ -174,9 +188,6 @@ ENI.Modules.Tesoreria = (function() {
 
         // Uscite/entrate previste 30gg
         var prev30 = _calcolaPrevisto30gg(ricorrenti, programmati, autoScadenze, accrediti30gg, mediaSpeseCassaGiorno, entrata4TS);
-
-        // Castelletto: SOLO movimenti banca
-        var flussi = _buildFlussi(movimenti);
 
         content.innerHTML =
             // Selettore periodo
@@ -193,7 +204,7 @@ ENI.Modules.Tesoreria = (function() {
 
             // KPI Cards
             '<div class="tesoreria-kpi-grid">' +
-                _renderKpiCard('Saldo Banca', saldoBanca, ultimoSaldo ? ultimoSaldo.banca.toUpperCase() + ' - ' + ENI.UI.formatData(ultimoSaldo.data_operazione) : 'Nessun dato', 'info') +
+                _renderKpiCard('Saldo Banca', saldoBanca, saldoBancaLabel, 'info') +
                 _renderKpiCard('Uscite Previste 30gg', prev30.uscite, prev30.dettaglioUscite, 'danger') +
                 _renderKpiCard('Entrate Previste 30gg', prev30.entrate, prev30.dettaglioEntrate, 'success') +
                 _renderKpiCard('Scadenze 7gg', null, scadenzeCount + ' pagament' + (scadenzeCount === 1 ? 'o' : 'i'), scadenzeCount > 0 ? 'warning' : 'success', scadenzeCount) +
@@ -570,6 +581,9 @@ ENI.Modules.Tesoreria = (function() {
     }
 
     function _renderImportZone() {
+        var saldoCarisp = _getSaldoIniziale('carisp');
+        var saldoBsi = _getSaldoIniziale('bsi');
+
         return '<div class="cassa-section tesoreria-import-zone" id="import-zone">' +
             '<div class="cassa-section-title">\u{1F4E5} Importa Estratto Conto</div>' +
             '<div class="tesoreria-import-content">' +
@@ -589,6 +603,33 @@ ENI.Modules.Tesoreria = (function() {
                             '\u{1F5D1}\uFE0F Svuota movimenti importati</button>' +
                     '</div>' +
                 '</div>' +
+
+                // Saldo iniziale per banca
+                '<div class="tesoreria-saldo-iniziale" style="margin-top:var(--space-3); padding:var(--space-3); background:var(--bg-surface, #f8f9fa); border-radius:var(--radius-md); border:1px solid var(--border-color, #dee2e6);">' +
+                    '<div style="font-weight:600; margin-bottom:var(--space-2);">\u{1F3E6} Saldo Iniziale per Banca</div>' +
+                    '<p class="text-sm text-muted" style="margin-bottom:var(--space-2);">Inserisci il saldo del conto al giorno prima del primo movimento importato. Serve per calcolare il saldo progressivo corretto.</p>' +
+                    '<div style="display:flex; gap:var(--space-4); flex-wrap:wrap;">' +
+                        '<div style="flex:1; min-width:200px;">' +
+                            '<label class="form-label">Carisp - Saldo iniziale (\u20AC)</label>' +
+                            '<div style="display:flex; gap:var(--space-2); align-items:center;">' +
+                                '<input type="number" class="form-input" id="saldo-ini-carisp" step="0.01" value="' + (saldoCarisp ? saldoCarisp.importo : '') + '" placeholder="Es. 371.18" style="flex:1;">' +
+                                '<input type="date" class="form-input" id="saldo-ini-data-carisp" value="' + (saldoCarisp ? saldoCarisp.data : '2026-01-31') + '" style="width:150px;" title="Data del saldo">' +
+                                '<button class="btn btn-sm btn-primary" id="btn-salva-saldo-carisp">Salva</button>' +
+                            '</div>' +
+                            (saldoCarisp ? '<div class="text-sm text-success" style="margin-top:2px;">\u2705 Saldo impostato: ' + ENI.UI.formatValuta(saldoCarisp.importo) + ' al ' + ENI.UI.formatData(saldoCarisp.data) + '</div>' : '') +
+                        '</div>' +
+                        '<div style="flex:1; min-width:200px;">' +
+                            '<label class="form-label">BSI - Saldo iniziale (\u20AC)</label>' +
+                            '<div style="display:flex; gap:var(--space-2); align-items:center;">' +
+                                '<input type="number" class="form-input" id="saldo-ini-bsi" step="0.01" value="' + (saldoBsi ? saldoBsi.importo : '') + '" placeholder="Es. 0.00" style="flex:1;">' +
+                                '<input type="date" class="form-input" id="saldo-ini-data-bsi" value="' + (saldoBsi ? saldoBsi.data : '2026-01-31') + '" style="width:150px;" title="Data del saldo">' +
+                                '<button class="btn btn-sm btn-primary" id="btn-salva-saldo-bsi">Salva</button>' +
+                            '</div>' +
+                            (saldoBsi ? '<div class="text-sm text-success" style="margin-top:2px;">\u2705 Saldo impostato: ' + ENI.UI.formatValuta(saldoBsi.importo) + ' al ' + ENI.UI.formatData(saldoBsi.data) + '</div>' : '') +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+
                 '<div id="import-mapper" style="margin-top:var(--space-3);"></div>' +
                 '<div id="import-preview" style="margin-top:var(--space-3);"></div>' +
                 '<div id="import-result" style="margin-top:var(--space-3);"></div>' +
@@ -609,10 +650,22 @@ ENI.Modules.Tesoreria = (function() {
         // Calcola saldo progressivo se mancante
         var hasSaldo = movOrdinati.some(function(m) { return m.saldo_progressivo != null; });
         if (!hasSaldo) {
+            // Determina saldo iniziale per banca (può essere misto se non filtrato)
             var saldoCalc = 0;
+            if (_bancaFiltro) {
+                // Una sola banca filtrata
+                var si = _getSaldoIniziale(_bancaFiltro);
+                if (si) saldoCalc = si.importo;
+            } else {
+                // Tutte le banche: somma i saldi iniziali
+                var siCarisp = _getSaldoIniziale('carisp');
+                var siBsi = _getSaldoIniziale('bsi');
+                if (siCarisp) saldoCalc += siCarisp.importo;
+                if (siBsi) saldoCalc += siBsi.importo;
+            }
             movOrdinati.forEach(function(m) {
                 saldoCalc += Number(m.importo);
-                m._saldo_calcolato = saldoCalc;
+                m._saldo_calcolato = Math.round(saldoCalc * 100) / 100;
             });
         }
 
@@ -706,6 +759,34 @@ ENI.Modules.Tesoreria = (function() {
                 if (fileInput.files.length > 0) {
                     _onFileSelected(fileInput.files[0]);
                 }
+            });
+        }
+
+        // Salva saldo iniziale per banca
+        var btnSaldoCarisp = document.getElementById('btn-salva-saldo-carisp');
+        var btnSaldoBsi = document.getElementById('btn-salva-saldo-bsi');
+
+        if (btnSaldoCarisp) {
+            btnSaldoCarisp.addEventListener('click', function() {
+                var importo = parseFloat(document.getElementById('saldo-ini-carisp').value);
+                var data = document.getElementById('saldo-ini-data-carisp').value;
+                if (isNaN(importo)) { ENI.UI.warning('Inserisci un importo valido'); return; }
+                if (!data) { ENI.UI.warning('Inserisci la data del saldo'); return; }
+                _saveSaldoIniziale('carisp', importo, data);
+                ENI.UI.success('Saldo iniziale Carisp salvato: ' + ENI.UI.formatValuta(importo) + ' al ' + ENI.UI.formatData(data));
+                _loadTab();
+            });
+        }
+
+        if (btnSaldoBsi) {
+            btnSaldoBsi.addEventListener('click', function() {
+                var importo = parseFloat(document.getElementById('saldo-ini-bsi').value);
+                var data = document.getElementById('saldo-ini-data-bsi').value;
+                if (isNaN(importo)) { ENI.UI.warning('Inserisci un importo valido'); return; }
+                if (!data) { ENI.UI.warning('Inserisci la data del saldo'); return; }
+                _saveSaldoIniziale('bsi', importo, data);
+                ENI.UI.success('Saldo iniziale BSI salvato: ' + ENI.UI.formatValuta(importo) + ' al ' + ENI.UI.formatData(data));
+                _loadTab();
             });
         }
 
@@ -1163,6 +1244,26 @@ ENI.Modules.Tesoreria = (function() {
         try {
             localStorage.setItem('tesoreria-mapping-' + banca, JSON.stringify(mapping));
         } catch(e) { /* ignore */ }
+    }
+
+    // --- Saldi iniziali per banca ---
+
+    function _loadSaldiIniziali() {
+        try {
+            var saved = localStorage.getItem('tesoreria-saldi-iniziali');
+            return saved ? JSON.parse(saved) : {};
+        } catch(e) { return {}; }
+    }
+
+    function _saveSaldoIniziale(banca, importo, data) {
+        _saldiIniziali[banca] = { importo: importo, data: data };
+        try {
+            localStorage.setItem('tesoreria-saldi-iniziali', JSON.stringify(_saldiIniziali));
+        } catch(e) { /* ignore */ }
+    }
+
+    function _getSaldoIniziale(banca) {
+        return _saldiIniziali[banca] || null;
     }
 
     // --- Parsing utilities ---
@@ -1784,13 +1885,18 @@ ENI.Modules.Tesoreria = (function() {
         // Ordina per data
         flussi.sort(function(a, b) { return a.data.localeCompare(b.data); });
 
-        // Se non abbiamo saldo dalla banca, calcoliamolo progressivamente
+        // Se non abbiamo saldo dalla banca, calcoliamolo progressivamente con saldo iniziale
         var hasSaldo = flussi.some(function(f) { return f.saldo != null; });
         if (!hasSaldo) {
+            // Somma saldi iniziali di tutte le banche
             var saldo = 0;
+            var siCarisp = _getSaldoIniziale('carisp');
+            var siBsi = _getSaldoIniziale('bsi');
+            if (siCarisp) saldo += siCarisp.importo;
+            if (siBsi) saldo += siBsi.importo;
             flussi.forEach(function(f) {
                 saldo += f.importo;
-                f.saldo = saldo;
+                f.saldo = Math.round(saldo * 100) / 100;
             });
         } else {
             // Riempi eventuali buchi nel saldo
@@ -1800,7 +1906,7 @@ ENI.Modules.Tesoreria = (function() {
                     lastSaldo = f.saldo;
                 } else {
                     lastSaldo += f.importo;
-                    f.saldo = lastSaldo;
+                    f.saldo = Math.round(lastSaldo * 100) / 100;
                 }
             });
         }
