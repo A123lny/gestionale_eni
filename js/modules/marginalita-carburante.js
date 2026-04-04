@@ -1466,7 +1466,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
             '<div class="card" style="margin-bottom:var(--space-3);">' +
                 '<div class="card-body">' +
                     '<h3 style="margin:0 0 var(--space-3) 0;">Genera Report Mensile</h3>' +
-                    '<div style="display:flex; gap:var(--space-2); align-items:center; margin-bottom:var(--space-3);">' +
+                    '<div style="display:flex; gap:var(--space-2); align-items:center; margin-bottom:var(--space-2);">' +
                         '<select id="mc-rep-mese" class="form-select" style="min-width:130px;">';
         for (var m = 0; m < 12; m++) {
             html += '<option value="'+(m+1)+'"'+(m+1===meseReport?' selected':'')+'>'+MESI[m]+'</option>';
@@ -1475,10 +1475,11 @@ ENI.Modules.MarginalitaCarburante = (function() {
         for (var a = 2024; a <= oggi.getFullYear()+1; a++) {
             html += '<option value="'+a+'"'+(a===annoReport?' selected':'')+'>'+a+'</option>';
         }
-        html += '</select>' +
-                        '<button class="btn btn-primary btn-sm" id="mc-rep-genera">Genera Anteprima</button>' +
-                        '<button class="btn btn-success btn-sm" id="mc-rep-email">Scarica Email con Report</button>' +
-                        '<button class="btn btn-outline btn-sm" id="mc-rep-pdf">Scarica PDF</button>' +
+        html += '</select></div>' +
+                    '<div style="display:flex; flex-wrap:wrap; gap:var(--space-2); margin-bottom:var(--space-3);">' +
+                        '<button class="btn btn-primary btn-sm" id="mc-rep-genera" style="white-space:nowrap;">Genera Anteprima</button>' +
+                        '<button class="btn btn-success btn-sm" id="mc-rep-email" style="white-space:nowrap;">Scarica Email con Report</button>' +
+                        '<button class="btn btn-outline btn-sm" id="mc-rep-pdf" style="white-space:nowrap;">Scarica PDF</button>' +
                     '</div>' +
                     '<div id="mc-rep-preview"></div>' +
                 '</div>' +
