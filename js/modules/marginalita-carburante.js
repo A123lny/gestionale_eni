@@ -417,6 +417,16 @@ ENI.Modules.MarginalitaCarburante = (function() {
                         _cfgField('Email destinatario', 'mc-cfg-email-dest', _config.email_destinatario || '', 'email') +
                         _cfgField('Email mittente', 'mc-cfg-email-mitt', _config.email_mittente || '', 'email') +
                     '</div>' +
+                    '<div style="margin-top:var(--space-3);">' +
+                        '<label class="form-label">Immagine Timbro e Firma</label>' +
+                        '<div style="display:flex; gap:var(--space-2); align-items:center;">' +
+                            '<input type="file" class="form-input" id="mc-cfg-timbro-file" accept="image/*" style="flex:1;">' +
+                            '<button class="btn btn-outline btn-sm" id="mc-cfg-timbro-rimuovi">Rimuovi</button>' +
+                        '</div>' +
+                        '<div id="mc-cfg-timbro-preview" style="margin-top:8px; display:' + (_config.timbro_firma_base64 ? 'block' : 'none') + ';">' +
+                            '<img id="mc-cfg-timbro-img" src="' + (_config.timbro_firma_base64 || '') + '" style="max-width:250px; max-height:120px; background:#fff; padding:4px; border:1px solid var(--border); border-radius:var(--radius-sm);">' +
+                        '</div>' +
+                    '</div>' +
                     '<button class="btn btn-primary btn-sm" id="mc-setup-save-cfg" style="margin-top:var(--space-3);">Salva Configurazione</button>' +
                 '</div>' +
             '</div>';
@@ -445,6 +455,10 @@ ENI.Modules.MarginalitaCarburante = (function() {
                     email_destinatario: document.getElementById('mc-cfg-email-dest').value,
                     email_mittente: document.getElementById('mc-cfg-email-mitt').value
                 };
+                // Includi timbro_firma_base64 se presente in _config (gestito separatamente via upload)
+                if (_config.timbro_firma_base64) {
+                    fields.timbro_firma_base64 = _config.timbro_firma_base64;
+                }
                 try {
                     for (var key in fields) {
                         await ENI.API.getClient().from(T.CONFIG).upsert({ chiave: key, valore: fields[key], updated_at: new Date().toISOString() });
@@ -452,6 +466,54 @@ ENI.Modules.MarginalitaCarburante = (function() {
                     _config = fields;
                     ENI.UI.success('Configurazione salvata');
                 } catch(e) { ENI.UI.error('Errore: ' + e.message); }
+            });
+        }
+
+        // Upload timbro e firma
+        var timbroFile = document.getElementById('mc-cfg-timbro-file');
+        if (timbroFile) {
+            timbroFile.addEventListener('change', function(e) {
+                var file = e.target.files && e.target.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = function(ev) {
+                    var img = new Image();
+                    img.onload = function() {
+                        var canvas = document.createElement('canvas');
+                        var maxW = 400, maxH = 200;
+                        var w = img.width, h = img.height;
+                        if (w > maxW) { h = h * maxW / w; w = maxW; }
+                        if (h > maxH) { w = w * maxH / h; h = maxH; }
+                        canvas.width = w;
+                        canvas.height = h;
+                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                        var base64 = canvas.toDataURL('image/png');
+                        _config.timbro_firma_base64 = base64;
+                        // Salva subito in DB
+                        ENI.API.getClient().from(T.CONFIG).upsert({ chiave: 'timbro_firma_base64', valore: base64, updated_at: new Date().toISOString() });
+                        // Aggiorna preview
+                        var cont = document.getElementById('mc-cfg-timbro-preview');
+                        var preview = document.getElementById('mc-cfg-timbro-img');
+                        if (cont && preview) { preview.src = base64; cont.style.display = 'block'; }
+                        ENI.UI.success('Immagine timbro/firma caricata');
+                    };
+                    img.src = ev.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Rimuovi timbro
+        var timbroRimuovi = document.getElementById('mc-cfg-timbro-rimuovi');
+        if (timbroRimuovi) {
+            timbroRimuovi.addEventListener('click', async function() {
+                _config.timbro_firma_base64 = '';
+                await ENI.API.getClient().from(T.CONFIG).upsert({ chiave: 'timbro_firma_base64', valore: '', updated_at: new Date().toISOString() });
+                var cont = document.getElementById('mc-cfg-timbro-preview');
+                if (cont) cont.style.display = 'none';
+                var fileInput = document.getElementById('mc-cfg-timbro-file');
+                if (fileInput) fileInput.value = '';
+                ENI.UI.success('Immagine timbro/firma rimossa');
             });
         }
 
@@ -1405,7 +1467,8 @@ ENI.Modules.MarginalitaCarburante = (function() {
         }
         html += '</select>' +
                         '<button class="btn btn-primary btn-sm" id="mc-rep-genera">Genera Anteprima</button>' +
-                        '<button class="btn btn-outline btn-sm" id="mc-rep-email">Prepara Email</button>' +
+                        '<button class="btn btn-success btn-sm" id="mc-rep-email">Scarica Email con Report</button>' +
+                        '<button class="btn btn-outline btn-sm" id="mc-rep-pdf">Scarica PDF</button>' +
                     '</div>' +
                     '<div id="mc-rep-preview"></div>' +
                 '</div>' +
@@ -1419,10 +1482,27 @@ ENI.Modules.MarginalitaCarburante = (function() {
             await _generaAnteprima(mese, anno);
         });
 
-        document.getElementById('mc-rep-email').addEventListener('click', function() {
+        document.getElementById('mc-rep-email').addEventListener('click', async function() {
             var mese = parseInt(document.getElementById('mc-rep-mese').value);
             var anno = parseInt(document.getElementById('mc-rep-anno').value);
-            _preparaEmail(mese, anno);
+            await _preparaEmail(mese, anno);
+        });
+
+        document.getElementById('mc-rep-pdf').addEventListener('click', async function() {
+            var mese = parseInt(document.getElementById('mc-rep-mese').value);
+            var anno = parseInt(document.getElementById('mc-rep-anno').value);
+            try {
+                ENI.UI.showLoading();
+                var result = await _generaReportPDF(mese, anno);
+                var pdfBlob = result.doc.output('blob');
+                var url = URL.createObjectURL(pdfBlob);
+                window.open(url, '_blank');
+                ENI.UI.hideLoading();
+                ENI.UI.success('PDF generato.');
+            } catch(e) {
+                ENI.UI.hideLoading();
+                ENI.UI.error('Errore generazione PDF: ' + e.message);
+            }
         });
     }
 
@@ -1476,27 +1556,196 @@ ENI.Modules.MarginalitaCarburante = (function() {
             '<td style="text-align:right; padding:4px;">' + _fmt(totLitri, 2) + '</td>' +
             '<td style="text-align:right; padding:4px;">' + _fmtEuro(totImporto) + '</td>' +
         '</tr></tbody></table>' +
-        '<div style="margin-top:var(--space-6); text-align:right; font-style:italic;">Timbro e Firma</div>' +
+        '<div style="margin-top:var(--space-6); text-align:right; font-style:italic;">' +
+            (_config.timbro_firma_base64 ? '<img src="' + _config.timbro_firma_base64 + '" style="max-width:200px; max-height:100px; display:block; margin-left:auto;">' : 'Timbro e Firma') +
+        '</div>' +
         '</div>';
 
         preview.innerHTML = html;
     }
 
-    function _preparaEmail(mese, anno) {
+    // Genera PDF report mensile con jsPDF
+    async function _generaReportPDF(mese, anno) {
+        var primoGiorno = anno + '-' + String(mese).padStart(2,'0') + '-01';
+        var ultimoGiorno = new Date(anno, mese, 0);
+        var fino = ultimoGiorno.getFullYear() + '-' + String(ultimoGiorno.getMonth()+1).padStart(2,'0') + '-' + String(ultimoGiorno.getDate()).padStart(2,'0');
+
+        var vendite = await ENI.API.getAll(T.VENDITE, {
+            filters: [{ op: 'gte', col: 'data_inizio', val: primoGiorno }, { op: 'lte', col: 'data_inizio', val: fino }],
+            order: { col: 'data_inizio', asc: true }
+        }) || [];
+
+        var doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        var pageW = 210, pageH = 297;
+        var marginL = 20, marginR = 20, marginT = 25;
+        var contentW = pageW - marginL - marginR;
+        var y = marginT;
+
+        var col1X = marginL;
+        var col2X = marginL + contentW * 0.55;
+        var col3X = marginL + contentW;
+        var rowH = 7;
+
+        // Intestazione
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.text('COE ' + (_config.codice_coe || 'SM 30756') + ' - ' + (_config.ragione_sociale || 'CERVELLINI ANDREA'), pageW / 2, y, { align: 'center' });
+        y += 8;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(11);
+        doc.text('MESE: ' + MESI[mese-1].toUpperCase() + ' ' + anno, pageW / 2, y, { align: 'center' });
+        y += 12;
+
+        // Intestazione tabella
+        function drawTableHeader() {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.text('DATA', col1X, y);
+            doc.text('LITRI EROGATI', col2X, y, { align: 'right' });
+            doc.text('IMPORTO', col3X, y, { align: 'right' });
+            y += 2;
+            doc.setDrawColor(0);
+            doc.setLineWidth(0.5);
+            doc.line(col1X, y, col3X, y);
+            y += 4;
+        }
+        drawTableHeader();
+
+        // Righe dati
+        var totLitri = 0, totImporto = 0;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+
+        vendite.forEach(function(v) {
+            if (y > pageH - 30) {
+                doc.addPage();
+                y = marginT;
+                drawTableHeader();
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9);
+            }
+
+            var dataLabel = _fmtData(v.data_inizio);
+            if (v.data_fine && v.data_fine !== v.data_inizio) {
+                dataLabel = 'dal ' + _fmtData(v.data_inizio).slice(0,8) + ' al ' + _fmtData(v.data_fine).slice(0,8);
+            }
+            var litri = parseFloat(v.litri_totali) || 0;
+            var importo = parseFloat(v.importo_totale) || 0;
+            totLitri += litri;
+            totImporto += importo;
+
+            doc.text(dataLabel, col1X, y);
+            doc.text(_fmt(litri, 2), col2X, y, { align: 'right' });
+            doc.text(_fmtEuro(importo), col3X, y, { align: 'right' });
+
+            y += 1;
+            doc.setDrawColor(200);
+            doc.setLineWidth(0.1);
+            doc.line(col1X, y, col3X, y);
+            y += rowH - 1;
+        });
+
+        // Riga totale
+        y += 2;
+        doc.setDrawColor(0);
+        doc.setLineWidth(0.5);
+        doc.line(col1X, y, col3X, y);
+        y += 5;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text('TOTALE', col1X, y);
+        doc.text(_fmt(totLitri, 2), col2X, y, { align: 'right' });
+        doc.text(_fmtEuro(totImporto), col3X, y, { align: 'right' });
+        y += 15;
+
+        // Footer - Timbro e Firma
+        if (_config.timbro_firma_base64) {
+            try {
+                var imgW = 50, imgH = 25;
+                doc.addImage(_config.timbro_firma_base64, 'PNG', col3X - imgW, y, imgW, imgH);
+            } catch(e) {
+                doc.setFont('helvetica', 'italic');
+                doc.setFontSize(10);
+                doc.text('Timbro e Firma', col3X, y, { align: 'right' });
+            }
+        } else {
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(10);
+            doc.text('Timbro e Firma', col3X, y, { align: 'right' });
+        }
+
+        var base64 = doc.output('datauristring').split(',')[1];
+        var filename = 'Report_Carburanti_' + MESI[mese-1] + '_' + anno + '.pdf';
+
+        return { doc: doc, base64: base64, filename: filename };
+    }
+
+    // Genera file EML con PDF allegato (formato MIME RFC 2822)
+    function _generaEML(mese, anno, pdfBase64, pdfFilename) {
         var dest = _config.email_destinatario || '';
+        var mitt = _config.email_mittente || '';
         var oggetto = 'Comunicazione mensile vendite carburanti - ' + MESI[mese-1] + ' ' + anno + ' - COE ' + (_config.codice_coe || 'SM 30756');
-        var corpo = 'Gentile Ufficio Prodotti Petroliferi,\n\n' +
-            'in allegato la comunicazione mensile delle vendite di carburante relative al mese di ' + MESI[mese-1] + ' ' + anno + '.\n\n' +
-            'COE: ' + (_config.codice_coe || 'SM 30756') + '\n' +
-            'Ragione Sociale: ' + (_config.ragione_sociale || 'CERVELLINI ANDREA') + '\n\n' +
-            'Cordiali saluti,\n' + (_config.ragione_sociale || 'Andrea Cervellini');
+        var corpo = 'Gentile Ufficio Prodotti Petroliferi,\r\n\r\n' +
+            'in allegato la comunicazione mensile delle vendite di carburante relative al mese di ' + MESI[mese-1] + ' ' + anno + '.\r\n\r\n' +
+            'COE: ' + (_config.codice_coe || 'SM 30756') + '\r\n' +
+            'Ragione Sociale: ' + (_config.ragione_sociale || 'CERVELLINI ANDREA') + '\r\n\r\n' +
+            'Cordiali saluti,\r\n' + (_config.ragione_sociale || 'Andrea Cervellini');
 
-        var mailtoUrl = 'mailto:' + encodeURIComponent(dest) +
-            '?subject=' + encodeURIComponent(oggetto) +
-            '&body=' + encodeURIComponent(corpo);
+        var boundary = '----=_Part_' + Date.now();
+        var wrappedBase64 = pdfBase64.match(/.{1,76}/g).join('\r\n');
 
-        window.open(mailtoUrl);
-        ENI.UI.success('Email preparata in Outlook. Ricordati di allegare il report.');
+        var eml =
+            'From: ' + mitt + '\r\n' +
+            'To: ' + dest + '\r\n' +
+            'Subject: ' + oggetto + '\r\n' +
+            'MIME-Version: 1.0\r\n' +
+            'Content-Type: multipart/mixed; boundary="' + boundary + '"\r\n' +
+            '\r\n' +
+            '--' + boundary + '\r\n' +
+            'Content-Type: text/plain; charset="UTF-8"\r\n' +
+            'Content-Transfer-Encoding: 8bit\r\n' +
+            '\r\n' +
+            corpo + '\r\n' +
+            '\r\n' +
+            '--' + boundary + '\r\n' +
+            'Content-Type: application/pdf; name="' + pdfFilename + '"\r\n' +
+            'Content-Transfer-Encoding: base64\r\n' +
+            'Content-Disposition: attachment; filename="' + pdfFilename + '"\r\n' +
+            '\r\n' +
+            wrappedBase64 + '\r\n' +
+            '\r\n' +
+            '--' + boundary + '--\r\n';
+
+        return eml;
+    }
+
+    // Utility download file
+    function _downloadFile(content, filename, mimeType) {
+        var blob = new Blob([content], { type: mimeType });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // Prepara email con report PDF allegato (scarica file EML)
+    async function _preparaEmail(mese, anno) {
+        try {
+            ENI.UI.showLoading();
+            var result = await _generaReportPDF(mese, anno);
+            var emlContent = _generaEML(mese, anno, result.base64, result.filename);
+            var emlFilename = 'Email_Report_' + MESI[mese-1] + '_' + anno + '.eml';
+            _downloadFile(emlContent, emlFilename, 'message/rfc822');
+            ENI.UI.hideLoading();
+            ENI.UI.success('File EML scaricato. Doppio click per aprire in Outlook e inviare.');
+        } catch(e) {
+            ENI.UI.hideLoading();
+            ENI.UI.error('Errore generazione email: ' + e.message);
+        }
     }
 
     // ============================================================
