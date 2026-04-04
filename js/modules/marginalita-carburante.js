@@ -1567,7 +1567,8 @@ ENI.Modules.MarginalitaCarburante = (function() {
             '<td style="text-align:right; padding:4px;">' + _fmtEuro(totImporto) + '</td>' +
         '</tr></tbody></table>' +
         '<div id="mc-rep-timbro-container" style="margin-top:var(--space-6); text-align:right; font-style:italic;">' +
-            (_config.timbro_firma_base64 ? '<img id="mc-rep-timbro-img" style="max-width:200px; max-height:100px; display:block; margin-left:auto;">' : 'Timbro e Firma') +
+            'Timbro e Firma' +
+            (_config.timbro_firma_base64 ? '<br><img id="mc-rep-timbro-img" style="max-width:200px; max-height:100px; display:block; margin-left:auto; margin-top:4px;">' : '') +
         '</div>' +
         '</div>';
 
@@ -1675,19 +1676,15 @@ ENI.Modules.MarginalitaCarburante = (function() {
         y += 15;
 
         // Footer - Timbro e Firma
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(10);
+        doc.text('Timbro e Firma', col3X, y, { align: 'right' });
+        y += 5;
         if (_config.timbro_firma_base64) {
             try {
                 var imgW = 50, imgH = 25;
                 doc.addImage(_config.timbro_firma_base64, 'PNG', col3X - imgW, y, imgW, imgH);
-            } catch(e) {
-                doc.setFont('helvetica', 'italic');
-                doc.setFontSize(10);
-                doc.text('Timbro e Firma', col3X, y, { align: 'right' });
-            }
-        } else {
-            doc.setFont('helvetica', 'italic');
-            doc.setFontSize(10);
-            doc.text('Timbro e Firma', col3X, y, { align: 'right' });
+            } catch(e) { /* immagine non valida, solo testo */ }
         }
 
         var base64 = doc.output('datauristring').split(',')[1];
