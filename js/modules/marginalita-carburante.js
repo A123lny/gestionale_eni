@@ -423,8 +423,8 @@ ENI.Modules.MarginalitaCarburante = (function() {
                             '<input type="file" class="form-input" id="mc-cfg-timbro-file" accept="image/*" style="flex:1;">' +
                             '<button class="btn btn-outline btn-sm" id="mc-cfg-timbro-rimuovi">Rimuovi</button>' +
                         '</div>' +
-                        '<div id="mc-cfg-timbro-preview" style="margin-top:8px; display:' + (_config.timbro_firma_base64 ? 'block' : 'none') + ';">' +
-                            '<img id="mc-cfg-timbro-img" src="' + (_config.timbro_firma_base64 || '') + '" style="max-width:250px; max-height:120px; background:#fff; padding:4px; border:1px solid var(--border); border-radius:var(--radius-sm);">' +
+                        '<div id="mc-cfg-timbro-preview" style="margin-top:8px; display:none;">' +
+                            '<img id="mc-cfg-timbro-img" style="max-width:250px; max-height:120px; background:#fff; padding:4px; border:1px solid var(--border); border-radius:var(--radius-sm);">' +
                         '</div>' +
                     '</div>' +
                     '<button class="btn btn-primary btn-sm" id="mc-setup-save-cfg" style="margin-top:var(--space-3);">Salva Configurazione</button>' +
@@ -442,6 +442,16 @@ ENI.Modules.MarginalitaCarburante = (function() {
     }
 
     function _setupSetupListeners(container) {
+        // Mostra preview timbro/firma se presente in config
+        if (_config.timbro_firma_base64) {
+            var tCont = document.getElementById('mc-cfg-timbro-preview');
+            var tImg = document.getElementById('mc-cfg-timbro-img');
+            if (tCont && tImg) {
+                tImg.src = _config.timbro_firma_base64;
+                tCont.style.display = 'block';
+            }
+        }
+
         // Salva config
         var btnCfg = document.getElementById('mc-setup-save-cfg');
         if (btnCfg) {
@@ -1556,12 +1566,18 @@ ENI.Modules.MarginalitaCarburante = (function() {
             '<td style="text-align:right; padding:4px;">' + _fmt(totLitri, 2) + '</td>' +
             '<td style="text-align:right; padding:4px;">' + _fmtEuro(totImporto) + '</td>' +
         '</tr></tbody></table>' +
-        '<div style="margin-top:var(--space-6); text-align:right; font-style:italic;">' +
-            (_config.timbro_firma_base64 ? '<img src="' + _config.timbro_firma_base64 + '" style="max-width:200px; max-height:100px; display:block; margin-left:auto;">' : 'Timbro e Firma') +
+        '<div id="mc-rep-timbro-container" style="margin-top:var(--space-6); text-align:right; font-style:italic;">' +
+            (_config.timbro_firma_base64 ? '<img id="mc-rep-timbro-img" style="max-width:200px; max-height:100px; display:block; margin-left:auto;">' : 'Timbro e Firma') +
         '</div>' +
         '</div>';
 
         preview.innerHTML = html;
+
+        // Imposta src immagine timbro via JS (evita problemi con base64 lungo nell'HTML)
+        if (_config.timbro_firma_base64) {
+            var timbroImg = document.getElementById('mc-rep-timbro-img');
+            if (timbroImg) timbroImg.src = _config.timbro_firma_base64;
+        }
     }
 
     // Genera PDF report mensile con jsPDF
