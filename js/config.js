@@ -44,8 +44,8 @@ ENI.Config = {
     RUOLI: {
         Admin: {
             label: 'Amministratore',
-            moduli: ['dashboard', 'clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'tesoreria', 'personale', 'manutenzioni', 'log', 'impostazioni'],
-            scrivere: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'tesoreria', 'personale', 'manutenzioni', 'impostazioni']
+            moduli: ['dashboard', 'clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'tesoreria', 'fatturazione', 'personale', 'manutenzioni', 'log', 'impostazioni'],
+            scrivere: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'tesoreria', 'fatturazione', 'personale', 'manutenzioni', 'impostazioni']
         },
         Cassiere: {
             label: 'Cassiere',
@@ -80,7 +80,7 @@ ENI.Config = {
             id: 'amministrazione',
             label: 'Amministrazione',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
-            children: ['cassa', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'tesoreria'],
+            children: ['cassa', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'tesoreria', 'fatturazione'],
             dividerBefore: true
         }
     ],
@@ -91,7 +91,8 @@ ENI.Config = {
         { id: 'buoni', label: 'Buoni', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>', route: '#/buoni' },
         { id: 'coefficiente-monofase', label: 'Coeff. Monofase', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>', route: '#/coefficiente-monofase' },
         { id: 'marginalita-carburante', label: 'Marg. Carburante', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>', route: '#/marginalita-carburante' },
-        { id: 'tesoreria', label: 'Tesoreria', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 17a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5s-5 2.24-5 5z"/><path d="M12 17a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5s-5 2.24-5 5z"/><path d="M7 7a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5S7 4.24 7 7z"/><line x1="12" y1="12" x2="12" y2="2"/></svg>', route: '#/tesoreria' }
+        { id: 'tesoreria', label: 'Tesoreria', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 17a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5s-5 2.24-5 5z"/><path d="M12 17a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5s-5 2.24-5 5z"/><path d="M7 7a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5S7 4.24 7 7z"/><line x1="12" y1="12" x2="12" y2="2"/></svg>', route: '#/tesoreria' },
+        { id: 'fatturazione', label: 'Fatturazione', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', route: '#/fatturazione' }
     ],
 
     // Bottom nav mobile (max 5 items, il resto in "Altro")

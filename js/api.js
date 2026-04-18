@@ -1447,6 +1447,177 @@ ENI.API = (function() {
         };
     }
 
+    // ============================================================
+    // FATTURAZIONE
+    // ============================================================
+
+    async function getProssimoNumeroFattura(anno) {
+        var result = await getClient().rpc('get_prossimo_numero_fattura', { p_anno: anno });
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    async function getImpostazioniFatturazione() {
+        var result = await getClient()
+            .from('impostazioni_fatturazione')
+            .select('*')
+            .limit(1);
+        if (result.error) throw new Error(result.error.message);
+        return (result.data && result.data.length > 0) ? result.data[0] : null;
+    }
+
+    async function salvaImpostazioniFatturazione(data) {
+        var esistente = await getImpostazioniFatturazione();
+        data.updated_at = new Date().toISOString();
+        if (esistente) {
+            var r = await getClient()
+                .from('impostazioni_fatturazione')
+                .update(data)
+                .eq('id', esistente.id)
+                .select().single();
+            if (r.error) throw new Error(r.error.message);
+            return r.data;
+        } else {
+            data.singleton = true;
+            var r2 = await getClient()
+                .from('impostazioni_fatturazione')
+                .insert(data)
+                .select().single();
+            if (r2.error) throw new Error(r2.error.message);
+            return r2.data;
+        }
+    }
+
+    async function getFatture(filtri) {
+        filtri = filtri || {};
+        var query = getClient()
+            .from('fatture')
+            .select('*, cliente:clienti(id, nome_ragione_sociale, p_iva_coe, codice_fiscale)')
+            .order('data_emissione', { ascending: false });
+
+        if (filtri.anno) query = query.eq('anno', filtri.anno);
+        if (filtri.mese_riferimento) query = query.eq('mese_riferimento', filtri.mese_riferimento);
+        if (filtri.cliente_id) query = query.eq('cliente_id', filtri.cliente_id);
+        if (filtri.stato) query = query.eq('stato', filtri.stato);
+        if (filtri.tipo) query = query.eq('tipo', filtri.tipo);
+        if (filtri.import_eni_log_id) query = query.eq('import_eni_log_id', filtri.import_eni_log_id);
+
+        if (filtri.limit) {
+            var offset = filtri.offset || 0;
+            query = query.range(offset, offset + filtri.limit - 1);
+        }
+
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getFatturaCompleta(id) {
+        var fattura = await getClient()
+            .from('fatture')
+            .select('*, cliente:clienti(*)')
+            .eq('id', id).single();
+        if (fattura.error) throw new Error(fattura.error.message);
+
+        var righe = await getClient()
+            .from('fatture_righe')
+            .select('*')
+            .eq('fattura_id', id)
+            .order('ordine', { ascending: true });
+        if (righe.error) throw new Error(righe.error.message);
+
+        var movimenti = await getClient()
+            .from('fatture_movimenti')
+            .select('*')
+            .eq('fattura_id', id)
+            .order('data_movimento', { ascending: true });
+        if (movimenti.error) throw new Error(movimenti.error.message);
+
+        return {
+            fattura: fattura.data,
+            righe: righe.data || [],
+            movimenti: movimenti.data || []
+        };
+    }
+
+    async function salvaFattura(fattura, righe, movimenti) {
+        var anno = fattura.anno || new Date(fattura.data_emissione).getFullYear();
+        if (!fattura.numero) {
+            fattura.numero = await getProssimoNumeroFattura(anno);
+            fattura.anno = anno;
+            fattura.numero_formattato = fattura.numero + '/' + anno;
+        }
+        fattura.utente_creazione = ENI.State.getUserId();
+
+        var result = await getClient()
+            .from('fatture')
+            .insert(fattura)
+            .select().single();
+        if (result.error) throw new Error(result.error.message);
+        var f = result.data;
+
+        if (righe && righe.length) {
+            var righeConId = righe.map(function(r, i) {
+                return Object.assign({}, r, { fattura_id: f.id, ordine: r.ordine != null ? r.ordine : i });
+            });
+            var r = await getClient().from('fatture_righe').insert(righeConId);
+            if (r.error) throw new Error(r.error.message);
+        }
+
+        if (movimenti && movimenti.length) {
+            var BATCH = 50;
+            for (var i = 0; i < movimenti.length; i += BATCH) {
+                var batch = movimenti.slice(i, i + BATCH).map(function(m) {
+                    return Object.assign({}, m, { fattura_id: f.id });
+                });
+                var rm = await getClient().from('fatture_movimenti').insert(batch);
+                if (rm.error) throw new Error(rm.error.message);
+            }
+        }
+
+        await scriviLog('Emessa fattura ' + f.numero_formattato, 'fatturazione',
+            { fattura_id: f.id, cliente_id: f.cliente_id, totale: f.totale });
+        return f;
+    }
+
+    async function aggiornaStatoFattura(id, stato, extra) {
+        var data = Object.assign({ stato: stato, updated_at: new Date().toISOString() }, extra || {});
+        var result = await getClient()
+            .from('fatture').update(data).eq('id', id).select().single();
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Cambio stato fattura -> ' + stato, 'fatturazione', { fattura_id: id });
+        return result.data;
+    }
+
+    async function annullaFattura(id, motivo) {
+        return aggiornaStatoFattura(id, 'ANNULLATA', { note: motivo || null });
+    }
+
+    async function getImportEniLog(anno, mese) {
+        var q = getClient().from('import_eni_log').select('*').order('created_at', { ascending: false });
+        if (anno) q = q.eq('anno', anno);
+        if (mese) q = q.eq('mese', mese);
+        var r = await q;
+        if (r.error) throw new Error(r.error.message);
+        return r.data || [];
+    }
+
+    async function registraImportEni(data) {
+        data.utente_id = ENI.State.getUserId();
+        var r = await getClient().from('import_eni_log').insert(data).select().single();
+        if (r.error) throw new Error(r.error.message);
+        return r.data;
+    }
+
+    async function aggiungiAliasCliente(clienteId, alias) {
+        var cli = await getById('clienti', clienteId);
+        var lista = cli.alias_import_eni || [];
+        var normalizzato = (alias || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        if (!normalizzato || lista.indexOf(normalizzato) >= 0) return cli;
+        lista.push(normalizzato);
+        return await update('clienti', clienteId, { alias_import_eni: lista });
+    }
+
     // API pubblica
     return {
         init: init,
@@ -1562,6 +1733,18 @@ ENI.API = (function() {
         getCarichiCarburante: getCarichiCarburante,
         getSpeseCassaPeriodo: getSpeseCassaPeriodo,
         get4TSCardMese: get4TSCardMese,
-        getCassaPeriodo: getCassaPeriodo
+        getCassaPeriodo: getCassaPeriodo,
+        // Fatturazione
+        getProssimoNumeroFattura: getProssimoNumeroFattura,
+        getImpostazioniFatturazione: getImpostazioniFatturazione,
+        salvaImpostazioniFatturazione: salvaImpostazioniFatturazione,
+        getFatture: getFatture,
+        getFatturaCompleta: getFatturaCompleta,
+        salvaFattura: salvaFattura,
+        aggiornaStatoFattura: aggiornaStatoFattura,
+        annullaFattura: annullaFattura,
+        getImportEniLog: getImportEniLog,
+        registraImportEni: registraImportEni,
+        aggiungiAliasCliente: aggiungiAliasCliente
     };
 })();
