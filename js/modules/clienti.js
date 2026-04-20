@@ -202,6 +202,73 @@ ENI.Modules.Clienti = (function() {
                     '</select>' +
                 '</div>' +
 
+                // --- Sezione fatturazione ---
+                '<div class="section-title">Dati fatturazione</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Indirizzo sede legale</label>' +
+                        '<input type="text" class="form-input" id="cl-sede-indirizzo">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">CAP</label>' +
+                        '<input type="text" class="form-input" id="cl-sede-cap">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Comune</label>' +
+                        '<input type="text" class="form-input" id="cl-sede-comune">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Prov.</label>' +
+                        '<input type="text" class="form-input" id="cl-sede-prov" maxlength="5">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Nazione</label>' +
+                        '<input type="text" class="form-input" id="cl-sede-naz" value="SM" maxlength="5">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">PEC</label>' +
+                        '<input type="email" class="form-input" id="cl-pec">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">IBAN cliente</label>' +
+                        '<input type="text" class="form-input" id="cl-iban" maxlength="40">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Pagamento fattura</label>' +
+                        '<select class="form-select" id="cl-mod-pag-fatt">' +
+                            '<option value="">Non impostato</option>' +
+                            '<option value="RIBA">RIBA</option>' +
+                            '<option value="RID_SDD">RID / SDD</option>' +
+                            '<option value="BONIFICO">Bonifico</option>' +
+                            '<option value="CONTANTI">Contanti</option>' +
+                            '<option value="FINE_MESE">Fine mese</option>' +
+                        '</select>' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Scadenza (giorni)</label>' +
+                        '<input type="number" class="form-input" id="cl-scadenza-gg" value="30" min="0" max="365">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Rif. amministrazione</label>' +
+                        '<input type="text" class="form-input" id="cl-rif-amm" placeholder="Es: Christian">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-check" style="margin-top:1.5rem;"><input type="checkbox" id="cl-monofase"> Applica coefficiente monofase in fattura</label>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Note fatturazione</label>' +
+                    '<textarea class="form-textarea" id="cl-note-fatt" rows="2"></textarea>' +
+                '</div>' +
+
                 // Listino personalizzato (solo corporate)
                 '<div id="cl-listino-section">' +
                     '<div class="section-title">\u{1F4B3} Listino Personalizzato</div>' +
@@ -302,7 +369,19 @@ ENI.Modules.Clienti = (function() {
                 targa: modal.querySelector('#cl-targa').value.trim() || null,
                 modalita_pagamento: modal.querySelector('#cl-pagamento').value,
                 listino_personalizzato: listinoPersonalizzato,
-                note: modal.querySelector('#cl-note').value.trim() || null
+                note: modal.querySelector('#cl-note').value.trim() || null,
+                sede_legale_indirizzo: modal.querySelector('#cl-sede-indirizzo').value.trim() || null,
+                sede_legale_cap: modal.querySelector('#cl-sede-cap').value.trim() || null,
+                sede_legale_comune: modal.querySelector('#cl-sede-comune').value.trim() || null,
+                sede_legale_provincia: modal.querySelector('#cl-sede-prov').value.trim() || null,
+                sede_legale_nazione: modal.querySelector('#cl-sede-naz').value.trim() || 'SM',
+                pec: modal.querySelector('#cl-pec').value.trim() || null,
+                iban: modal.querySelector('#cl-iban').value.trim() || null,
+                modalita_pagamento_fattura: modal.querySelector('#cl-mod-pag-fatt').value || null,
+                scadenza_giorni: parseInt(modal.querySelector('#cl-scadenza-gg').value, 10) || 30,
+                rif_amministrazione: modal.querySelector('#cl-rif-amm').value.trim() || null,
+                applica_monofase: modal.querySelector('#cl-monofase').checked,
+                note_fatturazione: modal.querySelector('#cl-note-fatt').value.trim() || null
             };
 
             try {
@@ -369,6 +448,18 @@ ENI.Modules.Clienti = (function() {
                     (cliente.email ? _infoRow('Email', cliente.email) : '') +
                     (cliente.note ? _infoRow('Note', cliente.note) : '') +
                     _infoRow('Cliente dal', ENI.UI.formatDataCompleta(cliente.created_at)) +
+                    // Sezione fatturazione
+                    (cliente.sede_legale_indirizzo || cliente.modalita_pagamento_fattura || cliente.iban || cliente.pec || cliente.applica_monofase ?
+                        '<div class="section-title mt-4">Dati fatturazione</div>' +
+                        (cliente.sede_legale_indirizzo ? _infoRow('Sede legale', [cliente.sede_legale_indirizzo, cliente.sede_legale_cap, cliente.sede_legale_comune, cliente.sede_legale_provincia, cliente.sede_legale_nazione].filter(Boolean).join(', ')) : '') +
+                        (cliente.pec ? _infoRow('PEC', cliente.pec) : '') +
+                        (cliente.iban ? _infoRow('IBAN', cliente.iban) : '') +
+                        (cliente.modalita_pagamento_fattura ? _infoRow('Pagamento fattura', cliente.modalita_pagamento_fattura) : '') +
+                        (cliente.scadenza_giorni ? _infoRow('Scadenza', cliente.scadenza_giorni + ' giorni') : '') +
+                        (cliente.rif_amministrazione ? _infoRow('Rif. amministrazione', cliente.rif_amministrazione) : '') +
+                        (cliente.applica_monofase ? _infoRow('Monofase', 'Attivo') : '') +
+                        (cliente.note_fatturazione ? _infoRow('Note fatturazione', cliente.note_fatturazione) : '')
+                    : '') +
                     listinoHtml +
                 '</div>' +
             '</div>';

@@ -32,6 +32,11 @@ ENI.Fatturazione.Pdf = (function() {
         var W = 210, margin = 15;
         var y = margin;
 
+        // --- Logo (se presente) ---
+        if (impostazioni && impostazioni.logo_base64) {
+            try { doc.addImage(impostazioni.logo_base64, 'PNG', margin, y, 35, 18); y += 20; } catch(e) {}
+        }
+
         // --- Header emittente ---
         doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
         doc.text(impostazioni ? (impostazioni.ragione_sociale_emittente || '') : '', margin, y);
@@ -41,7 +46,7 @@ ENI.Fatturazione.Pdf = (function() {
             var righeEm = [
                 (impostazioni.indirizzo || ''),
                 [impostazioni.cap, impostazioni.comune, impostazioni.provincia].filter(Boolean).join(' '),
-                'P.IVA: ' + (impostazioni.partita_iva || '') + (impostazioni.codice_fiscale ? '  C.F.: ' + impostazioni.codice_fiscale : '')
+                'COE/P.IVA: ' + (impostazioni.coe_piva || '')
             ];
             righeEm.forEach(function(r) { if (r.trim()) { doc.text(r, margin, y); y += 4; } });
         }
@@ -64,8 +69,7 @@ ENI.Fatturazione.Pdf = (function() {
         if (cliente) {
             var ind = [cliente.sede_legale_indirizzo, cliente.sede_legale_cap, cliente.sede_legale_comune, cliente.sede_legale_provincia].filter(Boolean).join(' ');
             doc.text(ind, margin + 2, y + 15);
-            var fisc = (cliente.p_iva_coe ? 'P.IVA/COE: ' + cliente.p_iva_coe : '') +
-                       (cliente.codice_fiscale ? '  C.F.: ' + cliente.codice_fiscale : '');
+            var fisc = cliente.p_iva_coe ? 'COE/P.IVA: ' + cliente.p_iva_coe : '';
             if (fisc.trim()) doc.text(fisc, margin + 2, y + 20);
             if (fattura.rif_amministrazione) doc.text('Rif. Amministrazione: ' + fattura.rif_amministrazione, margin + 2, y + 25);
         }
@@ -121,10 +125,12 @@ ENI.Fatturazione.Pdf = (function() {
         doc.text(linee, margin, y);
 
         // --- Timbro/firma ---
-        if (impostazioni && (impostazioni.timbro_url || impostazioni.firma_url)) {
-            try {
-                if (impostazioni.timbro_url) doc.addImage(impostazioni.timbro_url, 'PNG', W - margin - 50, y + 5, 45, 25);
-            } catch(e) { /* immagine non caricabile, skip */ }
+        var _imgY = y + 5;
+        if (impostazioni && impostazioni.timbro_base64) {
+            try { doc.addImage(impostazioni.timbro_base64, 'PNG', W - margin - 55, _imgY, 25, 25); } catch(e) {}
+        }
+        if (impostazioni && impostazioni.firma_base64) {
+            try { doc.addImage(impostazioni.firma_base64, 'PNG', W - margin - 28, _imgY, 25, 25); } catch(e) {}
         }
 
         // --- Pagine dettaglio movimenti (solo riepilogativa) ---

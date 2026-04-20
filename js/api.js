@@ -1492,7 +1492,7 @@ ENI.API = (function() {
         filtri = filtri || {};
         var query = getClient()
             .from('fatture')
-            .select('*, cliente:clienti(id, nome_ragione_sociale, p_iva_coe, codice_fiscale)')
+            .select('*, cliente:clienti(id, nome_ragione_sociale, p_iva_coe)')
             .order('data_emissione', { ascending: false });
 
         if (filtri.anno) query = query.eq('anno', filtri.anno);
