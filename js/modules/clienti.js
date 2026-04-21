@@ -19,6 +19,7 @@ ENI.Modules.Clienti = (function() {
         container.innerHTML =
             '<div class="page-header">' +
                 '<h1 class="page-title">\u{1F465} Clienti</h1>' +
+                (canWrite ? '<button class="btn btn-outline btn-sm" id="btn-import-rubrica" style="margin-right:0.5rem;">\u{1F4E5} Importa rubrica</button>' : '') +
                 (canWrite ? '<button class="btn btn-primary" id="btn-nuovo-cliente">\u2795 Nuovo Cliente</button>' : '') +
             '</div>' +
 
@@ -66,6 +67,12 @@ ENI.Modules.Clienti = (function() {
         var btnNuovo = container.querySelector('#btn-nuovo-cliente');
         if (btnNuovo) {
             btnNuovo.addEventListener('click', _showFormNuovoCliente);
+        }
+
+        // Import rubrica
+        var btnImport = container.querySelector('#btn-import-rubrica');
+        if (btnImport) {
+            btnImport.addEventListener('click', _showImportRubrica);
         }
 
         // Click su riga -> dettaglio
@@ -483,6 +490,140 @@ ENI.Modules.Clienti = (function() {
     function _pagLabel(value) {
         var found = ENI.Config.MODALITA_PAGAMENTO.find(function(m) { return m.value === value; });
         return found ? found.label : value;
+    }
+
+    // ============================================================
+    // IMPORT RUBRICA DA CSV (vecchio gestionale contabilità)
+    // CSV ; separato, encoding latin-1, colonne fisse
+    // ============================================================
+    function _showImportRubrica() {
+        var body =
+            '<div class="form-group"><label class="form-label">File rubrica clienti (.csv)</label>' +
+                '<input type="file" class="form-input" id="imp-rubrica-file" accept=".csv">' +
+                '<span class="text-xs text-muted">Formato: CSV delimitato da ; (rubrica_clienti.csv)</span></div>' +
+            '<div id="imp-rubrica-preview" style="display:none;"></div>';
+
+        var modal = ENI.UI.showModal({
+            title: '\u{1F4E5} Importa rubrica clienti',
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-primary" id="btn-esegui-import-rubrica" disabled>Importa</button>',
+            size: 'lg'
+        });
+
+        var _parsedRows = [];
+
+        modal.querySelector('#imp-rubrica-file').addEventListener('change', function(e) {
+            var file = e.target.files && e.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(ev) {
+                var text = ev.target.result;
+                var result = Papa.parse(text, { delimiter: ';', header: true, skipEmptyLines: true });
+                _parsedRows = (result.data || []).filter(function(r) {
+                    return r['nome cliente/azienda'] && r['nome cliente/azienda'].trim();
+                });
+
+                var preview = modal.querySelector('#imp-rubrica-preview');
+                preview.style.display = 'block';
+                preview.innerHTML = '<p class="mb-2"><strong>' + _parsedRows.length + ' clienti</strong> trovati nel file</p>' +
+                    '<div class="table-wrapper" style="max-height:40vh;overflow:auto;"><table class="table table-sm">' +
+                    '<thead><tr><th>Nome</th><th>Indirizzo</th><th>COE/P.IVA</th><th>IBAN</th><th>Email</th><th>Naz.</th></tr></thead>' +
+                    '<tbody>' + _parsedRows.slice(0, 30).map(function(r) {
+                        return '<tr>' +
+                            '<td>' + ENI.UI.escapeHtml(r['nome cliente/azienda'] || '') + '</td>' +
+                            '<td class="text-xs">' + ENI.UI.escapeHtml((r['indirizzo'] || '') + ' ' + (r['castello/comune'] || '')) + '</td>' +
+                            '<td class="text-xs">' + ENI.UI.escapeHtml(r['COE/P.IVA'] || '') + '</td>' +
+                            '<td class="text-xs">' + ENI.UI.escapeHtml(r['IBAN'] || '') + '</td>' +
+                            '<td class="text-xs">' + ENI.UI.escapeHtml((r['email '] || r['email'] || '')) + '</td>' +
+                            '<td>' + ENI.UI.escapeHtml(r['nazione'] || '') + '</td>' +
+                        '</tr>';
+                    }).join('') +
+                    (_parsedRows.length > 30 ? '<tr><td colspan="6" class="text-muted text-center">...e altri ' + (_parsedRows.length - 30) + '</td></tr>' : '') +
+                    '</tbody></table></div>';
+
+                modal.querySelector('#btn-esegui-import-rubrica').disabled = false;
+            };
+            reader.readAsText(file, 'latin1');
+        });
+
+        modal.querySelector('#btn-esegui-import-rubrica').addEventListener('click', async function() {
+            if (!_parsedRows.length) return;
+            var btn = modal.querySelector('#btn-esegui-import-rubrica');
+            btn.disabled = true;
+            btn.textContent = 'Importazione...';
+
+            var creati = 0, aggiornati = 0, errori = 0;
+            var clientiEsistenti = await ENI.API.getClienti();
+
+            for (var i = 0; i < _parsedRows.length; i++) {
+                var r = _parsedRows[i];
+                var nome = (r['nome cliente/azienda'] || '').trim();
+                if (!nome) continue;
+
+                var coe = (r['COE/P.IVA'] || '').trim();
+                var nazione = (r['nazione'] || 'SM').trim();
+                var email = (r['email '] || r['email'] || '').trim().split(';')[0].trim();
+                var telefono = (r['telefono'] || '').trim();
+                var iban = (r['IBAN'] || '').trim();
+                var indirizzo = (r['indirizzo'] || '').trim();
+                var cap = (r['cap'] || '').trim();
+                var comune = (r['castello/comune'] || '').trim();
+                var banca = (r['filiale banca'] || '').trim();
+
+                var dati = {
+                    nome_ragione_sociale: nome,
+                    tipo: 'Corporate',
+                    modalita_pagamento: 'Addebito_Mese',
+                    p_iva_coe: coe || null,
+                    email: email || null,
+                    telefono: telefono || null,
+                    sede_legale_indirizzo: indirizzo || null,
+                    sede_legale_cap: cap || null,
+                    sede_legale_comune: comune || null,
+                    sede_legale_nazione: nazione || 'SM',
+                    iban: iban || null,
+                    alias_import_eni: [nome.trim().toLowerCase().replace(/\s+/g, ' ')]
+                };
+
+                // Match per nome normalizzato
+                var nomeNorm = nome.trim().toLowerCase().replace(/\s+/g, ' ');
+                var esistente = clientiEsistenti.find(function(c) {
+                    return c.nome_ragione_sociale.trim().toLowerCase().replace(/\s+/g, ' ') === nomeNorm;
+                });
+
+                try {
+                    if (esistente) {
+                        // Aggiorna solo i campi vuoti
+                        var upd = {};
+                        if (!esistente.p_iva_coe && dati.p_iva_coe) upd.p_iva_coe = dati.p_iva_coe;
+                        if (!esistente.email && dati.email) upd.email = dati.email;
+                        if (!esistente.telefono && dati.telefono) upd.telefono = dati.telefono;
+                        if (!esistente.sede_legale_indirizzo && dati.sede_legale_indirizzo) upd.sede_legale_indirizzo = dati.sede_legale_indirizzo;
+                        if (!esistente.sede_legale_cap && dati.sede_legale_cap) upd.sede_legale_cap = dati.sede_legale_cap;
+                        if (!esistente.sede_legale_comune && dati.sede_legale_comune) upd.sede_legale_comune = dati.sede_legale_comune;
+                        if (!esistente.sede_legale_nazione && dati.sede_legale_nazione) upd.sede_legale_nazione = dati.sede_legale_nazione;
+                        if (!esistente.iban && dati.iban) upd.iban = dati.iban;
+                        if (Object.keys(upd).length) {
+                            await ENI.API.aggiornaCliente(esistente.id, upd);
+                            aggiornati++;
+                        }
+                    } else {
+                        await ENI.API.salvaCliente(dati);
+                        creati++;
+                    }
+                } catch(e) {
+                    console.error('Errore import cliente:', nome, e);
+                    errori++;
+                }
+            }
+
+            ENI.UI.closeModal(modal);
+            ENI.UI.toast('Import completato: ' + creati + ' creati, ' + aggiornati + ' aggiornati' + (errori ? ', ' + errori + ' errori' : ''), 'success');
+            ENI.State.cacheClear();
+            await _loadClienti();
+        });
     }
 
     return { render: render };

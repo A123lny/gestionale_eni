@@ -192,9 +192,12 @@ ENI.Fatturazione.ImportEni = (function() {
                 '<thead><tr><th>Nome file ENI</th><th>Saldo</th><th>Match</th><th>Cliente rubrica</th><th>Escludi</th></tr></thead>' +
                 '<tbody>' + rows + '</tbody>' +
             '</table></div>' +
-            '<div style="display:flex;justify-content:space-between;margin-top:1rem;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:1rem;">' +
                 '<button class="btn btn-secondary" id="imp-step2-back">\u{2190} Indietro</button>' +
-                '<button class="btn btn-primary" id="imp-step2-next">Avanti \u{2192}</button>' +
+                '<div style="display:flex;gap:0.5rem;">' +
+                    (matchati < totali ? '<button class="btn btn-warning" id="imp-step2-crea-tutti">Crea ' + (totali - matchati) + ' clienti mancanti</button>' : '') +
+                    '<button class="btn btn-primary" id="imp-step2-next">Avanti \u{2192}</button>' +
+                '</div>' +
             '</div>';
 
         // Handlers
@@ -217,6 +220,41 @@ ENI.Fatturazione.ImportEni = (function() {
                 _mapping[parseInt(cb.dataset.idx, 10)].escluso = cb.checked;
             });
         });
+        // Crea tutti i clienti mancanti
+        var btnCrea = document.getElementById('imp-step2-crea-tutti');
+        if (btnCrea) {
+            btnCrea.addEventListener('click', async function() {
+                var mancanti = _mapping.filter(function(m) { return !m.match.clienteId && !m.escluso; });
+                if (!mancanti.length) { ENI.UI.toast('Nessun cliente mancante', 'info'); return; }
+                btnCrea.disabled = true;
+                btnCrea.textContent = 'Creazione in corso...';
+                var creati = 0;
+                for (var i = 0; i < mancanti.length; i++) {
+                    var m = mancanti[i];
+                    try {
+                        var isIT = m.saldo.nomeCliente.match(/\b(srl|spa|snc|sas|srls)\b/i) && !m.saldo.idCliente;
+                        var dati = {
+                            tipo: 'Corporate',
+                            nome_ragione_sociale: m.saldo.nomeCliente,
+                            modalita_pagamento: 'Addebito_Mese',
+                            id_cliente_eni: m.saldo.idCliente || null,
+                            alias_import_eni: [ENI.Fatturazione.Parser.normalizzaNome(m.saldo.nomeCliente)]
+                        };
+                        var nuovo = await ENI.API.salvaCliente(dati);
+                        m.match = { clienteId: nuovo.id, metodo: 'auto-creato', clienteNome: nuovo.nome_ragione_sociale };
+                        m.confermato = true;
+                        _clientiDb.push(nuovo);
+                        creati++;
+                    } catch(e) {
+                        console.error('Errore creazione cliente:', m.saldo.nomeCliente, e);
+                    }
+                }
+                ENI.UI.toast(creati + ' clienti creati', 'success');
+                ENI.State.cacheClear();
+                _renderStep();
+            });
+        }
+
         document.getElementById('imp-step2-back').addEventListener('click', function() { _step = 1; _renderStep(); });
         document.getElementById('imp-step2-next').addEventListener('click', function() {
             var nonMatchati = _mapping.filter(function(m) { return !m.match.clienteId && !m.escluso; });
