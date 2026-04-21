@@ -12,11 +12,18 @@ ENI.Fatturazione.Manuale = (function() {
     var _clienteSelezionato = null;
     var _righeCounter = 0;
     var _container = null;
+    var _ibanLista = [];
 
     async function render(container) {
         _container = container;
         _clienteSelezionato = null;
         _righeCounter = 0;
+
+        // Carica IBAN emittente
+        try {
+            var imp = await ENI.API.getImpostazioniFatturazione();
+            _ibanLista = (imp && imp.iban_lista && Array.isArray(imp.iban_lista)) ? imp.iban_lista : [];
+        } catch(e) { _ibanLista = []; }
 
         container.innerHTML =
             '<div class="card"><div class="card-body">' +
@@ -52,6 +59,8 @@ ENI.Fatturazione.Manuale = (function() {
                         '<div class="form-group"><label class="form-label">Scadenza giorni</label>' +
                             '<input type="number" class="form-input" id="fatt-m-scadgg" value="30" min="0" max="365"></div>' +
                     '</div>' +
+                    '<div class="form-group" id="fatt-m-iban-group" style="display:none;"><label class="form-label">IBAN beneficiario</label>' +
+                        '<select class="form-select" id="fatt-m-iban"></select></div>' +
                     '<div class="form-group"><label class="form-label">Note</label>' +
                         '<textarea class="form-input" id="fatt-m-note" rows="2"></textarea></div>' +
                 '</fieldset>' +
@@ -111,6 +120,14 @@ ENI.Fatturazione.Manuale = (function() {
             document.getElementById('fatt-m-cerca-results'),
             { clearOnSelect: false, onSelect: _onClienteSelezionato }
         );
+
+        // Popola dropdown IBAN e mostra/nascondi in base a modalità pagamento
+        _popolaDropdownIban();
+        document.getElementById('fatt-m-modpag').addEventListener('change', function() {
+            var val = document.getElementById('fatt-m-modpag').value;
+            var show = (val === 'BONIFICO' || val === 'RIBA' || val === 'RID_SDD');
+            document.getElementById('fatt-m-iban-group').style.display = show ? '' : 'none';
+        });
 
         // Aggiungi riga
         document.getElementById('fatt-m-add-riga').addEventListener('click', _aggiungiRiga);
@@ -175,6 +192,17 @@ ENI.Fatturazione.Manuale = (function() {
                 (cliente.rif_amministrazione ? '<br>Rif. amm.: ' + ENI.UI.escapeHtml(cliente.rif_amministrazione) : '') +
                 (cliente.modalita_pagamento_fattura ? '<br>Pagamento: ' + cliente.modalita_pagamento_fattura + ' - Scadenza: ' + (cliente.scadenza_giorni || 30) + 'gg' : '') +
             '</div>';
+    }
+
+    function _popolaDropdownIban() {
+        var sel = document.getElementById('fatt-m-iban');
+        if (!sel) return;
+        var opts = '<option value="">-- Nessuno --</option>';
+        _ibanLista.forEach(function(item) {
+            var label = (item.banca ? item.banca + ' \u2014 ' : '') + item.iban;
+            opts += '<option value="' + ENI.UI.escapeHtml(item.iban) + '">' + ENI.UI.escapeHtml(label) + '</option>';
+        });
+        sel.innerHTML = opts;
     }
 
     function _aggiungiRiga() {
@@ -295,13 +323,9 @@ ENI.Fatturazione.Manuale = (function() {
             }
         }
 
-        // IBAN emittente per bonifico
-        if (fattura.modalita_pagamento === 'BONIFICO') {
-            try {
-                var imp = await ENI.API.getImpostazioniFatturazione();
-                if (imp && imp.iban_default) fattura.iban_beneficiario = imp.iban_default;
-            } catch(e) {}
-        }
+        // IBAN dal dropdown
+        var ibanSel = document.getElementById('fatt-m-iban').value;
+        if (ibanSel) fattura.iban_beneficiario = ibanSel;
 
         try {
             var f = await ENI.API.salvaFattura(fattura, righe, null);

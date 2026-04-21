@@ -371,7 +371,7 @@ ENI.Fatturazione.ImportEni = (function() {
                     anno_riferimento: _annoSelez,
                     totale: m.saldo.saldo || 0,
                     modalita_pagamento: cli && cli.modalita_pagamento_fattura ? cli.modalita_pagamento_fattura : null,
-                    iban_beneficiario: (cli && cli.modalita_pagamento_fattura === 'BONIFICO' && impostazioni) ? impostazioni.iban_default : null,
+                    iban_beneficiario: (cli && (cli.modalita_pagamento_fattura === 'BONIFICO' || cli.modalita_pagamento_fattura === 'RIBA' || cli.modalita_pagamento_fattura === 'RID_SDD') && impostazioni && impostazioni.iban_lista && impostazioni.iban_lista.length) ? impostazioni.iban_lista[0].iban : null,
                     stato: 'EMESSA',
                     rif_amministrazione: cli ? cli.rif_amministrazione : null,
                     import_eni_log_id: importLog.id || null

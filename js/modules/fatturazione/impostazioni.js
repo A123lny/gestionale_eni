@@ -1,6 +1,6 @@
 // ============================================================
 // FATTURAZIONE - Impostazioni emittente (dati Cervellini Andrea)
-// Upload immagini in base64 (pattern da marginalita-carburante)
+// Upload immagini in base64 + IBAN multipli con righe dinamiche
 // ============================================================
 
 var ENI = ENI || {};
@@ -10,6 +10,7 @@ ENI.Fatturazione.Impostazioni = (function() {
     'use strict';
 
     var _data = null;
+    var _ibanLista = []; // [{banca, iban}]
 
     async function render(container) {
         container.innerHTML = '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>';
@@ -17,6 +18,8 @@ ENI.Fatturazione.Impostazioni = (function() {
         catch(e) { container.innerHTML = '<p class="text-danger">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p>'; return; }
 
         var d = _data || {};
+        _ibanLista = (d.iban_lista && Array.isArray(d.iban_lista)) ? d.iban_lista.slice() : [];
+
         container.innerHTML =
             '<div class="card"><div class="card-body">' +
             '<h3 class="mb-3">Dati emittente fattura</h3>' +
@@ -30,7 +33,12 @@ ENI.Fatturazione.Impostazioni = (function() {
                     _input('Nazione', 'nazione', d.nazione || 'SM') +
                 '</div>' +
                 _input('COE (SM) / P.IVA (IT)', 'coe_piva', d.coe_piva) +
-                _input('IBAN di default', 'iban_default', d.iban_default) +
+                // IBAN multipli
+                '<hr style="margin:1rem 0;">' +
+                '<h4 class="mb-2">Conti bancari (IBAN)</h4>' +
+                '<div id="imp-iban-lista"></div>' +
+                '<button type="button" class="btn btn-outline btn-sm mt-2 mb-3" id="imp-iban-aggiungi">+ Aggiungi IBAN</button>' +
+                '<hr style="margin:1rem 0;">' +
                 '<div class="form-row">' +
                     _input('Scadenza default (giorni)', 'scadenza_default_giorni', d.scadenza_default_giorni || 30) +
                 '</div>' +
@@ -44,8 +52,55 @@ ENI.Fatturazione.Impostazioni = (function() {
                 '<div class="mt-3"><button type="submit" class="btn btn-primary">Salva impostazioni</button></div>' +
             '</form></div></div>';
 
+        _renderIbanLista();
+        _attachIbanHandlers();
         _attachSubmit();
         _attachImageUploads();
+    }
+
+    // --- IBAN dinamici ---
+    function _renderIbanLista() {
+        var box = document.getElementById('imp-iban-lista');
+        if (!box) return;
+        if (!_ibanLista.length) {
+            box.innerHTML = '<p class="text-muted text-sm">Nessun IBAN inserito</p>';
+            return;
+        }
+        box.innerHTML = _ibanLista.map(function(item, i) {
+            return '<div class="form-row imp-iban-row" data-idx="' + i + '" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
+                '<div class="form-group" style="flex:1;"><label class="form-label">Nome banca</label>' +
+                    '<input type="text" class="form-input imp-iban-banca" value="' + _esc(item.banca || '') + '" placeholder="Es: Carisp"></div>' +
+                '<div class="form-group" style="flex:2;"><label class="form-label">IBAN</label>' +
+                    '<input type="text" class="form-input imp-iban-val" value="' + _esc(item.iban || '') + '" placeholder="SM00 0000 0000 0000 0000 0000 000" maxlength="40"></div>' +
+                '<button type="button" class="btn btn-danger btn-sm imp-iban-rimuovi" style="margin-bottom:0.75rem;">&times;</button>' +
+            '</div>';
+        }).join('');
+    }
+
+    function _attachIbanHandlers() {
+        document.getElementById('imp-iban-aggiungi').addEventListener('click', function() {
+            _ibanLista.push({ banca: '', iban: '' });
+            _renderIbanLista();
+        });
+        document.getElementById('imp-iban-lista').addEventListener('click', function(e) {
+            var btn = e.target.closest('.imp-iban-rimuovi');
+            if (!btn) return;
+            var row = btn.closest('.imp-iban-row');
+            var idx = parseInt(row.dataset.idx, 10);
+            _ibanLista.splice(idx, 1);
+            _renderIbanLista();
+        });
+    }
+
+    function _raccogliIban() {
+        var rows = document.querySelectorAll('.imp-iban-row');
+        var lista = [];
+        rows.forEach(function(row) {
+            var banca = row.querySelector('.imp-iban-banca').value.trim();
+            var iban = row.querySelector('.imp-iban-val').value.trim();
+            if (iban) lista.push({ banca: banca, iban: iban });
+        });
+        return lista;
     }
 
     // --- Generatori HTML ---
@@ -70,7 +125,7 @@ ENI.Fatturazione.Impostazioni = (function() {
         '</div>';
     }
 
-    // --- Upload immagini con resize e base64 ---
+    // --- Upload immagini ---
     function _attachImageUploads() {
         ['logo', 'timbro', 'firma'].forEach(function(key) {
             var fileInput = document.getElementById('imp-file-' + key);
@@ -89,16 +144,15 @@ ENI.Fatturazione.Impostazioni = (function() {
                             var w = img.width, h = img.height;
                             if (w > maxW) { h = h * maxW / w; w = maxW; }
                             if (h > maxH) { w = w * maxH / h; h = maxH; }
-                            canvas.width = w;
-                            canvas.height = h;
+                            canvas.width = w; canvas.height = h;
                             canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                            var base64 = canvas.toDataURL('image/png');
+                            var b64 = canvas.toDataURL('image/png');
                             if (!_data) _data = {};
-                            _data[key + '_base64'] = base64;
+                            _data[key + '_base64'] = b64;
                             var preview = document.getElementById('imp-preview-' + key);
                             var imgEl = document.getElementById('imp-img-' + key);
-                            if (preview && imgEl) { imgEl.src = base64; preview.style.display = 'block'; }
-                            ENI.UI.toast(label(key) + ' caricato', 'success');
+                            if (preview && imgEl) { imgEl.src = b64; preview.style.display = 'block'; }
+                            ENI.UI.toast(_labelImg(key) + ' caricato', 'success');
                         };
                         img.src = ev.target.result;
                     };
@@ -114,13 +168,13 @@ ENI.Fatturazione.Impostazioni = (function() {
                     if (preview) preview.style.display = 'none';
                     var fi = document.getElementById('imp-file-' + key);
                     if (fi) fi.value = '';
-                    ENI.UI.toast(label(key) + ' rimosso', 'info');
+                    ENI.UI.toast(_labelImg(key) + ' rimosso', 'info');
                 });
             }
         });
     }
 
-    function label(key) {
+    function _labelImg(key) {
         return key === 'logo' ? 'Logo' : key === 'timbro' ? 'Timbro' : 'Firma';
     }
 
@@ -132,7 +186,13 @@ ENI.Fatturazione.Impostazioni = (function() {
             var payload = {};
             fd.forEach(function(v, k) { payload[k] = v || null; });
             if (payload.scadenza_default_giorni) payload.scadenza_default_giorni = parseInt(payload.scadenza_default_giorni, 10);
-            // Includi immagini base64 dallo state
+
+            // IBAN lista
+            var ibanList = _raccogliIban();
+            payload.iban_lista = ibanList;
+            payload.iban_default = ibanList.length ? ibanList[0].iban : null;
+
+            // Immagini base64
             if (_data) {
                 ['logo_base64', 'timbro_base64', 'firma_base64'].forEach(function(k) {
                     if (_data[k] !== undefined) payload[k] = _data[k] || null;
@@ -140,6 +200,7 @@ ENI.Fatturazione.Impostazioni = (function() {
             }
             try {
                 _data = await ENI.API.salvaImpostazioniFatturazione(payload);
+                _ibanLista = ibanList;
                 ENI.UI.toast('Impostazioni salvate', 'success');
             } catch(err) {
                 ENI.UI.toast('Errore: ' + err.message, 'danger');
@@ -149,5 +210,8 @@ ENI.Fatturazione.Impostazioni = (function() {
 
     function _esc(s) { return ENI.UI.escapeHtml(s); }
 
-    return { render: render };
+    // Esponi getter per iban_lista (usato da manuale.js e import-eni.js)
+    function getIbanLista() { return _ibanLista; }
+
+    return { render: render, getIbanLista: getIbanLista };
 })();
