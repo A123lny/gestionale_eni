@@ -1,24 +1,9 @@
 -- ============================================================
--- FIX: Rinomina colonne impostazioni_fatturazione
--- Eseguire SOLO se hai già eseguito 009_fatturazione.sql
--- Se non l'hai ancora eseguito, usa direttamente 009 aggiornato
+-- FIX: Aggiornamenti post-009_fatturazione.sql
+-- Usa IF NOT EXISTS / IF EXISTS per idempotenza
 -- ============================================================
 
--- Rinomina partita_iva -> coe_piva
-ALTER TABLE impostazioni_fatturazione RENAME COLUMN partita_iva TO coe_piva;
-
--- Rimuovi codice_fiscale emittente
-ALTER TABLE impostazioni_fatturazione DROP COLUMN IF EXISTS codice_fiscale;
-
--- Rinomina url -> base64 per immagini
-ALTER TABLE impostazioni_fatturazione RENAME COLUMN logo_url TO logo_base64;
-ALTER TABLE impostazioni_fatturazione RENAME COLUMN timbro_url TO timbro_base64;
-ALTER TABLE impostazioni_fatturazione RENAME COLUMN firma_url TO firma_base64;
-
--- Rimuovi codice_fiscale da clienti (non serve a San Marino)
-ALTER TABLE clienti DROP COLUMN IF EXISTS codice_fiscale;
-
--- Aggiorna CHECK modalita_pagamento su fatture e clienti (aggiunge FINE_MESE)
+-- Aggiorna CHECK modalita_pagamento (aggiunge FINE_MESE)
 ALTER TABLE fatture DROP CONSTRAINT IF EXISTS fatture_modalita_pagamento_check;
 ALTER TABLE fatture ADD CONSTRAINT fatture_modalita_pagamento_check
     CHECK (modalita_pagamento IN ('RIBA','RID_SDD','BONIFICO','CONTANTI','FINE_MESE'));

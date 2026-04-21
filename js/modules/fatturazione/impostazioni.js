@@ -77,14 +77,28 @@ ENI.Fatturazione.Impostazioni = (function() {
         }).join('');
     }
 
+    function _syncIbanFromDom() {
+        var rows = document.querySelectorAll('.imp-iban-row');
+        var lista = [];
+        rows.forEach(function(row) {
+            lista.push({
+                banca: row.querySelector('.imp-iban-banca').value.trim(),
+                iban: row.querySelector('.imp-iban-val').value.trim()
+            });
+        });
+        _ibanLista = lista;
+    }
+
     function _attachIbanHandlers() {
         document.getElementById('imp-iban-aggiungi').addEventListener('click', function() {
+            _syncIbanFromDom();
             _ibanLista.push({ banca: '', iban: '' });
             _renderIbanLista();
         });
         document.getElementById('imp-iban-lista').addEventListener('click', function(e) {
             var btn = e.target.closest('.imp-iban-rimuovi');
             if (!btn) return;
+            _syncIbanFromDom();
             var row = btn.closest('.imp-iban-row');
             var idx = parseInt(row.dataset.idx, 10);
             _ibanLista.splice(idx, 1);
