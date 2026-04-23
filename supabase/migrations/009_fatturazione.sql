@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS fatture_movimenti (
     fattura_id      UUID NOT NULL REFERENCES fatture(id) ON DELETE CASCADE,
     data_movimento  TIMESTAMPTZ NOT NULL,
     scontrino       VARCHAR(50),
-    id_transazione  VARCHAR(50) UNIQUE,
+    id_transazione  VARCHAR(50),
     targa           VARCHAR(50),
     autista         VARCHAR(100),
     num_carta       VARCHAR(50),

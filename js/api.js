@@ -1654,7 +1654,7 @@ ENI.API = (function() {
             return { descrizione: r.descrizione, quantita: r.quantita, unita_misura: r.unita_misura, prezzo_unitario: r.prezzo_unitario, importo: r.importo, categoria: r.categoria, ordine: r.ordine };
         });
         var movimenti = full.movimenti.map(function(m) {
-            return { data_movimento: m.data_movimento, scontrino: m.scontrino, id_transazione: m.id_transazione ? m.id_transazione + '_re' : null, targa: m.targa, autista: m.autista, num_carta: m.num_carta, prodotto: m.prodotto, tipo_servizio: m.tipo_servizio, prezzo_unitario: m.prezzo_unitario, volume: m.volume, importo: m.importo, categoria: m.categoria };
+            return { data_movimento: m.data_movimento, scontrino: m.scontrino, id_transazione: m.id_transazione, targa: m.targa, autista: m.autista, num_carta: m.num_carta, prodotto: m.prodotto, tipo_servizio: m.tipo_servizio, prezzo_unitario: m.prezzo_unitario, volume: m.volume, importo: m.importo, categoria: m.categoria };
         });
 
         var result = await salvaFattura(nuova, righe, movimenti.length ? movimenti : null);

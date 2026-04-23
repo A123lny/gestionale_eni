@@ -298,11 +298,21 @@ ENI.Fatturazione.Elenco = (function() {
                 }).join('') + '</tbody></table>';
         }
 
+        var tipoDocOpts = '';
+        if (isBozza) {
+            tipoDocOpts = '<div class="form-group"><label class="form-label">Tipo documento</label>' +
+                '<select class="form-select" id="mod-fatt-tipodoc">' +
+                    '<option value="FATTURA"' + (f.tipo_documento === 'FATTURA' ? ' selected' : '') + '>Fattura</option>' +
+                    '<option value="RICEVUTA"' + (f.tipo_documento === 'RICEVUTA' ? ' selected' : '') + '>Ricevuta</option>' +
+                '</select></div>';
+        }
+
         var body =
             '<form id="form-mod-fatt">' +
                 '<p><strong>' + (f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura') + ' ' + f.numero_formattato + '</strong> &mdash; Stato: ' + f.stato + '</p>' +
                 '<p>Cliente: <strong>' + ENI.UI.escapeHtml(f.cliente ? f.cliente.nome_ragione_sociale : '') + '</strong></p>' +
                 '<div class="form-row">' +
+                    tipoDocOpts +
                     '<div class="form-group"><label class="form-label">Data scadenza</label>' +
                         '<input type="date" class="form-input" id="mod-fatt-scad" value="' + (f.data_scadenza || '') + '"></div>' +
                     '<div class="form-group"><label class="form-label">Modalit\u00e0 pagamento</label>' +
@@ -346,6 +356,15 @@ ENI.Fatturazione.Elenco = (function() {
                 note: modal.querySelector('#mod-fatt-note').value.trim() || null
             };
 
+            var nuovoTipoDoc = null;
+            if (isBozza) {
+                var selTipoDoc = modal.querySelector('#mod-fatt-tipodoc');
+                if (selTipoDoc) {
+                    nuovoTipoDoc = selTipoDoc.value;
+                    dati.tipo_documento = nuovoTipoDoc;
+                }
+            }
+
             var nuoveRighe = null;
             if (isBozza) {
                 nuoveRighe = [];
@@ -370,6 +389,22 @@ ENI.Fatturazione.Elenco = (function() {
 
             try {
                 await ENI.API.aggiornaFattura(f.id, dati, nuoveRighe);
+
+                // Se il tipo documento è cambiato, proponi aggiornamento anagrafica cliente
+                if (nuovoTipoDoc && nuovoTipoDoc !== f.tipo_documento && f.cliente_id) {
+                    var nuovoTipoCliente = nuovoTipoDoc === 'RICEVUTA' ? 'Privato' : 'Corporate';
+                    var clienteNome = f.cliente ? f.cliente.nome_ragione_sociale : '';
+                    var aggiornaCliente = await ENI.UI.confirm(
+                        'Hai cambiato da ' + (f.tipo_documento === 'FATTURA' ? 'Fattura' : 'Ricevuta') + ' a ' + (nuovoTipoDoc === 'FATTURA' ? 'Fattura' : 'Ricevuta') + '.\n\n' +
+                        'Vuoi aggiornare anche il tipo del cliente "' + clienteNome + '" a ' + nuovoTipoCliente + '?\n' +
+                        'Cos\u00ec i prossimi documenti saranno automaticamente ' + (nuovoTipoDoc === 'RICEVUTA' ? 'ricevute' : 'fatture') + '.'
+                    );
+                    if (aggiornaCliente) {
+                        await ENI.API.aggiornaCliente(f.cliente_id, { tipo: nuovoTipoCliente });
+                        ENI.State.cacheClear();
+                    }
+                }
+
                 ENI.UI.closeModal(modal);
                 ENI.UI.toast('Documento aggiornato', 'success');
                 _ricarica();
