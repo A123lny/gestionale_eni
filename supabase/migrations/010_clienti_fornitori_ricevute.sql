@@ -20,7 +20,10 @@ ALTER TABLE fatturazione_progressivo ADD PRIMARY KEY (anno, tipo_documento);
 
 -- 4. Aggiornare unique su fatture per includere tipo_documento
 ALTER TABLE fatture DROP CONSTRAINT IF EXISTS fatture_anno_numero_key;
-ALTER TABLE fatture ADD CONSTRAINT fatture_anno_numero_tipo_key UNIQUE (anno, numero, tipo_documento);
+DO $$ BEGIN
+    ALTER TABLE fatture ADD CONSTRAINT fatture_anno_numero_tipo_key UNIQUE (anno, numero, tipo_documento);
+EXCEPTION WHEN duplicate_table THEN NULL;
+END $$;
 
 -- 5. RPC per numero ricevuta (parallela a fattura)
 CREATE OR REPLACE FUNCTION get_prossimo_numero_documento(p_anno INT, p_tipo VARCHAR DEFAULT 'FATTURA')

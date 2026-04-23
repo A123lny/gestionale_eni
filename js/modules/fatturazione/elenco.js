@@ -142,7 +142,7 @@ ENI.Fatturazione.Elenco = (function() {
                     '<button class="btn btn-sm btn-secondary btn-pdf" data-id="' + f.id + '">PDF</button> ' +
                     (f.stato !== 'ANNULLATA' ? '<button class="btn btn-sm btn-outline btn-modifica" data-id="' + f.id + '">Modifica</button> ' : '') +
                     (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-success btn-paga" data-id="' + f.id + '">Pagata</button> ' : '') +
-                    (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-warning btn-riemetti" data-id="' + f.id + '" data-tipo="' + f.tipo_documento + '">' + (f.tipo_documento === 'FATTURA' ? '\u{2192} Ricevuta' : '\u{2192} Fattura') + '</button> ' : '') +
+                    (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-warning btn-riemetti" data-id="' + f.id + '" data-tipo="' + f.tipo_documento + '" data-cliente-id="' + f.cliente_id + '" data-cliente-nome="' + ENI.UI.escapeHtml(cli) + '">' + (f.tipo_documento === 'FATTURA' ? '\u{2192} Ricevuta' : '\u{2192} Fattura') + '</button> ' : '') +
                     (f.stato !== 'ANNULLATA' ? '<button class="btn btn-sm btn-danger btn-annulla" data-id="' + f.id + '">Annulla</button>' : '') +
                 '</td>' +
             '</tr>';
@@ -201,10 +201,27 @@ ENI.Fatturazione.Elenco = (function() {
                 var tipoAttuale = b.dataset.tipo;
                 var nuovoTipo = tipoAttuale === 'FATTURA' ? 'RICEVUTA' : 'FATTURA';
                 var label = nuovoTipo === 'FATTURA' ? 'Fattura' : 'Ricevuta';
+                var clienteNome = b.dataset.clienteNome || '';
+                var clienteId = b.dataset.clienteId;
+
                 if (!await ENI.UI.confirm('Annullare questo documento e riemetterlo come ' + label + '?\nIl numero attuale rester\u00e0 occupato, verr\u00e0 assegnato un nuovo numero.')) return;
                 try {
                     var nuova = await ENI.API.annullaERiemetti(b.dataset.id, nuovoTipo);
                     ENI.UI.toast(label + ' ' + nuova.numero_formattato + ' emessa', 'success');
+
+                    // Proponi aggiornamento tipo cliente
+                    if (clienteId) {
+                        var nuovoTipoCliente = nuovoTipo === 'RICEVUTA' ? 'Privato' : 'Corporate';
+                        var tipoClienteAttuale = nuovoTipo === 'RICEVUTA' ? 'Corporate/Fornitore' : 'Privato';
+                        var aggiornaCliente = await ENI.UI.confirm(
+                            'Vuoi aggiornare anche il tipo del cliente "' + clienteNome + '" da ' + tipoClienteAttuale + ' a ' + nuovoTipoCliente + '?\n' +
+                            'Cos\u00ec i prossimi documenti saranno automaticamente ' + (nuovoTipo === 'RICEVUTA' ? 'ricevute' : 'fatture') + '.'
+                        );
+                        if (aggiornaCliente) {
+                            await ENI.API.aggiornaCliente(clienteId, { tipo: nuovoTipoCliente });
+                            ENI.State.cacheClear();
+                        }
+                    }
                     _ricarica();
                 } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
             });
