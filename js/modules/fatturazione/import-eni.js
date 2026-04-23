@@ -138,8 +138,17 @@ ENI.Fatturazione.ImportEni = (function() {
                     ((m === _meseSelez) || (m === _meseSelez + 1 && c.dataMovimento.getDate() === 1));
             });
 
-            if (!_saldi.length) {
-                ENI.UI.toast('Nessun consuntivo trovato per ' + _meseSelez + '/' + _annoSelez + ' nel file saldi', 'danger');
+            console.log('Saldi parsed totali:', ENI.Fatturazione.Parser.parseSaldi(bufSaldi).length,
+                'Filtrati per', _meseSelez + '/' + _annoSelez + ':', _saldi.length);
+            if (_saldi.length) {
+                console.log('Primo saldo:', JSON.stringify(_saldi[0]));
+            } else {
+                // Mostra i mesi disponibili per debug
+                var tuttiSaldi = ENI.Fatturazione.Parser.parseSaldi(bufSaldi);
+                var mesiDisp = {};
+                tuttiSaldi.forEach(function(s) { mesiDisp[s.meseCompetenza + '/' + s.annoCompetenza] = (mesiDisp[s.meseCompetenza + '/' + s.annoCompetenza] || 0) + 1; });
+                console.log('Mesi disponibili nel file:', mesiDisp);
+                ENI.UI.toast('Nessun consuntivo per ' + _meseSelez + '/' + _annoSelez + '. Mesi nel file: ' + Object.keys(mesiDisp).join(', '), 'danger');
                 _renderStep(); return;
             }
 
