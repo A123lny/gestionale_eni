@@ -120,13 +120,15 @@ ENI.Fatturazione.Elenco = (function() {
             return '<div class="empty-state"><div class="empty-state-icon">\u{1F4C4}</div><p class="empty-state-text">Nessuna fattura per i filtri selezionati</p></div>';
         }
 
+        var numBozze = _fatture.filter(function(f) { return f.stato === 'BOZZA'; }).length;
         var totali = _fatture.reduce(function(acc, f) {
             var t = parseFloat(f.totale) || 0;
             acc.tot += t;
             if (f.stato === 'PAGATA') acc.pagato += t;
             else if (f.stato === 'EMESSA') acc.emesso += t;
+            else if (f.stato === 'BOZZA') acc.bozza += t;
             return acc;
-        }, { tot: 0, emesso: 0, pagato: 0 });
+        }, { tot: 0, emesso: 0, pagato: 0, bozza: 0 });
 
         var rows = _fatture.map(function(f) {
             var cli = f.cliente ? f.cliente.nome_ragione_sociale : '';
@@ -141,6 +143,7 @@ ENI.Fatturazione.Elenco = (function() {
                 '<td style="white-space:nowrap;">' +
                     '<button class="btn btn-sm btn-secondary btn-pdf" data-id="' + f.id + '">PDF</button> ' +
                     (f.stato !== 'ANNULLATA' ? '<button class="btn btn-sm btn-outline btn-modifica" data-id="' + f.id + '">Modifica</button> ' : '') +
+                    (f.stato === 'BOZZA' ? '<button class="btn btn-sm btn-primary btn-emetti" data-id="' + f.id + '">Emetti</button> ' : '') +
                     (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-success btn-paga" data-id="' + f.id + '">Pagata</button> ' : '') +
                     (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-warning btn-riemetti" data-id="' + f.id + '" data-tipo="' + f.tipo_documento + '" data-cliente-id="' + f.cliente_id + '" data-cliente-nome="' + ENI.UI.escapeHtml(cli) + '">' + (f.tipo_documento === 'FATTURA' ? '\u{2192} Ricevuta' : '\u{2192} Fattura') + '</button> ' : '') +
                     (f.stato !== 'ANNULLATA' ? '<button class="btn btn-sm btn-danger btn-annulla" data-id="' + f.id + '">Annulla</button>' : '') +
@@ -148,12 +151,16 @@ ENI.Fatturazione.Elenco = (function() {
             '</tr>';
         }).join('');
 
-        return '<div class="table-wrapper"><table class="table table-hover">' +
-            '<thead><tr><th>N°</th><th>Data</th><th>Cliente</th><th>Tipo</th><th class="text-right">Totale</th><th>Scadenza</th><th>Stato</th><th>Azioni</th></tr></thead>' +
+        return (numBozze ? '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;padding:0.75rem;background:var(--bg-warning-subtle,#fff3cd);border-radius:var(--radius-sm);">' +
+                '<span><strong>' + numBozze + ' bozze</strong> in attesa di emissione (\u20AC ' + _fmtNum(totali.bozza) + ')</span>' +
+                '<button class="btn btn-primary btn-sm" id="btn-emetti-tutte">Emetti tutte le bozze</button>' +
+            '</div>' : '') +
+            '<div class="table-wrapper"><table class="table table-hover">' +
+            '<thead><tr><th>N\u00b0</th><th>Data</th><th>Cliente</th><th>Tipo</th><th class="text-right">Totale</th><th>Scadenza</th><th>Stato</th><th>Azioni</th></tr></thead>' +
             '<tbody>' + rows + '</tbody>' +
             '<tfoot><tr><th colspan="4" class="text-right">Totali:</th>' +
-                '<th class="text-right">€ ' + _fmtNum(totali.tot) + '</th>' +
-                '<th colspan="3">Emesso: € ' + _fmtNum(totali.emesso) + ' - Pagato: € ' + _fmtNum(totali.pagato) + '</th></tr></tfoot>' +
+                '<th class="text-right">\u20AC ' + _fmtNum(totali.tot) + '</th>' +
+                '<th colspan="3">Bozze: \u20AC ' + _fmtNum(totali.bozza) + ' | Emesso: \u20AC ' + _fmtNum(totali.emesso) + ' | Pagato: \u20AC ' + _fmtNum(totali.pagato) + '</th></tr></tfoot>' +
             '</table></div>';
     }
 
@@ -186,6 +193,37 @@ ENI.Fatturazione.Elenco = (function() {
                 } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
             });
         });
+        // Emetti singola bozza
+        document.querySelectorAll('.btn-emetti').forEach(function(b) {
+            b.addEventListener('click', async function() {
+                if (!await ENI.UI.confirm('Emettere questo documento? Una volta emesso il numero sar\u00e0 definitivo.')) return;
+                try {
+                    await ENI.API.aggiornaStatoFattura(b.dataset.id, 'EMESSA');
+                    ENI.UI.toast('Documento emesso', 'success');
+                    _ricarica();
+                } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
+            });
+        });
+        // Emetti tutte le bozze
+        var btnEmettiTutte = document.getElementById('btn-emetti-tutte');
+        if (btnEmettiTutte) {
+            btnEmettiTutte.addEventListener('click', async function() {
+                var bozze = _fatture.filter(function(f) { return f.stato === 'BOZZA'; });
+                if (!bozze.length) return;
+                if (!await ENI.UI.confirm('Emettere tutte le ' + bozze.length + ' bozze? I numeri diventeranno definitivi.')) return;
+                btnEmettiTutte.disabled = true;
+                btnEmettiTutte.textContent = 'Emissione in corso...';
+                var ok = 0, err = 0;
+                for (var i = 0; i < bozze.length; i++) {
+                    try {
+                        await ENI.API.aggiornaStatoFattura(bozze[i].id, 'EMESSA');
+                        ok++;
+                    } catch(e) { err++; }
+                }
+                ENI.UI.toast(ok + ' documenti emessi' + (err ? ', ' + err + ' errori' : ''), ok ? 'success' : 'danger');
+                _ricarica();
+            });
+        }
         // Modifica
         document.querySelectorAll('.btn-modifica').forEach(function(b) {
             b.addEventListener('click', async function() {
