@@ -300,11 +300,13 @@ ENI.Fatturazione.Manuale = (function() {
         dataScad.setDate(dataScad.getDate() + scadGg);
         var dataScadStr = dataScad.getFullYear() + '-' + String(dataScad.getMonth()+1).padStart(2,'0') + '-' + String(dataScad.getDate()).padStart(2,'0');
 
+        var tipoDocumento = _clienteSelezionato.tipo === 'Privato' ? 'RICEVUTA' : 'FATTURA';
         var fattura = {
             data_emissione: dataEm,
             data_scadenza: dataScadStr,
             cliente_id: _clienteSelezionato.id,
             tipo: 'MANUALE',
+            tipo_documento: tipoDocumento,
             totale: totale,
             modalita_pagamento: document.getElementById('fatt-m-modpag').value || null,
             iban_beneficiario: null,

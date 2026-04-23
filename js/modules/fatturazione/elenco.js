@@ -134,7 +134,7 @@ ENI.Fatturazione.Elenco = (function() {
                 '<td><strong>' + ENI.UI.escapeHtml(f.numero_formattato) + '</strong></td>' +
                 '<td>' + _fmtData(f.data_emissione) + '</td>' +
                 '<td>' + ENI.UI.escapeHtml(cli) + '</td>' +
-                '<td>' + (f.tipo === 'MANUALE' ? 'Manuale' : 'Riepilog.') + '</td>' +
+                '<td>' + (f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura') + ' <span class="text-xs text-muted">(' + (f.tipo === 'MANUALE' ? 'Man.' : 'ENI') + ')</span></td>' +
                 '<td class="text-right">€ ' + _fmtNum(f.totale) + '</td>' +
                 '<td>' + (f.data_scadenza ? _fmtData(f.data_scadenza) : '-') + '</td>' +
                 '<td>' + _badge(f.stato) + '</td>' +

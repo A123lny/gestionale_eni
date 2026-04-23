@@ -51,10 +51,11 @@ ENI.Fatturazione.Pdf = (function() {
             righeEm.forEach(function(r) { if (r.trim()) { doc.text(r, margin, y); y += 4; } });
         }
 
-        // --- Numero fattura ---
+        // --- Numero documento ---
         y += 4;
+        var titoloDoc = fattura.tipo_documento === 'RICEVUTA' ? 'Ricevuta N. ' : 'Fattura N. ';
         doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
-        doc.text('Fattura N. ' + fattura.numero_formattato, margin, y);
+        doc.text(titoloDoc + fattura.numero_formattato, margin, y);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
         y += 6;
         doc.text('Data emissione: ' + _fmtData(fattura.data_emissione), margin, y);
@@ -149,7 +150,8 @@ ENI.Fatturazione.Pdf = (function() {
         doc.addPage();
         var W = 210, margin = 15, y = margin;
         doc.setFont('helvetica','bold'); doc.setFontSize(12);
-        doc.text('Dettaglio movimenti - Fattura ' + fattura.numero_formattato, margin, y);
+        var titDoc = fattura.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura';
+        doc.text('Dettaglio movimenti - ' + titDoc + ' ' + fattura.numero_formattato, margin, y);
         y += 8;
 
         // Raggruppa per categoria

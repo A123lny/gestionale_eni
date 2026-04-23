@@ -1457,6 +1457,13 @@ ENI.API = (function() {
         return result.data;
     }
 
+    async function getProssimoNumeroDocumento(anno, tipoDocumento) {
+        tipoDocumento = tipoDocumento || 'FATTURA';
+        var result = await getClient().rpc('get_prossimo_numero_documento', { p_anno: anno, p_tipo: tipoDocumento });
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
     async function getImpostazioniFatturazione() {
         var result = await getClient()
             .from('impostazioni_fatturazione')
@@ -1542,10 +1549,13 @@ ENI.API = (function() {
 
     async function salvaFattura(fattura, righe, movimenti) {
         var anno = fattura.anno || new Date(fattura.data_emissione).getFullYear();
+        var tipoDoc = fattura.tipo_documento || 'FATTURA';
         if (!fattura.numero) {
-            fattura.numero = await getProssimoNumeroFattura(anno);
+            fattura.numero = await getProssimoNumeroDocumento(anno, tipoDoc);
             fattura.anno = anno;
-            fattura.numero_formattato = fattura.numero + '/' + anno;
+            fattura.tipo_documento = tipoDoc;
+            var prefisso = tipoDoc === 'RICEVUTA' ? 'R' : '';
+            fattura.numero_formattato = prefisso + fattura.numero + '/' + anno;
         }
         fattura.utente_creazione = ENI.State.getUserId();
 
@@ -1736,6 +1746,7 @@ ENI.API = (function() {
         getCassaPeriodo: getCassaPeriodo,
         // Fatturazione
         getProssimoNumeroFattura: getProssimoNumeroFattura,
+        getProssimoNumeroDocumento: getProssimoNumeroDocumento,
         getImpostazioniFatturazione: getImpostazioniFatturazione,
         salvaImpostazioniFatturazione: salvaImpostazioniFatturazione,
         getFatture: getFatture,

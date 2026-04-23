@@ -400,11 +400,13 @@ ENI.Fatturazione.ImportEni = (function() {
                 var dataEm = new Date();
                 var dataScad = new Date(dataEm.getTime() + scadGg * 86400000);
 
+                var tipoDocumento = cli && cli.tipo === 'Privato' ? 'RICEVUTA' : 'FATTURA';
                 var fattura = {
                     data_emissione: dataEm.toISOString().slice(0, 10),
                     data_scadenza: dataScad.toISOString().slice(0, 10),
                     cliente_id: m.match.clienteId,
                     tipo: 'RIEPILOGATIVA_ENI',
+                    tipo_documento: tipoDocumento,
                     mese_riferimento: _meseSelez,
                     anno_riferimento: _annoSelez,
                     totale: m.saldo.saldo || 0,

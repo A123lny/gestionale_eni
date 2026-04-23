@@ -30,6 +30,7 @@ ENI.Modules.Clienti = (function() {
                     '<button class="chip active" data-filtro="Tutti">Tutti</button>' +
                     '<button class="chip" data-filtro="Corporate">\u{1F3E2} Corporate</button>' +
                     '<button class="chip" data-filtro="Privato">\u{1F464} Privati</button>' +
+                    '<button class="chip" data-filtro="Fornitore">\u{1F69A} Fornitori</button>' +
                 '</div>' +
             '</div>' +
 
@@ -170,6 +171,7 @@ ENI.Modules.Clienti = (function() {
                     '<div class="form-row">' +
                         '<label class="form-check"><input type="radio" name="tipo" value="Corporate" checked> \u{1F3E2} Corporate</label>' +
                         '<label class="form-check"><input type="radio" name="tipo" value="Privato"> \u{1F464} Privato</label>' +
+                        '<label class="form-check"><input type="radio" name="tipo" value="Fornitore"> \u{1F69A} Fornitore</label>' +
                     '</div>' +
                 '</div>' +
 
@@ -471,13 +473,35 @@ ENI.Modules.Clienti = (function() {
                 '</div>' +
             '</div>';
 
-        ENI.UI.showModal({
+        var modal = ENI.UI.showModal({
             title: '\u{1F464} Dettaglio Cliente',
             body: body,
             footer: canWrite
-                ? '<button class="btn btn-outline" data-modal-close>Chiudi</button>'
+                ? '<button class="btn btn-danger btn-sm" id="btn-disattiva-cliente">Disattiva</button>' +
+                  '<div style="flex:1;"></div>' +
+                  '<button class="btn btn-outline" data-modal-close>Chiudi</button>' +
+                  '<button class="btn btn-primary" id="btn-modifica-cliente">Modifica</button>'
                 : '<button class="btn btn-outline" data-modal-close>Chiudi</button>'
         });
+
+        if (canWrite) {
+            modal.querySelector('#btn-modifica-cliente').addEventListener('click', function() {
+                ENI.UI.closeModal(modal);
+                _showFormModificaCliente(cliente);
+            });
+            modal.querySelector('#btn-disattiva-cliente').addEventListener('click', async function() {
+                if (!await ENI.UI.confirm('Disattivare "' + cliente.nome_ragione_sociale + '"? Non comparirà più nelle liste ma resterà nello storico.')) return;
+                try {
+                    await ENI.API.aggiornaCliente(cliente.id, { attivo: false });
+                    ENI.UI.closeModal(modal);
+                    ENI.UI.toast('Cliente disattivato', 'success');
+                    ENI.State.cacheClear();
+                    await _loadClienti();
+                } catch(e) {
+                    ENI.UI.toast('Errore: ' + e.message, 'danger');
+                }
+            });
+        }
     }
 
     function _infoRow(label, value) {
@@ -490,6 +514,128 @@ ENI.Modules.Clienti = (function() {
     function _pagLabel(value) {
         var found = ENI.Config.MODALITA_PAGAMENTO.find(function(m) { return m.value === value; });
         return found ? found.label : value;
+    }
+
+    // ============================================================
+    // FORM MODIFICA CLIENTE
+    // ============================================================
+    async function _showFormModificaCliente(cliente) {
+        var c = cliente;
+        var modPagFatt = ['RIBA','RID_SDD','BONIFICO','CONTANTI','FINE_MESE'];
+        var modPagFattOpts = '<option value="">Non impostato</option>' +
+            modPagFatt.map(function(v) { return '<option value="' + v + '"' + (c.modalita_pagamento_fattura === v ? ' selected' : '') + '>' + v + '</option>'; }).join('');
+
+        var modPagOpts = ENI.Config.MODALITA_PAGAMENTO.map(function(m) {
+            return '<option value="' + m.value + '"' + (c.modalita_pagamento === m.value ? ' selected' : '') + '>' + m.label + '</option>';
+        }).join('');
+
+        var body =
+            '<form id="form-mod-cliente">' +
+                '<div class="form-group"><label class="form-label">Tipo Cliente</label>' +
+                    '<div class="form-row">' +
+                        '<label class="form-check"><input type="radio" name="tipo" value="Corporate"' + (c.tipo === 'Corporate' ? ' checked' : '') + '> Corporate</label>' +
+                        '<label class="form-check"><input type="radio" name="tipo" value="Privato"' + (c.tipo === 'Privato' ? ' checked' : '') + '> Privato</label>' +
+                        '<label class="form-check"><input type="radio" name="tipo" value="Fornitore"' + (c.tipo === 'Fornitore' ? ' checked' : '') + '> Fornitore</label>' +
+                    '</div></div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label form-label-required">Nome / Ragione Sociale</label>' +
+                        '<input type="text" class="form-input" id="mod-nome" value="' + ENI.UI.escapeHtml(c.nome_ragione_sociale || '') + '" required></div>' +
+                    '<div class="form-group"><label class="form-label">COE / P.IVA</label>' +
+                        '<input type="text" class="form-input" id="mod-piva" value="' + ENI.UI.escapeHtml(c.p_iva_coe || '') + '"></div>' +
+                '</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">Telefono</label>' +
+                        '<input type="tel" class="form-input" id="mod-telefono" value="' + ENI.UI.escapeHtml(c.telefono || '') + '"></div>' +
+                    '<div class="form-group"><label class="form-label">Email</label>' +
+                        '<input type="email" class="form-input" id="mod-email" value="' + ENI.UI.escapeHtml(c.email || '') + '"></div>' +
+                '</div>' +
+                '<div class="form-group"><label class="form-label">Targa Veicolo</label>' +
+                    '<input type="text" class="form-input" id="mod-targa" value="' + ENI.UI.escapeHtml(c.targa || '') + '"></div>' +
+                '<div class="form-group"><label class="form-label">Modalit\u00e0 Pagamento</label>' +
+                    '<select class="form-select" id="mod-pagamento">' + modPagOpts + '</select></div>' +
+                '<div class="form-group"><label class="form-label">Note</label>' +
+                    '<textarea class="form-textarea" id="mod-note" rows="2">' + ENI.UI.escapeHtml(c.note || '') + '</textarea></div>' +
+                // Sezione fatturazione
+                '<div class="section-title mt-3">Dati fatturazione</div>' +
+                '<div class="form-group"><label class="form-label">Indirizzo sede legale</label>' +
+                    '<input type="text" class="form-input" id="mod-sede-ind" value="' + ENI.UI.escapeHtml(c.sede_legale_indirizzo || '') + '"></div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">CAP</label>' +
+                        '<input type="text" class="form-input" id="mod-sede-cap" value="' + ENI.UI.escapeHtml(c.sede_legale_cap || '') + '"></div>' +
+                    '<div class="form-group"><label class="form-label">Comune</label>' +
+                        '<input type="text" class="form-input" id="mod-sede-com" value="' + ENI.UI.escapeHtml(c.sede_legale_comune || '') + '"></div>' +
+                    '<div class="form-group"><label class="form-label">Prov.</label>' +
+                        '<input type="text" class="form-input" id="mod-sede-prov" value="' + ENI.UI.escapeHtml(c.sede_legale_provincia || '') + '" maxlength="5"></div>' +
+                    '<div class="form-group"><label class="form-label">Nazione</label>' +
+                        '<input type="text" class="form-input" id="mod-sede-naz" value="' + ENI.UI.escapeHtml(c.sede_legale_nazione || 'SM') + '" maxlength="5"></div>' +
+                '</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">PEC</label>' +
+                        '<input type="email" class="form-input" id="mod-pec" value="' + ENI.UI.escapeHtml(c.pec || '') + '"></div>' +
+                    '<div class="form-group"><label class="form-label">IBAN</label>' +
+                        '<input type="text" class="form-input" id="mod-iban" value="' + ENI.UI.escapeHtml(c.iban || '') + '" maxlength="40"></div>' +
+                '</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">Pagamento fattura</label>' +
+                        '<select class="form-select" id="mod-modpag-fatt">' + modPagFattOpts + '</select></div>' +
+                    '<div class="form-group"><label class="form-label">Scadenza (giorni)</label>' +
+                        '<input type="number" class="form-input" id="mod-scadgg" value="' + (c.scadenza_giorni || 30) + '" min="0" max="365"></div>' +
+                    '<div class="form-group"><label class="form-label">Rif. amministrazione</label>' +
+                        '<input type="text" class="form-input" id="mod-rif-amm" value="' + ENI.UI.escapeHtml(c.rif_amministrazione || '') + '"></div>' +
+                '</div>' +
+                '<div class="form-row">' +
+                    '<label class="form-check" style="margin-top:0.5rem;"><input type="checkbox" id="mod-monofase"' + (c.applica_monofase ? ' checked' : '') + '> Applica coefficiente monofase</label>' +
+                '</div>' +
+                '<div class="form-group"><label class="form-label">Note fatturazione</label>' +
+                    '<textarea class="form-textarea" id="mod-note-fatt" rows="2">' + ENI.UI.escapeHtml(c.note_fatturazione || '') + '</textarea></div>' +
+            '</form>';
+
+        var modal = ENI.UI.showModal({
+            title: '\u{270F}\uFE0F Modifica: ' + ENI.UI.escapeHtml(c.nome_ragione_sociale),
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-primary" id="btn-salva-modifica">Salva modifiche</button>',
+            size: 'lg'
+        });
+
+        modal.querySelector('#btn-salva-modifica').addEventListener('click', async function() {
+            var nome = modal.querySelector('#mod-nome').value.trim();
+            if (!nome) { ENI.UI.toast('Il nome è obbligatorio', 'danger'); return; }
+
+            var dati = {
+                tipo: modal.querySelector('input[name="tipo"]:checked').value,
+                nome_ragione_sociale: nome,
+                p_iva_coe: modal.querySelector('#mod-piva').value.trim() || null,
+                email: modal.querySelector('#mod-email').value.trim() || null,
+                telefono: modal.querySelector('#mod-telefono').value.trim() || null,
+                targa: modal.querySelector('#mod-targa').value.trim() || null,
+                modalita_pagamento: modal.querySelector('#mod-pagamento').value,
+                note: modal.querySelector('#mod-note').value.trim() || null,
+                sede_legale_indirizzo: modal.querySelector('#mod-sede-ind').value.trim() || null,
+                sede_legale_cap: modal.querySelector('#mod-sede-cap').value.trim() || null,
+                sede_legale_comune: modal.querySelector('#mod-sede-com').value.trim() || null,
+                sede_legale_provincia: modal.querySelector('#mod-sede-prov').value.trim() || null,
+                sede_legale_nazione: modal.querySelector('#mod-sede-naz').value.trim() || 'SM',
+                pec: modal.querySelector('#mod-pec').value.trim() || null,
+                iban: modal.querySelector('#mod-iban').value.trim() || null,
+                modalita_pagamento_fattura: modal.querySelector('#mod-modpag-fatt').value || null,
+                scadenza_giorni: parseInt(modal.querySelector('#mod-scadgg').value, 10) || 30,
+                rif_amministrazione: modal.querySelector('#mod-rif-amm').value.trim() || null,
+                applica_monofase: modal.querySelector('#mod-monofase').checked,
+                note_fatturazione: modal.querySelector('#mod-note-fatt').value.trim() || null
+            };
+
+            try {
+                await ENI.API.aggiornaCliente(c.id, dati);
+                ENI.UI.closeModal(modal);
+                ENI.UI.toast('Cliente aggiornato', 'success');
+                ENI.State.cacheClear();
+                await _loadClienti();
+            } catch(e) {
+                ENI.UI.toast('Errore: ' + e.message, 'danger');
+            }
+        });
     }
 
     // ============================================================
