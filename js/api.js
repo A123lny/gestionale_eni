@@ -1603,6 +1603,64 @@ ENI.API = (function() {
         return aggiornaStatoFattura(id, 'ANNULLATA', { note: motivo || null });
     }
 
+    async function aggiornaFattura(id, dati, righe) {
+        dati.updated_at = new Date().toISOString();
+        var result = await getClient().from('fatture').update(dati).eq('id', id).select().single();
+        if (result.error) throw new Error(result.error.message);
+
+        if (righe) {
+            await getClient().from('fatture_righe').delete().eq('fattura_id', id);
+            if (righe.length) {
+                var righeConId = righe.map(function(r, i) {
+                    return Object.assign({}, r, { fattura_id: id, ordine: r.ordine != null ? r.ordine : i });
+                });
+                var rr = await getClient().from('fatture_righe').insert(righeConId);
+                if (rr.error) throw new Error(rr.error.message);
+            }
+        }
+
+        await scriviLog('Modificata fattura ' + result.data.numero_formattato, 'fatturazione', { fattura_id: id });
+        return result.data;
+    }
+
+    async function annullaERiemetti(id, nuovoTipoDocumento) {
+        var full = await getFatturaCompleta(id);
+        var f = full.fattura;
+
+        await annullaFattura(id, 'Annullata per riemissione come ' + nuovoTipoDocumento);
+
+        var nuova = {
+            data_emissione: new Date().toISOString().slice(0, 10),
+            data_scadenza: f.data_scadenza,
+            cliente_id: f.cliente_id,
+            tipo: f.tipo,
+            tipo_documento: nuovoTipoDocumento,
+            mese_riferimento: f.mese_riferimento,
+            anno_riferimento: f.anno_riferimento,
+            totale: f.totale,
+            monofase_coefficiente: f.monofase_coefficiente,
+            monofase_importo: f.monofase_importo,
+            monofase_mese: f.monofase_mese,
+            monofase_anno: f.monofase_anno,
+            modalita_pagamento: f.modalita_pagamento,
+            iban_beneficiario: f.iban_beneficiario,
+            stato: 'EMESSA',
+            note: f.note,
+            rif_amministrazione: f.rif_amministrazione,
+            import_eni_log_id: f.import_eni_log_id
+        };
+
+        var righe = full.righe.map(function(r) {
+            return { descrizione: r.descrizione, quantita: r.quantita, unita_misura: r.unita_misura, prezzo_unitario: r.prezzo_unitario, importo: r.importo, categoria: r.categoria, ordine: r.ordine };
+        });
+        var movimenti = full.movimenti.map(function(m) {
+            return { data_movimento: m.data_movimento, scontrino: m.scontrino, id_transazione: m.id_transazione ? m.id_transazione + '_re' : null, targa: m.targa, autista: m.autista, num_carta: m.num_carta, prodotto: m.prodotto, tipo_servizio: m.tipo_servizio, prezzo_unitario: m.prezzo_unitario, volume: m.volume, importo: m.importo, categoria: m.categoria };
+        });
+
+        var result = await salvaFattura(nuova, righe, movimenti.length ? movimenti : null);
+        return result;
+    }
+
     async function getImportEniLog(anno, mese) {
         var q = getClient().from('import_eni_log').select('*').order('created_at', { ascending: false });
         if (anno) q = q.eq('anno', anno);
@@ -1754,6 +1812,8 @@ ENI.API = (function() {
         salvaFattura: salvaFattura,
         aggiornaStatoFattura: aggiornaStatoFattura,
         annullaFattura: annullaFattura,
+        aggiornaFattura: aggiornaFattura,
+        annullaERiemetti: annullaERiemetti,
         getImportEniLog: getImportEniLog,
         registraImportEni: registraImportEni,
         aggiungiAliasCliente: aggiungiAliasCliente

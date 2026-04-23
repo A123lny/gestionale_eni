@@ -138,9 +138,11 @@ ENI.Fatturazione.Elenco = (function() {
                 '<td class="text-right">€ ' + _fmtNum(f.totale) + '</td>' +
                 '<td>' + (f.data_scadenza ? _fmtData(f.data_scadenza) : '-') + '</td>' +
                 '<td>' + _badge(f.stato) + '</td>' +
-                '<td>' +
+                '<td style="white-space:nowrap;">' +
                     '<button class="btn btn-sm btn-secondary btn-pdf" data-id="' + f.id + '">PDF</button> ' +
+                    (f.stato !== 'ANNULLATA' ? '<button class="btn btn-sm btn-outline btn-modifica" data-id="' + f.id + '">Modifica</button> ' : '') +
                     (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-success btn-paga" data-id="' + f.id + '">Pagata</button> ' : '') +
+                    (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-warning btn-riemetti" data-id="' + f.id + '" data-tipo="' + f.tipo_documento + '">' + (f.tipo_documento === 'FATTURA' ? '\u{2192} Ricevuta' : '\u{2192} Fattura') + '</button> ' : '') +
                     (f.stato !== 'ANNULLATA' ? '<button class="btn btn-sm btn-danger btn-annulla" data-id="' + f.id + '">Annulla</button>' : '') +
                 '</td>' +
             '</tr>';
@@ -183,6 +185,142 @@ ENI.Fatturazione.Elenco = (function() {
                     _ricarica();
                 } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
             });
+        });
+        // Modifica
+        document.querySelectorAll('.btn-modifica').forEach(function(b) {
+            b.addEventListener('click', async function() {
+                try {
+                    var full = await ENI.API.getFatturaCompleta(b.dataset.id);
+                    _showModificaFattura(full);
+                } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
+            });
+        });
+        // Annulla e riemetti come tipo diverso
+        document.querySelectorAll('.btn-riemetti').forEach(function(b) {
+            b.addEventListener('click', async function() {
+                var tipoAttuale = b.dataset.tipo;
+                var nuovoTipo = tipoAttuale === 'FATTURA' ? 'RICEVUTA' : 'FATTURA';
+                var label = nuovoTipo === 'FATTURA' ? 'Fattura' : 'Ricevuta';
+                if (!await ENI.UI.confirm('Annullare questo documento e riemetterlo come ' + label + '?\nIl numero attuale rester\u00e0 occupato, verr\u00e0 assegnato un nuovo numero.')) return;
+                try {
+                    var nuova = await ENI.API.annullaERiemetti(b.dataset.id, nuovoTipo);
+                    ENI.UI.toast(label + ' ' + nuova.numero_formattato + ' emessa', 'success');
+                    _ricarica();
+                } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
+            });
+        });
+    }
+
+    // --- Form modifica fattura ---
+    function _showModificaFattura(full) {
+        var f = full.fattura;
+        var righe = full.righe || [];
+        var isBozza = f.stato === 'BOZZA';
+
+        var modPagOpts = ['','RIBA','RID_SDD','BONIFICO','CONTANTI','FINE_MESE'].map(function(v) {
+            return '<option value="' + v + '"' + (f.modalita_pagamento === v ? ' selected' : '') + '>' + (v || '-- Nessuno --') + '</option>';
+        }).join('');
+
+        var righeHtml = '';
+        if (isBozza) {
+            righeHtml = '<div id="mod-fatt-righe">' + righe.map(function(r, i) {
+                return '<div class="form-row mod-fatt-riga" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
+                    '<div class="form-group" style="flex:3;"><input type="text" class="form-input mfr-desc" value="' + ENI.UI.escapeHtml(r.descrizione || '') + '"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-qta" value="' + r.quantita + '" step="0.001"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-um" value="' + ENI.UI.escapeHtml(r.unita_misura || 'pz') + '"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-prezzo" value="' + r.prezzo_unitario + '" step="0.01"></div>' +
+                    '<div class="form-group" style="flex:1;"><select class="form-select mfr-cat">' +
+                        ['CARBURANTE','LAVAGGIO','ACCESSORIO','ALTRO'].map(function(c) { return '<option value="' + c + '"' + (r.categoria === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') +
+                    '</select></div>' +
+                    '<button type="button" class="btn btn-danger btn-sm mfr-del" style="margin-bottom:0.75rem;">&times;</button>' +
+                '</div>';
+            }).join('') + '</div>' +
+            '<button type="button" class="btn btn-outline btn-sm mt-2" id="mod-fatt-add-riga">+ Aggiungi riga</button>';
+        } else {
+            righeHtml = '<table class="table table-sm"><thead><tr><th>Descrizione</th><th>Qt\u00e0</th><th>U.M.</th><th>Prezzo</th><th>Importo</th></tr></thead><tbody>' +
+                righe.map(function(r) {
+                    return '<tr><td>' + ENI.UI.escapeHtml(r.descrizione) + '</td><td>' + r.quantita + '</td><td>' + r.unita_misura + '</td><td>' + _fmtNum(r.prezzo_unitario) + '</td><td>\u20AC ' + _fmtNum(r.importo) + '</td></tr>';
+                }).join('') + '</tbody></table>';
+        }
+
+        var body =
+            '<form id="form-mod-fatt">' +
+                '<p><strong>' + (f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura') + ' ' + f.numero_formattato + '</strong> &mdash; Stato: ' + f.stato + '</p>' +
+                '<p>Cliente: <strong>' + ENI.UI.escapeHtml(f.cliente ? f.cliente.nome_ragione_sociale : '') + '</strong></p>' +
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">Data scadenza</label>' +
+                        '<input type="date" class="form-input" id="mod-fatt-scad" value="' + (f.data_scadenza || '') + '"></div>' +
+                    '<div class="form-group"><label class="form-label">Modalit\u00e0 pagamento</label>' +
+                        '<select class="form-select" id="mod-fatt-modpag">' + modPagOpts + '</select></div>' +
+                '</div>' +
+                '<div class="form-group"><label class="form-label">Note</label>' +
+                    '<textarea class="form-input" id="mod-fatt-note" rows="2">' + ENI.UI.escapeHtml(f.note || '') + '</textarea></div>' +
+                (isBozza ? '<h4 class="mt-3 mb-2">Righe</h4>' : '<h4 class="mt-3 mb-2">Righe (non modificabili - fattura emessa)</h4>') +
+                righeHtml +
+            '</form>';
+
+        var modal = ENI.UI.showModal({
+            title: 'Modifica ' + (f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura') + ' ' + f.numero_formattato,
+            body: body,
+            footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                    '<button class="btn btn-primary" id="btn-salva-mod-fatt">Salva modifiche</button>',
+            size: 'lg'
+        });
+
+        // Righe dinamiche per bozze
+        if (isBozza) {
+            modal.querySelector('#mod-fatt-add-riga').addEventListener('click', function() {
+                var html = '<div class="form-row mod-fatt-riga" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
+                    '<div class="form-group" style="flex:3;"><input type="text" class="form-input mfr-desc" value=""></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-qta" value="1" step="0.001"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-um" value="pz"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-prezzo" value="0" step="0.01"></div>' +
+                    '<div class="form-group" style="flex:1;"><select class="form-select mfr-cat"><option value="CARBURANTE">CARBURANTE</option><option value="LAVAGGIO">LAVAGGIO</option><option value="ACCESSORIO">ACCESSORIO</option><option value="ALTRO">ALTRO</option></select></div>' +
+                    '<button type="button" class="btn btn-danger btn-sm mfr-del" style="margin-bottom:0.75rem;">&times;</button></div>';
+                modal.querySelector('#mod-fatt-righe').insertAdjacentHTML('beforeend', html);
+            });
+            modal.addEventListener('click', function(e) {
+                if (e.target.classList.contains('mfr-del')) e.target.closest('.mod-fatt-riga').remove();
+            });
+        }
+
+        modal.querySelector('#btn-salva-mod-fatt').addEventListener('click', async function() {
+            var dati = {
+                data_scadenza: modal.querySelector('#mod-fatt-scad').value || null,
+                modalita_pagamento: modal.querySelector('#mod-fatt-modpag').value || null,
+                note: modal.querySelector('#mod-fatt-note').value.trim() || null
+            };
+
+            var nuoveRighe = null;
+            if (isBozza) {
+                nuoveRighe = [];
+                var totale = 0;
+                modal.querySelectorAll('.mod-fatt-riga').forEach(function(row, i) {
+                    var qta = parseFloat(row.querySelector('.mfr-qta').value) || 0;
+                    var prezzo = parseFloat(row.querySelector('.mfr-prezzo').value) || 0;
+                    var importo = Math.round(qta * prezzo * 100) / 100;
+                    totale += importo;
+                    nuoveRighe.push({
+                        ordine: i,
+                        descrizione: row.querySelector('.mfr-desc').value.trim(),
+                        quantita: qta,
+                        unita_misura: row.querySelector('.mfr-um').value.trim(),
+                        prezzo_unitario: prezzo,
+                        importo: importo,
+                        categoria: row.querySelector('.mfr-cat').value
+                    });
+                });
+                dati.totale = totale;
+            }
+
+            try {
+                await ENI.API.aggiornaFattura(f.id, dati, nuoveRighe);
+                ENI.UI.closeModal(modal);
+                ENI.UI.toast('Documento aggiornato', 'success');
+                _ricarica();
+            } catch(e) {
+                ENI.UI.toast('Errore: ' + e.message, 'danger');
+            }
         });
     }
 

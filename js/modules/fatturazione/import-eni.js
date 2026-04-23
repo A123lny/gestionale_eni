@@ -211,13 +211,17 @@ ENI.Fatturazione.ImportEni = (function() {
 
         // Handlers
         document.querySelectorAll('.imp-match-sel').forEach(function(sel) {
-            sel.addEventListener('change', function() {
+            sel.addEventListener('change', async function() {
                 var idx = parseInt(sel.dataset.idx, 10);
                 var val = sel.value;
                 if (val) {
                     var cli = _clientiDb.find(function(c) { return c.id === val; });
                     _mapping[idx].match = { clienteId: val, metodo: 'manuale', clienteNome: cli ? cli.nome_ragione_sociale : '' };
                     _mapping[idx].confermato = true;
+                    // Salva alias subito per match futuri
+                    try {
+                        await ENI.API.aggiungiAliasCliente(val, _mapping[idx].saldo.nomeCliente);
+                    } catch(e) {}
                 } else {
                     _mapping[idx].match = { clienteId: null, metodo: null };
                     _mapping[idx].confermato = false;
