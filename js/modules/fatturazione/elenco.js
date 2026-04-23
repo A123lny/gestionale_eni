@@ -307,12 +307,21 @@ ENI.Fatturazione.Elenco = (function() {
                 '</select></div>';
         }
 
+        var numField = '';
+        if (isBozza) {
+            numField = '<div class="form-group" style="max-width:120px;"><label class="form-label">Numero</label>' +
+                '<input type="number" class="form-input" id="mod-fatt-numero" value="' + (f.numero || '') + '" min="1"></div>';
+        }
+
         var body =
             '<form id="form-mod-fatt">' +
                 '<p><strong>' + (f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura') + ' ' + f.numero_formattato + '</strong> &mdash; Stato: ' + f.stato + '</p>' +
                 '<p>Cliente: <strong>' + ENI.UI.escapeHtml(f.cliente ? f.cliente.nome_ragione_sociale : '') + '</strong></p>' +
                 '<div class="form-row">' +
+                    numField +
                     tipoDocOpts +
+                    '<div class="form-group"><label class="form-label">Data emissione</label>' +
+                        '<input type="date" class="form-input" id="mod-fatt-data" value="' + (f.data_emissione || '') + '"' + (isBozza ? '' : ' disabled') + '></div>' +
                     '<div class="form-group"><label class="form-label">Data scadenza</label>' +
                         '<input type="date" class="form-input" id="mod-fatt-scad" value="' + (f.data_scadenza || '') + '"></div>' +
                     '<div class="form-group"><label class="form-label">Modalit\u00e0 pagamento</label>' +
@@ -362,6 +371,20 @@ ENI.Fatturazione.Elenco = (function() {
                 if (selTipoDoc) {
                     nuovoTipoDoc = selTipoDoc.value;
                     dati.tipo_documento = nuovoTipoDoc;
+                }
+                // Numero e data emissione modificabili per bozze
+                var numInput = modal.querySelector('#mod-fatt-numero');
+                if (numInput && numInput.value) {
+                    var nuovoNum = parseInt(numInput.value, 10);
+                    if (nuovoNum > 0) {
+                        dati.numero = nuovoNum;
+                        var prefisso = (nuovoTipoDoc || f.tipo_documento) === 'RICEVUTA' ? 'R' : '';
+                        dati.numero_formattato = prefisso + nuovoNum + '/' + f.anno;
+                    }
+                }
+                var dataInput = modal.querySelector('#mod-fatt-data');
+                if (dataInput && dataInput.value) {
+                    dati.data_emissione = dataInput.value;
                 }
             }
 
