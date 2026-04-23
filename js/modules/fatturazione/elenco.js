@@ -410,6 +410,20 @@ ENI.Fatturazione.Elenco = (function() {
                 dati.totale = totale;
             }
 
+            // Controllo numero duplicato
+            if (dati.numero && (dati.numero !== f.numero || (nuovoTipoDoc && nuovoTipoDoc !== f.tipo_documento))) {
+                var tipoCheck = nuovoTipoDoc || f.tipo_documento;
+                var esistenti = await ENI.API.getFatture({ anno: f.anno, tipo: null });
+                var duplicato = esistenti.find(function(x) {
+                    return x.id !== f.id && x.numero === dati.numero && x.tipo_documento === tipoCheck;
+                });
+                if (duplicato) {
+                    var cliDup = duplicato.cliente ? duplicato.cliente.nome_ragione_sociale : '';
+                    if (!await ENI.UI.confirm('Attenzione: il numero ' + dati.numero_formattato + ' \u00e8 gi\u00e0 usato dalla ' +
+                        (tipoCheck === 'RICEVUTA' ? 'ricevuta' : 'fattura') + ' di "' + cliDup + '".\n\nVuoi salvare comunque?')) return;
+                }
+            }
+
             try {
                 await ENI.API.aggiornaFattura(f.id, dati, nuoveRighe);
 
