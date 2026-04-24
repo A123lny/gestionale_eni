@@ -26,6 +26,7 @@ ENI.Modules.CoefficienteMonofase = (function() {
     var _fatture = [];
     var _coefficienteMese = null;
     var _editingId = null;
+    var _carichiGasolio = 0;    // numero carichi gasolio dal modulo marginalità
 
     // ============================================================
     // RENDER PRINCIPALE
@@ -119,6 +120,22 @@ ENI.Modules.CoefficienteMonofase = (function() {
             });
             _coefficienteMese = coeffRes && coeffRes.length > 0 ? coeffRes[0] : null;
 
+            // Conta carichi gasolio dal modulo marginalità per questo mese
+            var anno = _meseCorrente.getFullYear();
+            var mese = _meseCorrente.getMonth() + 1;
+            var inizioMese = anno + '-' + String(mese).padStart(2, '0') + '-01';
+            var fineMese = mese === 12 ? (anno + 1) + '-01-01' : anno + '-' + String(mese + 1).padStart(2, '0') + '-01';
+            try {
+                var carichiRes = await ENI.API.getAll('carichi_carburante', {
+                    filters: [
+                        { op: 'eq', col: 'prodotto_id', val: 'gasolio' },
+                        { op: 'gte', col: 'data', val: inizioMese },
+                        { op: 'lt', col: 'data', val: fineMese }
+                    ]
+                });
+                _carichiGasolio = carichiRes ? carichiRes.length : 0;
+            } catch(e) { _carichiGasolio = 0; }
+
             _renderContent(content);
         } catch(e) {
             content.innerHTML =
@@ -161,6 +178,29 @@ ENI.Modules.CoefficienteMonofase = (function() {
         }
 
         html += '</div></div>';
+
+        // Banner sincronizzazione carichi
+        var bannerHtml = '';
+        if (_carichiGasolio > 0 && _carichiGasolio === _fatture.length) {
+            bannerHtml = '<div style="padding:0.6rem 1rem;margin-bottom:var(--space-3);border-radius:var(--radius-md);background:#e8f5e9;border:1px solid #a5d6a7;display:flex;align-items:center;justify-content:space-between;">' +
+                '<span style="font-size:var(--font-size-sm);">Sincronizzato da <strong>' + _carichiGasolio + ' carichi gasolio</strong> in Marginalit\u00e0 Carburante</span>' +
+                (!isChiuso ? '<button class="btn btn-outline btn-sm" id="cm-btn-risync">Risincronizza</button>' : '') +
+            '</div>';
+        } else if (_carichiGasolio > 0 && _carichiGasolio !== _fatture.length) {
+            bannerHtml = '<div style="padding:0.6rem 1rem;margin-bottom:var(--space-3);border-radius:var(--radius-md);background:#fff3cd;border:1px solid #ffc107;display:flex;align-items:center;justify-content:space-between;">' +
+                '<span style="font-size:var(--font-size-sm);">Attenzione: <strong>' + _carichiGasolio + ' carichi</strong> in Marginalit\u00e0 ma <strong>' + _fatture.length + ' righe</strong> nel coefficiente. Dati non allineati.</span>' +
+                (!isChiuso ? '<button class="btn btn-warning btn-sm" id="cm-btn-risync">Risincronizza ora</button>' : '') +
+            '</div>';
+        } else if (_carichiGasolio === 0 && _fatture.length === 0) {
+            bannerHtml = '<div style="padding:0.6rem 1rem;margin-bottom:var(--space-3);border-radius:var(--radius-md);background:var(--bg-secondary);display:flex;align-items:center;">' +
+                '<span style="font-size:var(--font-size-sm);color:var(--text-secondary);">Nessun carico gasolio trovato in Marginalit\u00e0 Carburante per questo mese</span>' +
+            '</div>';
+        } else if (_carichiGasolio === 0 && _fatture.length > 0) {
+            bannerHtml = '<div style="padding:0.6rem 1rem;margin-bottom:var(--space-3);border-radius:var(--radius-md);background:#e3f2fd;border:1px solid #90caf9;display:flex;align-items:center;">' +
+                '<span style="font-size:var(--font-size-sm);">' + _fatture.length + ' righe inserite manualmente (nessun carico gasolio in Marginalit\u00e0)</span>' +
+            '</div>';
+        }
+        html += bannerHtml;
 
         // Form aggiunta/modifica (nascosto)
         html += '<div id="cm-form-wrapper" style="display:none; margin-bottom:var(--space-3);"></div>';
@@ -564,6 +604,24 @@ ENI.Modules.CoefficienteMonofase = (function() {
     // ============================================================
 
     function _setupContentListeners(isChiuso) {
+        // Risincronizza da carichi
+        var btnRisync = document.getElementById('cm-btn-risync');
+        if (btnRisync) {
+            btnRisync.addEventListener('click', async function() {
+                btnRisync.disabled = true;
+                btnRisync.textContent = 'Sincronizzazione...';
+                try {
+                    var result = await ENI.API.sincronizzaMonofaseDaCarichi(_meseCorrente);
+                    ENI.UI.toast('Sincronizzato: ' + result.carichi + ' carichi, coefficiente: ' + (result.coefficiente || '-'), 'success');
+                    await _loadMese();
+                } catch(e) {
+                    ENI.UI.toast('Errore sincronizzazione: ' + e.message, 'danger');
+                    btnRisync.disabled = false;
+                    btnRisync.textContent = 'Risincronizza';
+                }
+            });
+        }
+
         // Aggiungi fattura
         var btnAggiungi = document.getElementById('cm-btn-aggiungi');
         if (btnAggiungi) {
