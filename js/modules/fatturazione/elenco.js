@@ -13,7 +13,8 @@ ENI.Fatturazione.Elenco = (function() {
         mese_riferimento: '',
         cliente_id: '',
         stato: '',
-        tipo_documento: ''
+        tipo_documento: '',
+        cerca: ''
     };
     var _fatture = [];
     var _impostazioni = null;
@@ -49,7 +50,9 @@ ENI.Fatturazione.Elenco = (function() {
                         '<option value="FATTURA">Fatture</option>' +
                         '<option value="RICEVUTA">Ricevute</option>' +
                     '</select></div>' +
-                '<div style="flex:1;"></div>' +
+                '<div class="form-group" style="min-width:200px;flex:1;"><label class="form-label">Cerca cliente</label>' +
+                    '<input type="text" class="form-input" id="f-cerca" placeholder="Nome cliente..."></div>' +
+                '<div style="flex:0;"></div>' +
                 '<button class="btn btn-secondary" id="btn-imp-emittente">\u{2699}\uFE0F Impostazioni</button>' +
                 '<button class="btn btn-primary" id="btn-nuova-manuale">+ Nuova manuale</button>' +
                 '<button class="btn btn-primary" id="btn-import-eni">\u{1F4E5} Importa ENI</button>' +
@@ -74,6 +77,15 @@ ENI.Fatturazione.Elenco = (function() {
     }
 
     function _attachHandlers() {
+        var _cercaTimer = null;
+        document.getElementById('f-cerca').addEventListener('input', function(e) {
+            clearTimeout(_cercaTimer);
+            _cercaTimer = setTimeout(function() {
+                _filtri.cerca = e.target.value.trim().toLowerCase();
+                _ricarica();
+            }, 300);
+        });
+
         ['f-anno','f-mese','f-stato','f-tipodoc'].forEach(function(id) {
             var el = document.getElementById(id);
             if (!el) return;
@@ -116,12 +128,23 @@ ENI.Fatturazione.Elenco = (function() {
     }
 
     function _renderTabella() {
-        if (!_fatture.length) {
+        // Filtra per ricerca testo
+        var lista = _fatture;
+        if (_filtri.cerca) {
+            var term = _filtri.cerca;
+            lista = lista.filter(function(f) {
+                var cli = f.cliente ? f.cliente.nome_ragione_sociale.toLowerCase() : '';
+                var num = (f.numero_formattato || '').toLowerCase();
+                return cli.indexOf(term) >= 0 || num.indexOf(term) >= 0;
+            });
+        }
+
+        if (!lista.length) {
             return '<div class="empty-state"><div class="empty-state-icon">\u{1F4C4}</div><p class="empty-state-text">Nessuna fattura per i filtri selezionati</p></div>';
         }
 
-        var numBozze = _fatture.filter(function(f) { return f.stato === 'BOZZA'; }).length;
-        var totali = _fatture.reduce(function(acc, f) {
+        var numBozze = lista.filter(function(f) { return f.stato === 'BOZZA'; }).length;
+        var totali = lista.reduce(function(acc, f) {
             var t = parseFloat(f.totale) || 0;
             acc.tot += t;
             if (f.stato === 'PAGATA') acc.pagato += t;
@@ -130,7 +153,12 @@ ENI.Fatturazione.Elenco = (function() {
             return acc;
         }, { tot: 0, emesso: 0, pagato: 0, bozza: 0 });
 
-        var rows = _fatture.map(function(f) {
+        // Raggruppa per tipo documento quando si vedono tutti
+        var fatture = lista.filter(function(f) { return f.tipo_documento !== 'RICEVUTA'; });
+        var ricevute = lista.filter(function(f) { return f.tipo_documento === 'RICEVUTA'; });
+        var mostraGruppi = !_filtri.tipo_documento && fatture.length > 0 && ricevute.length > 0;
+
+        function _rigaHtml(f) {
             var cli = f.cliente ? f.cliente.nome_ragione_sociale : '';
             return '<tr data-id="' + f.id + '">' +
                 '<td><strong>' + ENI.UI.escapeHtml(f.numero_formattato) + '</strong></td>' +
@@ -149,14 +177,28 @@ ENI.Fatturazione.Elenco = (function() {
                     (f.stato !== 'ANNULLATA' ? '<button class="btn btn-sm btn-danger btn-annulla" data-id="' + f.id + '">Annulla</button>' : '') +
                 '</td>' +
             '</tr>';
-        }).join('');
+        }
+
+        var rows = '';
+        var theadHtml = '<thead><tr><th>N\u00b0</th><th>Data</th><th>Cliente</th><th>Tipo</th><th class="text-right">Totale</th><th>Scadenza</th><th>Stato</th><th>Azioni</th></tr></thead>';
+
+        if (mostraGruppi) {
+            var totFatt = fatture.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
+            var totRic = ricevute.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
+            rows += '<tr><td colspan="8" style="background:var(--color-primary);color:#fff;font-weight:700;padding:0.5rem 1rem;">FATTURE (' + fatture.length + ') \u2014 \u20AC ' + _fmtNum(totFatt) + '</td></tr>';
+            rows += fatture.map(_rigaHtml).join('');
+            rows += '<tr><td colspan="8" style="background:var(--color-gray-600,#555);color:#fff;font-weight:700;padding:0.5rem 1rem;">RICEVUTE (' + ricevute.length + ') \u2014 \u20AC ' + _fmtNum(totRic) + '</td></tr>';
+            rows += ricevute.map(_rigaHtml).join('');
+        } else {
+            rows = lista.map(_rigaHtml).join('');
+        }
 
         return (numBozze ? '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;padding:0.75rem;background:var(--bg-warning-subtle,#fff3cd);border-radius:var(--radius-sm);">' +
                 '<span><strong>' + numBozze + ' bozze</strong> in attesa di emissione (\u20AC ' + _fmtNum(totali.bozza) + ')</span>' +
                 '<button class="btn btn-primary btn-sm" id="btn-emetti-tutte">Emetti tutte le bozze</button>' +
             '</div>' : '') +
             '<div class="table-wrapper"><table class="table table-hover">' +
-            '<thead><tr><th>N\u00b0</th><th>Data</th><th>Cliente</th><th>Tipo</th><th class="text-right">Totale</th><th>Scadenza</th><th>Stato</th><th>Azioni</th></tr></thead>' +
+            theadHtml +
             '<tbody>' + rows + '</tbody>' +
             '<tfoot><tr><th colspan="4" class="text-right">Totali:</th>' +
                 '<th class="text-right">\u20AC ' + _fmtNum(totali.tot) + '</th>' +
