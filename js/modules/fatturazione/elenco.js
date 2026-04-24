@@ -52,10 +52,6 @@ ENI.Fatturazione.Elenco = (function() {
                     '</select></div>' +
                 '<div class="form-group" style="min-width:200px;flex:1;"><label class="form-label">Cerca cliente</label>' +
                     '<input type="text" class="form-input" id="f-cerca" placeholder="Nome cliente..."></div>' +
-                '<div style="flex:0;"></div>' +
-                '<button class="btn btn-secondary" id="btn-imp-emittente">\u{2699}\uFE0F Impostazioni</button>' +
-                '<button class="btn btn-primary" id="btn-nuova-manuale">+ Nuova manuale</button>' +
-                '<button class="btn btn-primary" id="btn-import-eni">\u{1F4E5} Importa ENI</button>' +
             '</div>' +
         '</div>' +
         '<div id="fatt-lista-container"></div>';
@@ -96,15 +92,6 @@ ENI.Fatturazione.Elenco = (function() {
                 _filtri.tipo_documento = document.getElementById('f-tipodoc').value;
                 _ricarica();
             });
-        });
-        document.getElementById('btn-nuova-manuale').addEventListener('click', function() {
-            ENI.Fatturazione.Index.vaiA('manuale');
-        });
-        document.getElementById('btn-import-eni').addEventListener('click', function() {
-            ENI.Fatturazione.Index.vaiA('import');
-        });
-        document.getElementById('btn-imp-emittente').addEventListener('click', function() {
-            ENI.Fatturazione.Index.vaiA('impostazioni');
         });
     }
 
