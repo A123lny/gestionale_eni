@@ -123,12 +123,14 @@ ENI.Modules.Clienti = (function() {
             '<thead><tr>' +
                 '<th>Nome / Ragione Sociale</th>' +
                 '<th>Tipo</th>' +
-                '<th>Pagamento</th>' +
+                '<th>Pag. Fattura</th>' +
                 '<th>Contatto</th>' +
             '</tr></thead><tbody>';
 
         filtered.forEach(function(c) {
-            var pagLabel = ENI.Config.MODALITA_PAGAMENTO.find(function(m) { return m.value === c.modalita_pagamento; });
+            var pagFattLabel = c.modalita_pagamento_fattura
+                ? '<span style="color:var(--color-primary);">' + ENI.UI.escapeHtml(c.modalita_pagamento_fattura) + '</span>'
+                : '<span style="color:var(--color-danger);font-style:italic;">Non impostato</span>';
             html +=
                 '<tr data-cliente-id="' + c.id + '" style="cursor:pointer;">' +
                     '<td>' +
@@ -136,7 +138,7 @@ ENI.Modules.Clienti = (function() {
                         (c.targa ? '<br><span class="text-xs text-muted">' + ENI.UI.escapeHtml(c.targa) + '</span>' : '') +
                     '</td>' +
                     '<td>' + ENI.UI.badgeStato(c.tipo) + '</td>' +
-                    '<td class="text-sm">' + (pagLabel ? pagLabel.label : c.modalita_pagamento) + '</td>' +
+                    '<td class="text-sm">' + pagFattLabel + '</td>' +
                     '<td class="text-sm text-muted">' +
                         (c.telefono ? c.telefono : '') +
                         (c.email ? '<br>' + c.email : '') +
@@ -450,7 +452,9 @@ ENI.Modules.Clienti = (function() {
                     '</div>' +
                 '</div>' +
                 '<div class="credito-dettaglio-body">' +
-                    _infoRow('Modalit\u00E0 Pagamento', _pagLabel(cliente.modalita_pagamento)) +
+                    _infoRow('Pagamento fattura', cliente.modalita_pagamento_fattura
+                        ? '<span style="color:var(--color-primary);font-weight:600;">' + ENI.UI.escapeHtml(cliente.modalita_pagamento_fattura) + '</span>'
+                        : '<span style="color:var(--color-danger);font-style:italic;">Non impostato</span>', true) +
                     (cliente.p_iva_coe ? _infoRow('P.IVA / COE', cliente.p_iva_coe) : '') +
                     (cliente.targa ? _infoRow('Targa', cliente.targa) : '') +
                     (cliente.telefono ? _infoRow('Telefono', cliente.telefono) : '') +
@@ -458,17 +462,14 @@ ENI.Modules.Clienti = (function() {
                     (cliente.note ? _infoRow('Note', cliente.note) : '') +
                     _infoRow('Cliente dal', ENI.UI.formatDataCompleta(cliente.created_at)) +
                     // Sezione fatturazione
-                    (cliente.sede_legale_indirizzo || cliente.modalita_pagamento_fattura || cliente.iban || cliente.pec || cliente.applica_monofase ?
-                        '<div class="section-title mt-4">Dati fatturazione</div>' +
-                        (cliente.sede_legale_indirizzo ? _infoRow('Sede legale', [cliente.sede_legale_indirizzo, cliente.sede_legale_cap, cliente.sede_legale_comune, cliente.sede_legale_provincia, cliente.sede_legale_nazione].filter(Boolean).join(', ')) : '') +
-                        (cliente.pec ? _infoRow('PEC', cliente.pec) : '') +
-                        (cliente.iban ? _infoRow('IBAN', cliente.iban) : '') +
-                        (cliente.modalita_pagamento_fattura ? _infoRow('Pagamento fattura', cliente.modalita_pagamento_fattura) : '') +
-                        (cliente.scadenza_giorni ? _infoRow('Scadenza', cliente.scadenza_giorni + ' giorni') : '') +
-                        (cliente.rif_amministrazione ? _infoRow('Rif. amministrazione', cliente.rif_amministrazione) : '') +
-                        (cliente.applica_monofase ? _infoRow('Monofase', 'Attivo') : '') +
-                        (cliente.note_fatturazione ? _infoRow('Note fatturazione', cliente.note_fatturazione) : '')
-                    : '') +
+                    '<div class="section-title mt-4">Dati fatturazione</div>' +
+                    (cliente.sede_legale_indirizzo ? _infoRow('Sede legale', [cliente.sede_legale_indirizzo, cliente.sede_legale_cap, cliente.sede_legale_comune, cliente.sede_legale_provincia, cliente.sede_legale_nazione].filter(Boolean).join(', ')) : '') +
+                    (cliente.pec ? _infoRow('PEC', cliente.pec) : '') +
+                    (cliente.iban ? _infoRow('IBAN', cliente.iban) : '') +
+                    (cliente.scadenza_giorni ? _infoRow('Scadenza', cliente.scadenza_giorni + ' giorni') : '') +
+                    (cliente.rif_amministrazione ? _infoRow('Rif. amministrazione', cliente.rif_amministrazione) : '') +
+                    (cliente.applica_monofase ? _infoRow('Monofase', 'Attivo') : '') +
+                    (cliente.note_fatturazione ? _infoRow('Note fatturazione', cliente.note_fatturazione) : '') +
                     listinoHtml +
                 '</div>' +
             '</div>';
@@ -504,10 +505,10 @@ ENI.Modules.Clienti = (function() {
         }
     }
 
-    function _infoRow(label, value) {
+    function _infoRow(label, value, raw) {
         return '<div class="credito-info-row">' +
             '<span class="credito-info-label">' + label + '</span>' +
-            '<span class="credito-info-value">' + ENI.UI.escapeHtml(String(value)) + '</span>' +
+            '<span class="credito-info-value">' + (raw ? String(value) : ENI.UI.escapeHtml(String(value))) + '</span>' +
         '</div>';
     }
 
