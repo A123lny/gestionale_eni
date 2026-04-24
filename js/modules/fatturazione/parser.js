@@ -33,6 +33,9 @@ ENI.Fatturazione.Parser = (function() {
         var sheet = wb.Sheets[wb.SheetNames[0]];
         var rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
+        if (rows.length) console.log('Parser saldi - colonne:', Object.keys(rows[0]));
+        if (rows.length) console.log('Parser saldi - prima riga raw:', JSON.stringify(rows[0]));
+
         return rows.map(function(r) {
             var dataContabile = _parseDataIt(r['Data Contabile']);
             var dataScadenza = _parseDataIt(r['Data Scadenza']);
