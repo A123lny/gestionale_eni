@@ -37,8 +37,8 @@ ENI.Fatturazione.Parser = (function() {
         if (rows.length) console.log('Parser saldi - prima riga raw:', JSON.stringify(rows[0]));
 
         return rows.map(function(r) {
-            var dataContabile = _parseDataIt(r['Data Contabile']);
-            var dataScadenza = _parseDataIt(r['Data Scadenza']);
+            var dataContabile = _parseDataIt(r['Data Contabile'] || r['Data contabile'] || r['Data Creazione'] || r['Data creazione']);
+            var dataScadenza = _parseDataIt(r['Data Scadenza'] || r['Data scadenza']);
             var mese = dataContabile ? dataContabile.getMonth() : null;    // 0-11
             var anno = dataContabile ? dataContabile.getFullYear() : null;
             // Data Contabile = data chiusura consuntivo (primo del mese successivo)
