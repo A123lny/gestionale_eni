@@ -344,6 +344,38 @@ ENI.Fatturazione.ImportEni = (function() {
 
         var generati = 0, errori = 0;
 
+        // Carica coefficiente monofase del mese (se disponibile)
+        var _coeffMonofase = null;
+        var _coeffChiuso = false;
+        var meseRef = _annoSelez + '-' + String(_meseSelez).padStart(2, '0') + '-01';
+        try {
+            var coeffRes = await ENI.API.getAll('coefficiente_monofase_mensile', {
+                filters: [{ op: 'eq', col: 'mese_riferimento', val: meseRef }],
+                limit: 1
+            });
+            if (coeffRes && coeffRes.length && coeffRes[0].coefficiente_monofase) {
+                _coeffMonofase = coeffRes[0].coefficiente_monofase;
+                _coeffChiuso = coeffRes[0].stato === 'chiuso';
+            }
+        } catch(e) {}
+
+        // Alert se mese non chiuso e ci sono clienti monofase
+        var clientiMonofase = attivi.filter(function(m) {
+            var cli = _clientiDb.find(function(c) { return c.id === m.match.clienteId; });
+            return cli && cli.applica_monofase;
+        });
+        if (clientiMonofase.length > 0 && _coeffMonofase && !_coeffChiuso) {
+            if (!await ENI.UI.confirm('Il coefficiente monofase di ' + nomi[_meseSelez-1] + ' ' + _annoSelez +
+                ' non \u00e8 ancora chiuso (valore provvisorio: ' + _coeffMonofase + ').\n\n' +
+                clientiMonofase.length + ' clienti richiedono il monofase.\n' +
+                'Vuoi procedere con il valore provvisorio o attendere la chiusura?')) {
+                return;
+            }
+        }
+        if (clientiMonofase.length > 0 && !_coeffMonofase) {
+            ENI.UI.toast('Nessun coefficiente monofase disponibile per ' + nomi[_meseSelez-1] + '. La riga monofase non verr\u00e0 inserita.', 'warning');
+        }
+
         // Registra import log
         var importLog;
         try {
@@ -390,6 +422,24 @@ ENI.Fatturazione.ImportEni = (function() {
                         categoria: cat
                     };
                 });
+
+                // Riga monofase automatica per clienti con flag
+                if (cli && cli.applica_monofase && _coeffMonofase) {
+                    var litriGasolioCli = categorie['CARBURANTE'] ? categorie['CARBURANTE'].vol : 0;
+                    if (litriGasolioCli > 0) {
+                        var importoMonofase = Math.round(litriGasolioCli * _coeffMonofase * 100) / 100;
+                        var nomiMeseMonof = ['','Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+                        righe.push({
+                            ordine: righe.length,
+                            descrizione: 'Monofase ' + nomiMeseMonof[_meseSelez] + ' \u20AC' + importoMonofase.toLocaleString('it-IT', {minimumFractionDigits: 2}),
+                            quantita: 0,
+                            unita_misura: '',
+                            prezzo_unitario: 0,
+                            importo: 0,
+                            categoria: 'NOTA'
+                        });
+                    }
+                }
 
                 // Movimenti dettaglio
                 var movimenti = movCli.map(function(mov) {

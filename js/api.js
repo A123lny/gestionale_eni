@@ -1448,6 +1448,109 @@ ENI.API = (function() {
     }
 
     // ============================================================
+    // SINCRONIZZAZIONE CARICHI → COEFFICIENTE MONOFASE
+    // ============================================================
+
+    async function sincronizzaMonofaseDaCarichi(meseDate) {
+        var anno = meseDate.getFullYear();
+        var mese = meseDate.getMonth() + 1;
+        var meseRef = anno + '-' + String(mese).padStart(2, '0') + '-01';
+        var ALIQUOTA_IVA = ENI.Config.ALIQUOTA_IVA_MONOFASE || 0.21;
+        var MESI = ['','Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+
+        // Carica tutti i carichi di GASOLIO del mese
+        var inizioMese = anno + '-' + String(mese).padStart(2, '0') + '-01';
+        var fineMese = mese === 12
+            ? (anno + 1) + '-01-01'
+            : anno + '-' + String(mese + 1).padStart(2, '0') + '-01';
+
+        var carichi = await getAll('carichi_carburante', {
+            filters: [
+                { op: 'eq', col: 'prodotto_id', val: 'gasolio' },
+                { op: 'gte', col: 'data', val: inizioMese },
+                { op: 'lt', col: 'data', val: fineMese }
+            ],
+            order: { col: 'data', asc: true }
+        });
+
+        // Rimuovi le vecchie righe monofase del mese e ricreale dai carichi
+        var vecchie = await getAll('fatture_acquisto_gasolio', {
+            filters: [{ op: 'eq', col: 'mese_riferimento', val: meseRef }]
+        });
+        for (var d = 0; d < vecchie.length; d++) {
+            await remove('fatture_acquisto_gasolio', vecchie[d].id);
+        }
+
+        // Crea una riga monofase per ogni carico
+        for (var i = 0; i < carichi.length; i++) {
+            var c = carichi[i];
+            var imponibile = Math.round(c.litri_fiscali * c.prezzo_mp * 100) / 100;
+            var monofaseIvaImp = Math.round(imponibile * ALIQUOTA_IVA * 100) / 100;
+            var monofaseIvaAcc = Math.round((c.litri_fiscali * c.accisa) * ALIQUOTA_IVA * 100) / 100;
+            var totMonofase = Math.round((monofaseIvaImp + monofaseIvaAcc) * 100) / 100;
+            var coeff = c.litri_fisici > 0 ? Math.floor((totMonofase / c.litri_fisici) * 10000) / 10000 : 0;
+
+            await insert('fatture_acquisto_gasolio', {
+                mese_riferimento: meseRef,
+                numero_progressivo: i + 1,
+                data_fattura: c.data,
+                imponibile_fattura: imponibile,
+                litri_commerciali: Math.round(c.litri_fisici),
+                litri_fiscali: Math.round(c.litri_fiscali),
+                accisa_per_litro: c.accisa,
+                monofase_iva_imponibile: monofaseIvaImp,
+                monofase_iva_accisa: monofaseIvaAcc,
+                totale_monofase: totMonofase,
+                monofase_media_per_lt: coeff
+            });
+        }
+
+        // Aggiorna coefficiente mensile
+        var totImponibile = 0, totLitriComm = 0, totMonoImp = 0, totMonoAcc = 0, totMono = 0;
+        carichi.forEach(function(c) {
+            var imp = Math.round(c.litri_fiscali * c.prezzo_mp * 100) / 100;
+            var mImp = Math.round(imp * ALIQUOTA_IVA * 100) / 100;
+            var mAcc = Math.round((c.litri_fiscali * c.accisa) * ALIQUOTA_IVA * 100) / 100;
+            totImponibile += imp;
+            totLitriComm += c.litri_fisici;
+            totMonoImp += mImp;
+            totMonoAcc += mAcc;
+            totMono += mImp + mAcc;
+        });
+        var coeffMensile = totLitriComm > 0 ? Math.floor((totMono / totLitriComm) * 10000) / 10000 : null;
+
+        var coeffData = {
+            mese_riferimento: meseRef,
+            anno: anno,
+            mese: mese,
+            nome_mese: MESI[mese],
+            totale_imponibile: Math.round(totImponibile * 100) / 100,
+            totale_litri_commerciali: Math.round(totLitriComm),
+            totale_monofase_iva_imp: Math.round(totMonoImp * 100) / 100,
+            totale_monofase_iva_accisa: Math.round(totMonoAcc * 100) / 100,
+            totale_monofase: Math.round(totMono * 100) / 100,
+            coefficiente_monofase: coeffMensile,
+            numero_fatture: carichi.length
+        };
+
+        var esistente = await getAll('coefficiente_monofase_mensile', {
+            filters: [{ op: 'eq', col: 'mese_riferimento', val: meseRef }],
+            limit: 1
+        });
+
+        if (esistente && esistente.length > 0) {
+            if (esistente[0].stato !== 'chiuso') {
+                await update('coefficiente_monofase_mensile', esistente[0].id, coeffData);
+            }
+        } else {
+            coeffData.stato = 'aperto';
+            await insert('coefficiente_monofase_mensile', coeffData);
+        }
+
+        return { carichi: carichi.length, coefficiente: coeffMensile };
+    }
+
+    // ============================================================
     // FATTURAZIONE
     // ============================================================
 
@@ -1803,6 +1906,8 @@ ENI.API = (function() {
         getSpeseCassaPeriodo: getSpeseCassaPeriodo,
         get4TSCardMese: get4TSCardMese,
         getCassaPeriodo: getCassaPeriodo,
+        // Monofase sync
+        sincronizzaMonofaseDaCarichi: sincronizzaMonofaseDaCarichi,
         // Fatturazione
         getProssimoNumeroFattura: getProssimoNumeroFattura,
         getProssimoNumeroDocumento: getProssimoNumeroDocumento,

@@ -788,7 +788,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
                         '<td class="text-right">' + _fmtEuro5(c.costo_medio_risultante) + '</td>' +
                         '<td style="white-space:nowrap;">' +
                             '<button class="btn-icon mc-edit-carico" data-id="' + c.id + '" data-prod="' + c.prodotto_id + '" data-data="' + c.data + '" data-ord="' + (c.litri_ordinati||0) + '" data-comm="' + (c.litri_fisici||0) + '" data-fisc="' + (c.litri_fiscali||0) + '" data-mp="' + (c.prezzo_mp||0) + '" data-acc="' + (c.accisa||0) + '" data-note="' + ENI.UI.escapeHtml(c.note||'') + '" title="Modifica"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
-                            '<button class="btn-icon mc-del-carico" data-id="' + c.id + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
+                            '<button class="btn-icon mc-del-carico" data-id="' + c.id + '" data-prod="' + c.prodotto_id + '" data-data="' + c.data + '" title="Elimina" style="color:var(--color-danger);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
                         '</td>' +
                     '</tr>';
                 });
@@ -819,7 +819,12 @@ ENI.Modules.MarginalitaCarburante = (function() {
             btn.addEventListener('click', async function() {
                 if (!confirm('Eliminare questo carico?')) return;
                 try {
+                    var delProdId = btn.getAttribute('data-prod') || '';
+                    var delData = btn.getAttribute('data-data') || '';
                     await ENI.API.remove(T.CARICHI, btn.getAttribute('data-id'));
+                    if (delProdId === 'gasolio' && delData) {
+                        try { await ENI.API.sincronizzaMonofaseDaCarichi(new Date(delData)); } catch(e) { console.error('Sync monofase:', e); }
+                    }
                     await _ricalcolaStato();
                     _renderPage();
                     ENI.UI.success('Carico eliminato');
@@ -884,6 +889,9 @@ ENI.Modules.MarginalitaCarburante = (function() {
                     costo_per_litro_fisico: calc.costo_per_litro_fisico
                 });
                 _closeModal('mc-modal-edit-carico');
+                if (c.prodotto_id === 'gasolio') {
+                    try { await ENI.API.sincronizzaMonofaseDaCarichi(new Date(c.data)); } catch(e) { console.error('Sync monofase:', e); }
+                }
                 await _ricalcolaStato();
                 _renderPage();
                 ENI.UI.success('Carico aggiornato');
@@ -1030,6 +1038,10 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 }
 
                 _closeModal('mc-modal-carico');
+                // Sincronizza monofase se c'è gasolio
+                if (prodottiDaSalvare.some(function(p) { return p.prodId === 'gasolio'; })) {
+                    try { await ENI.API.sincronizzaMonofaseDaCarichi(new Date(data)); } catch(e) { console.error('Sync monofase:', e); }
+                }
                 await _ricalcolaStato();
                 _renderPage();
                 ENI.UI.success('Carico registrato (' + prodottiDaSalvare.length + ' prodotti)');
