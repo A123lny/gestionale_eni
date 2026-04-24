@@ -13,7 +13,7 @@ ENI.Fatturazione.Elenco = (function() {
         mese_riferimento: '',
         cliente_id: '',
         stato: '',
-        tipo: ''
+        tipo_documento: ''
     };
     var _fatture = [];
     var _impostazioni = null;
@@ -43,11 +43,11 @@ ENI.Fatturazione.Elenco = (function() {
                         '<option value="PAGATA">Pagata</option>' +
                         '<option value="ANNULLATA">Annullata</option>' +
                     '</select></div>' +
-                '<div class="form-group" style="min-width:180px;"><label class="form-label">Tipo</label>' +
-                    '<select class="form-select" id="f-tipo">' +
+                '<div class="form-group" style="min-width:160px;"><label class="form-label">Documento</label>' +
+                    '<select class="form-select" id="f-tipodoc">' +
                         '<option value="">Tutti</option>' +
-                        '<option value="MANUALE">Manuale</option>' +
-                        '<option value="RIEPILOGATIVA_ENI">Riepilogativa ENI</option>' +
+                        '<option value="FATTURA">Fatture</option>' +
+                        '<option value="RICEVUTA">Ricevute</option>' +
                     '</select></div>' +
                 '<div style="flex:1;"></div>' +
                 '<button class="btn btn-secondary" id="btn-imp-emittente">\u{2699}\uFE0F Impostazioni</button>' +
@@ -74,14 +74,14 @@ ENI.Fatturazione.Elenco = (function() {
     }
 
     function _attachHandlers() {
-        ['f-anno','f-mese','f-stato','f-tipo'].forEach(function(id) {
+        ['f-anno','f-mese','f-stato','f-tipodoc'].forEach(function(id) {
             var el = document.getElementById(id);
             if (!el) return;
             el.addEventListener('change', function() {
                 _filtri.anno = parseInt(document.getElementById('f-anno').value, 10);
                 _filtri.mese_riferimento = document.getElementById('f-mese').value;
                 _filtri.stato = document.getElementById('f-stato').value;
-                _filtri.tipo = document.getElementById('f-tipo').value;
+                _filtri.tipo_documento = document.getElementById('f-tipodoc').value;
                 _ricarica();
             });
         });
@@ -103,7 +103,7 @@ ENI.Fatturazione.Elenco = (function() {
             var filtri = { anno: _filtri.anno };
             if (_filtri.mese_riferimento) filtri.mese_riferimento = parseInt(_filtri.mese_riferimento, 10);
             if (_filtri.stato) filtri.stato = _filtri.stato;
-            if (_filtri.tipo) filtri.tipo = _filtri.tipo;
+            if (_filtri.tipo_documento) filtri.tipo_documento = _filtri.tipo_documento;
             _fatture = await ENI.API.getFatture(filtri);
             if (!_impostazioni) {
                 try { _impostazioni = await ENI.API.getImpostazioniFatturazione(); } catch(e) {}

@@ -59,8 +59,11 @@ ENI.UI = (function() {
     function showModal(options) {
         var backdrop = document.createElement('div');
         backdrop.className = 'modal-backdrop';
+        var modalStyle = '';
+        if (options.size === 'lg') modalStyle = ' style="max-width:900px;width:95%;"';
+        else if (options.size === 'xl') modalStyle = ' style="max-width:1100px;width:95%;"';
         backdrop.innerHTML =
-            '<div class="modal">' +
+            '<div class="modal"' + modalStyle + '>' +
                 '<div class="modal-header">' +
                     '<h3 class="modal-title">' + _escapeHtml(options.title || '') + '</h3>' +
                     '<button class="modal-close" data-modal-close>&times;</button>' +

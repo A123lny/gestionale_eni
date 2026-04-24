@@ -1500,13 +1500,14 @@ ENI.API = (function() {
         var query = getClient()
             .from('fatture')
             .select('*, cliente:clienti(id, nome_ragione_sociale, p_iva_coe)')
-            .order('data_emissione', { ascending: false });
+            .order('numero', { ascending: true });
 
         if (filtri.anno) query = query.eq('anno', filtri.anno);
         if (filtri.mese_riferimento) query = query.eq('mese_riferimento', filtri.mese_riferimento);
         if (filtri.cliente_id) query = query.eq('cliente_id', filtri.cliente_id);
         if (filtri.stato) query = query.eq('stato', filtri.stato);
         if (filtri.tipo) query = query.eq('tipo', filtri.tipo);
+        if (filtri.tipo_documento) query = query.eq('tipo_documento', filtri.tipo_documento);
         if (filtri.import_eni_log_id) query = query.eq('import_eni_log_id', filtri.import_eni_log_id);
 
         if (filtri.limit) {
