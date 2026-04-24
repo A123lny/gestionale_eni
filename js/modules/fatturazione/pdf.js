@@ -88,11 +88,18 @@ ENI.Fatturazione.Pdf = (function() {
 
         doc.setFont('helvetica','normal');
         righe.forEach(function(r) {
+            if (r.categoria === 'NOTA') {
+                doc.setFont('helvetica','italic'); doc.setFontSize(8);
+                doc.text(String(r.descrizione || ''), margin + 2, y + 5, { maxWidth: W - 2*margin - 4 });
+                doc.setFont('helvetica','normal'); doc.setFontSize(9);
+                y += 6;
+                return;
+            }
             doc.text(String(r.descrizione || ''), margin + 2, y + 5, { maxWidth: 95 });
             doc.text(_fmt(r.quantita), margin + 100, y + 5);
             doc.text(String(r.unita_misura || ''), margin + 115, y + 5);
             doc.text(_fmt(r.prezzo_unitario), margin + 130, y + 5);
-            doc.text(_fmt(r.importo) + ' €', W - margin - 2, y + 5, { align: 'right' });
+            doc.text(_fmt(r.importo) + ' \u20AC', W - margin - 2, y + 5, { align: 'right' });
             y += 7;
         });
 

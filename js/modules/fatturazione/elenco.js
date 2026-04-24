@@ -278,8 +278,15 @@ ENI.Fatturazione.Elenco = (function() {
 
         var righeHtml = '';
         if (isBozza) {
-            righeHtml = '<div id="mod-fatt-righe">' + righe.map(function(r, i) {
-                return '<div class="form-row mod-fatt-riga" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
+            righeHtml = '<div id="mod-fatt-righe">' + righe.map(function(r) {
+                if (r.categoria === 'NOTA') {
+                    return '<div class="form-row mod-fatt-riga" data-tipo="nota" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
+                        '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-desc" value="' + ENI.UI.escapeHtml(r.descrizione || '') + '" placeholder="Nota / annotazione..." style="font-style:italic;"></div>' +
+                        '<input type="hidden" class="mfr-qta" value="0"><input type="hidden" class="mfr-um" value=""><input type="hidden" class="mfr-prezzo" value="0"><input type="hidden" class="mfr-cat" value="NOTA">' +
+                        '<button type="button" class="btn btn-danger btn-sm mfr-del" style="margin-bottom:0.75rem;">&times;</button>' +
+                    '</div>';
+                }
+                return '<div class="form-row mod-fatt-riga" data-tipo="riga" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
                     '<div class="form-group" style="flex:3;"><input type="text" class="form-input mfr-desc" value="' + ENI.UI.escapeHtml(r.descrizione || '') + '"></div>' +
                     '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-qta" value="' + r.quantita + '" step="0.001"></div>' +
                     '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-um" value="' + ENI.UI.escapeHtml(r.unita_misura || 'pz') + '"></div>' +
@@ -290,10 +297,14 @@ ENI.Fatturazione.Elenco = (function() {
                     '<button type="button" class="btn btn-danger btn-sm mfr-del" style="margin-bottom:0.75rem;">&times;</button>' +
                 '</div>';
             }).join('') + '</div>' +
-            '<button type="button" class="btn btn-outline btn-sm mt-2" id="mod-fatt-add-riga">+ Aggiungi riga</button>';
+            '<div style="display:flex;gap:0.5rem;margin-top:0.5rem;">' +
+                '<button type="button" class="btn btn-outline btn-sm" id="mod-fatt-add-riga">+ Aggiungi riga</button>' +
+                '<button type="button" class="btn btn-outline btn-sm" id="mod-fatt-add-nota">+ Aggiungi nota</button>' +
+            '</div>';
         } else {
             righeHtml = '<table class="table table-sm"><thead><tr><th>Descrizione</th><th>Qt\u00e0</th><th>U.M.</th><th>Prezzo</th><th>Importo</th></tr></thead><tbody>' +
                 righe.map(function(r) {
+                    if (r.categoria === 'NOTA') return '<tr><td colspan="5" style="font-style:italic;color:var(--text-secondary);">' + ENI.UI.escapeHtml(r.descrizione) + '</td></tr>';
                     return '<tr><td>' + ENI.UI.escapeHtml(r.descrizione) + '</td><td>' + r.quantita + '</td><td>' + r.unita_misura + '</td><td>' + _fmtNum(r.prezzo_unitario) + '</td><td>\u20AC ' + _fmtNum(r.importo) + '</td></tr>';
                 }).join('') + '</tbody></table>';
         }
@@ -344,12 +355,19 @@ ENI.Fatturazione.Elenco = (function() {
         // Righe dinamiche per bozze
         if (isBozza) {
             modal.querySelector('#mod-fatt-add-riga').addEventListener('click', function() {
-                var html = '<div class="form-row mod-fatt-riga" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
+                var html = '<div class="form-row mod-fatt-riga" data-tipo="riga" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
                     '<div class="form-group" style="flex:3;"><input type="text" class="form-input mfr-desc" value=""></div>' +
                     '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-qta" value="1" step="0.001"></div>' +
                     '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-um" value="pz"></div>' +
                     '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-prezzo" value="0" step="0.01"></div>' +
                     '<div class="form-group" style="flex:1;"><select class="form-select mfr-cat"><option value="CARBURANTE">CARBURANTE</option><option value="LAVAGGIO">LAVAGGIO</option><option value="ACCESSORIO">ACCESSORIO</option><option value="ALTRO">ALTRO</option></select></div>' +
+                    '<button type="button" class="btn btn-danger btn-sm mfr-del" style="margin-bottom:0.75rem;">&times;</button></div>';
+                modal.querySelector('#mod-fatt-righe').insertAdjacentHTML('beforeend', html);
+            });
+            modal.querySelector('#mod-fatt-add-nota').addEventListener('click', function() {
+                var html = '<div class="form-row mod-fatt-riga" data-tipo="nota" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
+                    '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-desc" value="" placeholder="Nota / annotazione..." style="font-style:italic;"></div>' +
+                    '<input type="hidden" class="mfr-qta" value="0"><input type="hidden" class="mfr-um" value=""><input type="hidden" class="mfr-prezzo" value="0"><input type="hidden" class="mfr-cat" value="NOTA">' +
                     '<button type="button" class="btn btn-danger btn-sm mfr-del" style="margin-bottom:0.75rem;">&times;</button></div>';
                 modal.querySelector('#mod-fatt-righe').insertAdjacentHTML('beforeend', html);
             });

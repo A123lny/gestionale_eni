@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS fatture_righe (
     unita_misura    VARCHAR(10) DEFAULT 'pz',
     prezzo_unitario DECIMAL(12,4) DEFAULT 0,
     importo         DECIMAL(12,2) NOT NULL DEFAULT 0,
-    categoria       VARCHAR(20) CHECK (categoria IN ('CARBURANTE','LAVAGGIO','ACCESSORIO','ALTRO')),
+    categoria       VARCHAR(20) CHECK (categoria IN ('CARBURANTE','LAVAGGIO','ACCESSORIO','ALTRO','NOTA')),
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
