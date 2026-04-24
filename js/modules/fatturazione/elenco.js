@@ -40,6 +40,7 @@ ENI.Fatturazione.Elenco = (function() {
                     '<select class="form-select" id="f-stato">' +
                         '<option value="">Tutti</option>' +
                         '<option value="BOZZA">Bozza</option>' +
+                        '<option value="IN_ATTESA">In attesa</option>' +
                         '<option value="EMESSA">Emessa</option>' +
                         '<option value="PAGATA">Pagata</option>' +
                         '<option value="ANNULLATA">Annullata</option>' +
@@ -299,7 +300,7 @@ ENI.Fatturazione.Elenco = (function() {
     function _showModificaFattura(full) {
         var f = full.fattura;
         var righe = full.righe || [];
-        var isBozza = f.stato === 'BOZZA';
+        var isBozza = f.stato === 'BOZZA' || f.stato === 'IN_ATTESA';
 
         var modPagOpts = ['','RIBA','RID_SDD','BONIFICO','CONTANTI','FINE_MESE'].map(function(v) {
             return '<option value="' + v + '"' + (f.modalita_pagamento === v ? ' selected' : '') + '>' + (v || '-- Nessuno --') + '</option>';
@@ -471,6 +472,11 @@ ENI.Fatturazione.Elenco = (function() {
                 }
             }
 
+            // Se era IN_ATTESA e ora ha una modalità pagamento, porta a BOZZA
+            if (f.stato === 'IN_ATTESA' && dati.modalita_pagamento) {
+                dati.stato = 'BOZZA';
+            }
+
             try {
                 await ENI.API.aggiornaFattura(f.id, dati, nuoveRighe);
 
@@ -489,6 +495,19 @@ ENI.Fatturazione.Elenco = (function() {
                     }
                 }
 
+                // Se cambiata modalità pagamento, proponi salvataggio in anagrafica
+                if (f.stato === 'IN_ATTESA' && dati.modalita_pagamento && f.cliente_id) {
+                    var cliNome = f.cliente ? f.cliente.nome_ragione_sociale : '';
+                    var salvaPag = await ENI.UI.confirm(
+                        'Vuoi salvare la modalit\u00e0 "' + dati.modalita_pagamento + '" anche nell\'anagrafica di "' + cliNome + '"?\n' +
+                        'Cos\u00ec i prossimi mesi sar\u00e0 automatico.'
+                    );
+                    if (salvaPag) {
+                        await ENI.API.aggiornaCliente(f.cliente_id, { modalita_pagamento_fattura: dati.modalita_pagamento });
+                        ENI.State.cacheClear();
+                    }
+                }
+
                 ENI.UI.closeModal(modal);
                 ENI.UI.toast('Documento aggiornato', 'success');
                 _ricarica();
@@ -499,8 +518,9 @@ ENI.Fatturazione.Elenco = (function() {
     }
 
     function _badge(stato) {
-        var map = { BOZZA: 'secondary', EMESSA: 'primary', PAGATA: 'success', ANNULLATA: 'danger' };
-        return '<span class="badge badge-' + (map[stato] || 'secondary') + '">' + stato + '</span>';
+        var map = { BOZZA: 'secondary', EMESSA: 'primary', PAGATA: 'success', ANNULLATA: 'danger', IN_ATTESA: 'warning' };
+        var label = stato === 'IN_ATTESA' ? 'IN ATTESA' : stato;
+        return '<span class="badge badge-' + (map[stato] || 'secondary') + '">' + label + '</span>';
     }
     function _fmtData(d) {
         if (!d) return '-';
