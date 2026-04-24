@@ -98,11 +98,17 @@ ENI.Fatturazione.ImportEni = (function() {
     }
 
     async function _processStep1() {
-        var fileSaldi = document.getElementById('imp-file-saldi').files[0];
-        var fileConsuntivi = document.getElementById('imp-file-consuntivi').files[0];
+        console.log('Step1: inizio');
+        var fileInputSaldi = document.getElementById('imp-file-saldi');
+        var fileInputCons = document.getElementById('imp-file-consuntivi');
+        console.log('Step1: input saldi:', fileInputSaldi, 'files:', fileInputSaldi ? fileInputSaldi.files.length : 'null');
+        console.log('Step1: input cons:', fileInputCons, 'files:', fileInputCons ? fileInputCons.files.length : 'null');
+        var fileSaldi = fileInputSaldi && fileInputSaldi.files[0];
+        var fileConsuntivi = fileInputCons && fileInputCons.files[0];
         if (!fileSaldi || !fileConsuntivi) {
             ENI.UI.toast('Seleziona entrambi i file', 'danger'); return;
         }
+        console.log('Step1: file ok, leggo buffers');
 
         _meseSelez = parseInt(document.getElementById('imp-mese').value, 10);
         _annoSelez = parseInt(document.getElementById('imp-anno').value, 10);
