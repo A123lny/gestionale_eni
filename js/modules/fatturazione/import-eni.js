@@ -107,15 +107,16 @@ ENI.Fatturazione.ImportEni = (function() {
         _meseSelez = parseInt(document.getElementById('imp-mese').value, 10);
         _annoSelez = parseInt(document.getElementById('imp-anno').value, 10);
 
+        // Leggi i file SUBITO prima di qualsiasi await (i riferimenti DOM si perdono)
+        var bufSaldi = await fileSaldi.arrayBuffer();
+        var bufCons = await fileConsuntivi.arrayBuffer();
+
         // Controlla import precedente
         try {
             var logs = await ENI.API.getImportEniLog(_annoSelez, _meseSelez);
             if (logs.length) {
-                var warn = document.getElementById('imp-warning');
-                warn.style.display = 'block';
-                warn.innerHTML = '<div class="alert alert-warning">Attenzione: esiste gi\u00e0 un import per ' + _meseSelez + '/' + _annoSelez +
-                    ' (creato il ' + new Date(logs[0].created_at).toLocaleDateString('it-IT') + '). Proseguendo potresti generare fatture duplicate.</div>';
-                if (!await ENI.UI.confirm('Esiste gi\u00e0 un import per questo mese. Vuoi procedere lo stesso?')) return;
+                if (!await ENI.UI.confirm('Esiste gi\u00e0 un import per ' + _meseSelez + '/' + _annoSelez +
+                    '. Proseguendo potresti generare fatture duplicate. Vuoi procedere?')) return;
             }
         } catch(e) {}
 
@@ -123,8 +124,6 @@ ENI.Fatturazione.ImportEni = (function() {
         box.innerHTML = '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div> <span style="margin-left:1rem;">Parsing file in corso...</span></div>';
 
         try {
-            var bufSaldi = await fileSaldi.arrayBuffer();
-            var bufCons = await fileConsuntivi.arrayBuffer();
             _saldi = ENI.Fatturazione.Parser.parseSaldi(bufSaldi);
             _consuntivi = ENI.Fatturazione.Parser.parseConsuntivi(bufCons);
 
