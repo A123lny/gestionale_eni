@@ -158,12 +158,17 @@ ENI.Fatturazione.Elenco = (function() {
                 '<td>' + _badge(f.stato) + '</td>' +
                 '<td style="white-space:nowrap;">' +
                     '<button class="btn btn-sm btn-secondary btn-pdf" data-id="' + f.id + '">PDF</button> ' +
-                    (f.stato !== 'ANNULLATA' ? '<button class="btn btn-sm btn-outline btn-modifica" data-id="' + f.id + '">Modifica</button> ' : '') +
                     (f.stato === 'BOZZA' ? '<button class="btn btn-sm btn-primary btn-emetti" data-id="' + f.id + '">Emetti</button> ' : '') +
                     (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-info btn-email" data-id="' + f.id + '" data-email="' + ENI.UI.escapeHtml((f.cliente && f.cliente.email) || '') + '" data-cli="' + ENI.UI.escapeHtml(cli) + '" data-num="' + ENI.UI.escapeHtml(f.numero_formattato) + '" data-tipodoc="' + f.tipo_documento + '" style="background:#17a2b8;border-color:#17a2b8;">Email</button> ' : '') +
                     (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-success btn-paga" data-id="' + f.id + '">Pagata</button> ' : '') +
-                    (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-warning btn-riemetti" data-id="' + f.id + '" data-tipo="' + f.tipo_documento + '" data-cliente-id="' + f.cliente_id + '" data-cliente-nome="' + ENI.UI.escapeHtml(cli) + '">' + (f.tipo_documento === 'FATTURA' ? '\u{2192} Ricevuta' : '\u{2192} Fattura') + '</button> ' : '') +
-                    (f.stato !== 'ANNULLATA' ? '<button class="btn btn-sm btn-danger btn-annulla" data-id="' + f.id + '">Annulla</button>' : '') +
+                    '<div class="fatt-dropdown" style="display:inline-block;position:relative;">' +
+                        '<button class="btn btn-sm btn-outline fatt-dropdown-toggle" style="padding:0.2rem 0.5rem;">&#8943;</button>' +
+                        '<div class="fatt-dropdown-menu" style="display:none;position:absolute;right:0;top:100%;background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:20;min-width:150px;">' +
+                            (f.stato !== 'ANNULLATA' ? '<a class="fatt-dd-item btn-modifica" data-id="' + f.id + '">Modifica</a>' : '') +
+                            (f.stato === 'EMESSA' ? '<a class="fatt-dd-item btn-riemetti" data-id="' + f.id + '" data-tipo="' + f.tipo_documento + '" data-cliente-id="' + f.cliente_id + '" data-cliente-nome="' + ENI.UI.escapeHtml(cli) + '">' + (f.tipo_documento === 'FATTURA' ? '\u{2192} Cambia in Ricevuta' : '\u{2192} Cambia in Fattura') + '</a>' : '') +
+                            (f.stato !== 'ANNULLATA' ? '<a class="fatt-dd-item btn-annulla" data-id="' + f.id + '" style="color:var(--color-danger);">Annulla</a>' : '') +
+                        '</div>' +
+                    '</div>' +
                 '</td>' +
             '</tr>';
         }
@@ -298,6 +303,19 @@ ENI.Fatturazione.Elenco = (function() {
                     _ricarica();
                 } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
             });
+        });
+        // Dropdown toggle
+        document.querySelectorAll('.fatt-dropdown-toggle').forEach(function(b) {
+            b.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var menu = b.nextElementSibling;
+                var open = menu.style.display === 'block';
+                document.querySelectorAll('.fatt-dropdown-menu').forEach(function(m) { m.style.display = 'none'; });
+                menu.style.display = open ? 'none' : 'block';
+            });
+        });
+        document.addEventListener('click', function() {
+            document.querySelectorAll('.fatt-dropdown-menu').forEach(function(m) { m.style.display = 'none'; });
         });
         // Invio massivo email
         var btnEmailTutte = document.getElementById('btn-email-tutte');

@@ -2312,3 +2312,17 @@
     color: #64748b;
     border-top: 2px solid #e2e8f0;
 }
+
+/* Fatturazione - dropdown azioni */
+.fatt-dd-item {
+    display: block;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.fatt-dd-item:hover {
+    background: var(--bg-secondary);
+}
