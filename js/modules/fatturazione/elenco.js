@@ -160,6 +160,7 @@ ENI.Fatturazione.Elenco = (function() {
                     '<button class="btn btn-sm btn-secondary btn-pdf" data-id="' + f.id + '">PDF</button> ' +
                     (f.stato !== 'ANNULLATA' ? '<button class="btn btn-sm btn-outline btn-modifica" data-id="' + f.id + '">Modifica</button> ' : '') +
                     (f.stato === 'BOZZA' ? '<button class="btn btn-sm btn-primary btn-emetti" data-id="' + f.id + '">Emetti</button> ' : '') +
+                    (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-info btn-email" data-id="' + f.id + '" data-email="' + ENI.UI.escapeHtml((f.cliente && f.cliente.email) || '') + '" data-cli="' + ENI.UI.escapeHtml(cli) + '" data-num="' + ENI.UI.escapeHtml(f.numero_formattato) + '" data-tipodoc="' + f.tipo_documento + '" style="background:#17a2b8;border-color:#17a2b8;">Email</button> ' : '') +
                     (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-success btn-paga" data-id="' + f.id + '">Pagata</button> ' : '') +
                     (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-warning btn-riemetti" data-id="' + f.id + '" data-tipo="' + f.tipo_documento + '" data-cliente-id="' + f.cliente_id + '" data-cliente-nome="' + ENI.UI.escapeHtml(cli) + '">' + (f.tipo_documento === 'FATTURA' ? '\u{2192} Ricevuta' : '\u{2192} Fattura') + '</button> ' : '') +
                     (f.stato !== 'ANNULLATA' ? '<button class="btn btn-sm btn-danger btn-annulla" data-id="' + f.id + '">Annulla</button>' : '') +
@@ -185,6 +186,10 @@ ENI.Fatturazione.Elenco = (function() {
                 '<span><strong>' + numBozze + ' bozze</strong> in attesa di emissione (\u20AC ' + _fmtNum(totali.bozza) + ')</span>' +
                 '<button class="btn btn-primary btn-sm" id="btn-emetti-tutte">Emetti tutte le bozze</button>' +
             '</div>' : '') +
+            (lista.filter(function(f) { return f.stato === 'EMESSA'; }).length ?
+                '<div style="display:flex;justify-content:flex-end;margin-bottom:0.5rem;">' +
+                    '<button class="btn btn-sm" id="btn-email-tutte" style="background:#17a2b8;border-color:#17a2b8;color:#fff;">Invia tutte le emesse via email</button>' +
+                '</div>' : '') +
             '<div class="table-wrapper"><table class="table table-hover">' +
             theadHtml +
             '<tbody>' + rows + '</tbody>' +
@@ -294,6 +299,96 @@ ENI.Fatturazione.Elenco = (function() {
                 } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
             });
         });
+        // Invio massivo email
+        var btnEmailTutte = document.getElementById('btn-email-tutte');
+        if (btnEmailTutte) {
+            btnEmailTutte.addEventListener('click', async function() {
+                var emesse = _fatture.filter(function(f) { return f.stato === 'EMESSA' && f.cliente && f.cliente.email; });
+                var senzaEmail = _fatture.filter(function(f) { return f.stato === 'EMESSA' && (!f.cliente || !f.cliente.email); });
+                if (!emesse.length) { ENI.UI.toast('Nessuna fattura emessa con email cliente disponibile', 'warning'); return; }
+                var msg = 'Inviare ' + emesse.length + ' email?';
+                if (senzaEmail.length) msg += '\n(' + senzaEmail.length + ' clienti senza email verranno saltati)';
+                if (!await ENI.UI.confirm(msg)) return;
+                btnEmailTutte.disabled = true;
+                btnEmailTutte.textContent = 'Invio in corso...';
+                var ok = 0, err = 0;
+                for (var i = 0; i < emesse.length; i++) {
+                    var f = emesse[i];
+                    var tipoDoc = f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura';
+                    try {
+                        await _inviaEmailFattura(f.id, f.cliente.email, f.cliente.nome_ragione_sociale, f.numero_formattato, tipoDoc);
+                        ok++;
+                    } catch(e) { err++; console.error('Errore email per', f.numero_formattato, e); }
+                    btnEmailTutte.textContent = 'Invio ' + (i+1) + '/' + emesse.length + '...';
+                }
+                ENI.UI.toast(ok + ' email inviate' + (err ? ', ' + err + ' errori' : ''), ok ? 'success' : 'danger');
+                btnEmailTutte.disabled = false;
+                btnEmailTutte.textContent = 'Invia tutte le emesse via email';
+                _ricarica();
+            });
+        }
+        // Invio email singola
+        document.querySelectorAll('.btn-email').forEach(function(b) {
+            b.addEventListener('click', async function() {
+                var email = b.dataset.email;
+                var cli = b.dataset.cli;
+                var num = b.dataset.num;
+                var tipoDoc = b.dataset.tipodoc === 'RICEVUTA' ? 'Ricevuta' : 'Fattura';
+                if (!email) {
+                    ENI.UI.toast('Il cliente "' + cli + '" non ha un indirizzo email in anagrafica. Impostalo prima.', 'danger');
+                    return;
+                }
+                if (!await ENI.UI.confirm('Inviare ' + tipoDoc + ' ' + num + ' a ' + email + '?')) return;
+                try {
+                    await _inviaEmailFattura(b.dataset.id, email, cli, num, tipoDoc);
+                } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
+            });
+        });
+    }
+
+    // --- Invio email fattura ---
+    async function _inviaEmailFattura(fatturaId, email, clienteNome, numFormattato, tipoDoc) {
+        var full = await ENI.API.getFatturaCompleta(fatturaId);
+        var imp = _impostazioni || await ENI.API.getImpostazioniFatturazione();
+
+        // Genera PDF come base64
+        var doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        // Riusa il generatore PDF esistente ma cattura il blob
+        var blob = await ENI.Fatturazione.Pdf.generaPdfBlob(full, imp);
+        var reader = new FileReader();
+        var base64 = await new Promise(function(resolve) {
+            reader.onload = function() { resolve(reader.result.split(',')[1]); };
+            reader.readAsDataURL(blob);
+        });
+
+        var meseNomi = ['','Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+        var meseLabel = full.fattura.mese_riferimento ? meseNomi[full.fattura.mese_riferimento] + ' ' + full.fattura.anno_riferimento : '';
+        var oggetto = tipoDoc + ' N. ' + numFormattato + (meseLabel ? ' - ' + meseLabel : '') + ' - Enilive Station Cervellini';
+
+        var corpo = '<p>Gentile ' + clienteNome + ',</p>' +
+            '<p>in allegato la ' + tipoDoc.toLowerCase() + ' N. ' + numFormattato +
+            (meseLabel ? ' relativa al mese di ' + meseLabel : '') + '.</p>' +
+            '<p>Cordiali saluti,<br>Enilive Station di Cervellini Andrea</p>';
+
+        var result = await fetch(ENI.Config.PRINT_SERVER_URL + '/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to: email,
+                subject: oggetto,
+                body: corpo,
+                attachments: [{
+                    filename: tipoDoc + '_' + numFormattato.replace('/', '-') + '.pdf',
+                    content_base64: base64
+                }]
+            })
+        });
+        var json = await result.json();
+        if (!json.success) throw new Error(json.message);
+        ENI.UI.toast('Email inviata a ' + email, 'success');
+
+        // Salva data invio
+        await ENI.API.aggiornaFattura(fatturaId, { note: (full.fattura.note || '') + '\nEmail inviata il ' + new Date().toLocaleDateString('it-IT') + ' a ' + email });
     }
 
     // --- Form modifica fattura ---
