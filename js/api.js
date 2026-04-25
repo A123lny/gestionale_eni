@@ -1602,7 +1602,7 @@ ENI.API = (function() {
         filtri = filtri || {};
         var query = getClient()
             .from('fatture')
-            .select('*, cliente:clienti(id, nome_ragione_sociale, p_iva_coe)')
+            .select('*, cliente:clienti(id, nome_ragione_sociale, p_iva_coe, email, telefono)')
             .order('numero', { ascending: true });
 
         if (filtri.anno) query = query.eq('anno', filtri.anno);

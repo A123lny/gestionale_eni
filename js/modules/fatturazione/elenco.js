@@ -348,17 +348,20 @@ ENI.Fatturazione.Elenco = (function() {
         // Invio email singola
         document.querySelectorAll('.btn-email').forEach(function(b) {
             b.addEventListener('click', async function() {
-                var email = b.dataset.email;
-                var cli = b.dataset.cli;
+                var fatturaId = b.dataset.id;
                 var num = b.dataset.num;
                 var tipoDoc = b.dataset.tipodoc === 'RICEVUTA' ? 'Ricevuta' : 'Fattura';
-                if (!email) {
-                    ENI.UI.toast('Il cliente "' + cli + '" non ha un indirizzo email in anagrafica. Impostalo prima.', 'danger');
-                    return;
-                }
-                if (!await ENI.UI.confirm('Inviare ' + tipoDoc + ' ' + num + ' a ' + email + '?')) return;
                 try {
-                    await _inviaEmailFattura(b.dataset.id, email, cli, num, tipoDoc);
+                    var full = await ENI.API.getFatturaCompleta(fatturaId);
+                    var cliente = full.fattura.cliente;
+                    var email = cliente ? cliente.email : null;
+                    var cli = cliente ? cliente.nome_ragione_sociale : '';
+                    if (!email) {
+                        ENI.UI.toast('Il cliente "' + cli + '" non ha un indirizzo email in anagrafica. Impostalo prima.', 'danger');
+                        return;
+                    }
+                    if (!await ENI.UI.confirm('Inviare ' + tipoDoc + ' ' + num + ' a ' + email + '?')) return;
+                    await _inviaEmailFattura(fatturaId, email, cli, num, tipoDoc);
                 } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
             });
         });
