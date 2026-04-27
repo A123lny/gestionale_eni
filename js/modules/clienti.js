@@ -577,6 +577,16 @@ ENI.Modules.Clienti = (function() {
                         '<input type="text" class="form-input" id="mod-iban" value="' + ENI.UI.escapeHtml(c.iban || '') + '" maxlength="40"></div>' +
                 '</div>' +
                 '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">Banca appoggio</label>' +
+                        '<input type="text" class="form-input" id="mod-banca-app" value="' + ENI.UI.escapeHtml(c.banca_appoggio || '') + '"></div>' +
+                    '<div class="form-group"><label class="form-label">ABI</label>' +
+                        '<input type="text" class="form-input" id="mod-abi" value="' + ENI.UI.escapeHtml(c.abi_banca || '') + '" maxlength="10"></div>' +
+                    '<div class="form-group"><label class="form-label">CAB</label>' +
+                        '<input type="text" class="form-input" id="mod-cab" value="' + ENI.UI.escapeHtml(c.cab_banca || '') + '" maxlength="10"></div>' +
+                    '<div class="form-group"><label class="form-label">Mandato SDD</label>' +
+                        '<input type="text" class="form-input" id="mod-mandate" value="' + ENI.UI.escapeHtml(c.mandate_id || '') + '" maxlength="50"></div>' +
+                '</div>' +
+                '<div class="form-row">' +
                     '<div class="form-group"><label class="form-label">Pagamento fattura</label>' +
                         '<select class="form-select" id="mod-modpag-fatt">' + modPagFattOpts + '</select></div>' +
                     '<div class="form-group"><label class="form-label">Scadenza (giorni)</label>' +
@@ -620,6 +630,10 @@ ENI.Modules.Clienti = (function() {
                 sede_legale_nazione: modal.querySelector('#mod-sede-naz').value.trim() || 'SM',
                 pec: modal.querySelector('#mod-pec').value.trim() || null,
                 iban: modal.querySelector('#mod-iban').value.trim() || null,
+                banca_appoggio: modal.querySelector('#mod-banca-app').value.trim() || null,
+                abi_banca: modal.querySelector('#mod-abi').value.trim() || null,
+                cab_banca: modal.querySelector('#mod-cab').value.trim() || null,
+                mandate_id: modal.querySelector('#mod-mandate').value.trim() || null,
                 modalita_pagamento_fattura: modal.querySelector('#mod-modpag-fatt').value || null,
                 scadenza_giorni: parseInt(modal.querySelector('#mod-scadgg').value, 10) || 30,
                 rif_amministrazione: modal.querySelector('#mod-rif-amm').value.trim() || null,

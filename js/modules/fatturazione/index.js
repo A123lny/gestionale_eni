@@ -31,6 +31,7 @@ ENI.Fatturazione.Index = (function() {
             { id: 'elenco', label: 'Elenco', icon: '\u{1F4CB}' },
             { id: 'manuale', label: 'Nuova manuale', icon: '\u{2795}' },
             { id: 'import', label: 'Import ENI', icon: '\u{1F4E5}' },
+            { id: 'export', label: 'Export bancari', icon: '\u{1F3E6}' },
             { id: 'impostazioni', label: 'Impostazioni', icon: '\u{2699}\uFE0F' }
         ];
         var html = '<div class="tesoreria-tabs">';
@@ -66,6 +67,7 @@ ENI.Fatturazione.Index = (function() {
             switch (_vista) {
                 case 'elenco':       await ENI.Fatturazione.Elenco.render(box); break;
                 case 'manuale':      await ENI.Fatturazione.Manuale.render(box); break;
+                case 'export':       await ENI.Fatturazione.ExportBancari.render(box); break;
                 case 'import':       await ENI.Fatturazione.ImportEni.render(box); break;
                 case 'impostazioni': await ENI.Fatturazione.Impostazioni.render(box); break;
                 default: await ENI.Fatturazione.Elenco.render(box);

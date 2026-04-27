@@ -39,6 +39,17 @@ ENI.Fatturazione.Impostazioni = (function() {
                 '<div id="imp-iban-lista"></div>' +
                 '<button type="button" class="btn btn-outline btn-sm mt-2 mb-3" id="imp-iban-aggiungi">+ Aggiungi IBAN</button>' +
                 '<hr style="margin:1rem 0;">' +
+                '<h4 class="mb-2">Dati bancari emittente (per export RIBA/RID)</h4>' +
+                '<div class="form-row">' +
+                    _input('ABI', 'abi_emittente', d.abi_emittente || '06067') +
+                    _input('CAB', 'cab_emittente', d.cab_emittente) +
+                    _input('Codice CBI', 'codice_cbi', d.codice_cbi || '1987558U') +
+                '</div>' +
+                '<div class="form-row">' +
+                    _input('Codice creditore SDD', 'codice_creditore_sdd', d.codice_creditore_sdd || 'SM31001000000000SM30756') +
+                    _input('Codice fiscale emittente', 'codice_fiscale_emittente', d.codice_fiscale_emittente || 'IT00000030756') +
+                '</div>' +
+                '<hr style="margin:1rem 0;">' +
                 '<div class="form-row">' +
                     _input('Scadenza default (giorni)', 'scadenza_default_giorni', d.scadenza_default_giorni || 30) +
                 '</div>' +

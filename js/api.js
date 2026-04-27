@@ -1602,7 +1602,7 @@ ENI.API = (function() {
         filtri = filtri || {};
         var query = getClient()
             .from('fatture')
-            .select('*, cliente:clienti(id, nome_ragione_sociale, p_iva_coe, email, telefono)')
+            .select('*, cliente:clienti(id, nome_ragione_sociale, p_iva_coe, email, telefono, iban, mandate_id, banca_appoggio, abi_banca, cab_banca, sede_legale_indirizzo, sede_legale_cap, sede_legale_comune, sede_legale_provincia, sede_legale_nazione, modalita_pagamento_fattura, scadenza_giorni, rif_amministrazione, applica_monofase)')
             .order('numero', { ascending: true });
 
         if (filtri.anno) query = query.eq('anno', filtri.anno);
