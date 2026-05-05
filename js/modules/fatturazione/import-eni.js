@@ -431,7 +431,8 @@ ENI.Fatturazione.ImportEni = (function() {
     function _apriModalOverride(idx) {
         var m = _mapping[idx];
         var nomiMese = ['','Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
-        var nomiCat = { CARBURANTE: 'Carburanti', LAVAGGIO: 'Lavaggi', ACCESSORIO: 'Accessori', ALTRO: 'Altro', NOTA: 'Nota', RETTIFICA: 'Rettifica' };
+        var nomiCat = { CARBURANTE: 'Carburanti', LAVAGGIO: 'Lavaggi', ACCESSORIO: 'Accessori', ALTRO: 'Altro', NOTA: 'Nota' };
+        var DESCR_RETTIFICA = 'Rettifica importo';  // prefisso per identificare righe di rettifica
         var saldoVal = m.saldo.saldo || 0;
         var consVal = _consTotPerCli[m.saldo.nomeNormalizzato] || 0;
 
@@ -520,7 +521,7 @@ ENI.Fatturazione.ImportEni = (function() {
         function rendRighe() {
             var tbody = backdrop.querySelector('#ovr-tbody');
             tbody.innerHTML = righeEdit.map(function(r, i) {
-                var catOpts = ['CARBURANTE','LAVAGGIO','ACCESSORIO','RETTIFICA','ALTRO','NOTA'].map(function(c) {
+                var catOpts = ['CARBURANTE','LAVAGGIO','ACCESSORIO','ALTRO','NOTA'].map(function(c) {
                     return '<option value="' + c + '"' + (r.categoria === c ? ' selected' : '') + '>' + c + '</option>';
                 }).join('');
                 return '<tr>' +
@@ -591,16 +592,19 @@ ENI.Fatturazione.ImportEni = (function() {
             rendRighe();
         });
 
+        function _isRettifica(r) {
+            return r && typeof r.descrizione === 'string' && r.descrizione.indexOf(DESCR_RETTIFICA) === 0;
+        }
+
         backdrop.querySelector('#ovr-allinea-saldo').addEventListener('click', function() {
-            // Imposta totale = saldo aggregato e aggiungi/aggiorna una riga RETTIFICA per chiudere il delta
-            var totRighe = righeEdit.filter(function(r) { return r.categoria !== 'RETTIFICA'; })
-                .reduce(function(s, r) { return s + (r.importo || 0); }, 0);
-            righeEdit = righeEdit.filter(function(r) { return r.categoria !== 'RETTIFICA'; });
+            // Imposta totale = saldo aggregato; se manca, aggiungi una riga ALTRO con descrizione "Rettifica importo"
+            righeEdit = righeEdit.filter(function(r) { return !_isRettifica(r); });
+            var totRighe = righeEdit.reduce(function(s, r) { return s + (r.importo || 0); }, 0);
             var diff = Math.round((saldoVal - totRighe) * 100) / 100;
             if (Math.abs(diff) > 0.005) {
                 righeEdit.push({
-                    descrizione: 'Rettifica importo ' + nomiMese[_meseSelez] + ' ' + _annoSelez,
-                    quantita: 1, unita_misura: '', prezzo_unitario: diff, importo: diff, categoria: 'RETTIFICA'
+                    descrizione: DESCR_RETTIFICA + ' ' + nomiMese[_meseSelez] + ' ' + _annoSelez,
+                    quantita: 1, unita_misura: '', prezzo_unitario: diff, importo: diff, categoria: 'ALTRO'
                 });
             }
             backdrop.querySelector('#ovr-totale').value = saldoVal;
@@ -608,7 +612,7 @@ ENI.Fatturazione.ImportEni = (function() {
         });
 
         backdrop.querySelector('#ovr-allinea-cons').addEventListener('click', function() {
-            righeEdit = righeEdit.filter(function(r) { return r.categoria !== 'RETTIFICA'; });
+            righeEdit = righeEdit.filter(function(r) { return !_isRettifica(r); });
             var subtot = righeEdit.reduce(function(s, r) { return s + (r.importo || 0); }, 0);
             backdrop.querySelector('#ovr-totale').value = Math.round(subtot * 100) / 100;
             rendRighe();
