@@ -1707,6 +1707,58 @@ ENI.API = (function() {
         return aggiornaStatoFattura(id, 'ANNULLATA', { note: motivo || null });
     }
 
+    // Eliminazione fisica multipla — consentita SOLO per fatture BOZZA.
+    // I record collegati (fatture_righe, fatture_movimenti) vengono cancellati a cascata via FK.
+    // Dopo l'eliminazione, i log import_eni rimasti senza fatture vengono rimossi.
+    async function eliminaFatture(ids) {
+        if (!ids || !ids.length) return { eliminate: 0, logRimossi: 0 };
+        var sb = getClient();
+
+        // 1. Verifica server-side: tutti gli id devono essere BOZZA
+        var check = await sb
+            .from('fatture')
+            .select('id, stato, mese_riferimento, anno_riferimento, import_eni_log_id, numero_formattato')
+            .in('id', ids);
+        if (check.error) throw new Error(check.error.message);
+        var trovate = check.data || [];
+        if (trovate.length !== ids.length) {
+            throw new Error('Alcune fatture non sono state trovate');
+        }
+        var nonBozza = trovate.filter(function(f) { return f.stato !== 'BOZZA'; });
+        if (nonBozza.length) {
+            throw new Error('Eliminazione bloccata: ' + nonBozza.length + ' fatture non sono in stato BOZZA (numeri: ' +
+                nonBozza.slice(0, 5).map(function(f) { return f.numero_formattato || f.id; }).join(', ') + ')');
+        }
+
+        // 2. Cancella le fatture (cascade pulisce righe e movimenti)
+        var del = await sb.from('fatture').delete().in('id', ids);
+        if (del.error) throw new Error(del.error.message);
+
+        // 3. Auto-cleanup log import_eni: per ogni mese/anno toccato, se non ci sono piu' fatture rimuovi il log
+        var periodi = {};
+        trovate.forEach(function(f) {
+            if (f.mese_riferimento && f.anno_riferimento) {
+                periodi[f.mese_riferimento + '/' + f.anno_riferimento] = {
+                    mese: f.mese_riferimento, anno: f.anno_riferimento
+                };
+            }
+        });
+        var logRimossi = 0;
+        for (var k in periodi) {
+            var p = periodi[k];
+            var rest = await sb.from('fatture').select('id', { count: 'exact', head: true })
+                .eq('mese_riferimento', p.mese).eq('anno_riferimento', p.anno);
+            if (rest.error) continue;
+            if ((rest.count || 0) === 0) {
+                var dlog = await sb.from('import_eni_log').delete().eq('mese', p.mese).eq('anno', p.anno);
+                if (!dlog.error) logRimossi++;
+            }
+        }
+
+        await scriviLog('Eliminate ' + trovate.length + ' bozze in batch', 'fatturazione', { count: trovate.length });
+        return { eliminate: trovate.length, logRimossi: logRimossi };
+    }
+
     async function aggiornaFattura(id, dati, righe) {
         dati.updated_at = new Date().toISOString();
         var result = await getClient().from('fatture').update(dati).eq('id', id).select().single();
@@ -1918,6 +1970,7 @@ ENI.API = (function() {
         salvaFattura: salvaFattura,
         aggiornaStatoFattura: aggiornaStatoFattura,
         annullaFattura: annullaFattura,
+        eliminaFatture: eliminaFatture,
         aggiornaFattura: aggiornaFattura,
         annullaERiemetti: annullaERiemetti,
         getImportEniLog: getImportEniLog,

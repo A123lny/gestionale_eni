@@ -148,7 +148,11 @@ ENI.Fatturazione.Elenco = (function() {
 
         function _rigaHtml(f) {
             var cli = f.cliente ? f.cliente.nome_ragione_sociale : '';
+            var checkboxCell = f.stato === 'BOZZA' ?
+                '<td style="text-align:center;width:32px;"><input type="checkbox" class="fatt-sel" data-id="' + f.id + '" data-totale="' + (parseFloat(f.totale) || 0) + '"></td>' :
+                '<td style="width:32px;"></td>';
             return '<tr data-id="' + f.id + '">' +
+                checkboxCell +
                 '<td><strong>' + ENI.UI.escapeHtml(f.numero_formattato) + '</strong></td>' +
                 '<td>' + _fmtData(f.data_emissione) + '</td>' +
                 '<td>' + ENI.UI.escapeHtml(cli) + '</td>' +
@@ -174,18 +178,30 @@ ENI.Fatturazione.Elenco = (function() {
         }
 
         var rows = '';
-        var theadHtml = '<thead><tr><th>N\u00b0</th><th>Data</th><th>Cliente</th><th>Tipo</th><th class="text-right">Totale</th><th>Scadenza</th><th>Stato</th><th>Azioni</th></tr></thead>';
+        var headerCheckbox = numBozze ?
+            '<th style="text-align:center;width:32px;"><input type="checkbox" id="fatt-sel-all" title="Seleziona tutte le bozze visibili"></th>' :
+            '<th style="width:32px;"></th>';
+        var theadHtml = '<thead><tr>' + headerCheckbox + '<th>N\u00b0</th><th>Data</th><th>Cliente</th><th>Tipo</th><th class="text-right">Totale</th><th>Scadenza</th><th>Stato</th><th>Azioni</th></tr></thead>';
 
         if (mostraGruppi) {
             var totFatt = fatture.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
             var totRic = ricevute.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
-            rows += '<tr><td colspan="8" style="background:var(--color-primary);color:#fff;font-weight:700;padding:0.5rem 1rem;">FATTURE (' + fatture.length + ') \u2014 \u20AC ' + _fmtNum(totFatt) + '</td></tr>';
+            rows += '<tr><td colspan="9" style="background:var(--color-primary);color:#fff;font-weight:700;padding:0.5rem 1rem;">FATTURE (' + fatture.length + ') \u2014 \u20AC ' + _fmtNum(totFatt) + '</td></tr>';
             rows += fatture.map(_rigaHtml).join('');
-            rows += '<tr><td colspan="8" style="background:var(--color-gray-600,#555);color:#fff;font-weight:700;padding:0.5rem 1rem;">RICEVUTE (' + ricevute.length + ') \u2014 \u20AC ' + _fmtNum(totRic) + '</td></tr>';
+            rows += '<tr><td colspan="9" style="background:var(--color-gray-600,#555);color:#fff;font-weight:700;padding:0.5rem 1rem;">RICEVUTE (' + ricevute.length + ') \u2014 \u20AC ' + _fmtNum(totRic) + '</td></tr>';
             rows += ricevute.map(_rigaHtml).join('');
         } else {
             rows = lista.map(_rigaHtml).join('');
         }
+
+        var bulkBar = numBozze ?
+            '<div id="fatt-bulk-bar" style="display:none;align-items:center;justify-content:space-between;margin-bottom:0.5rem;padding:0.6rem 0.85rem;background:var(--bg-info-subtle,#cfe2ff);border-radius:var(--radius-sm);border:1px solid var(--info,#0d6efd);">' +
+                '<span><strong id="fatt-bulk-count">0</strong> bozze selezionate \u2014 <strong>\u20AC <span id="fatt-bulk-tot">0,00</span></strong></span>' +
+                '<div style="display:flex;gap:0.5rem;">' +
+                    '<button class="btn btn-sm btn-outline" id="btn-bulk-clear">Annulla selezione</button>' +
+                    '<button class="btn btn-sm btn-danger" id="btn-bulk-delete">Elimina selezionate</button>' +
+                '</div>' +
+            '</div>' : '';
 
         return (numBozze ? '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;padding:0.75rem;background:var(--bg-warning-subtle,#fff3cd);border-radius:var(--radius-sm);">' +
                 '<span><strong>' + numBozze + ' bozze</strong> in attesa di emissione (\u20AC ' + _fmtNum(totali.bozza) + ')</span>' +
@@ -195,10 +211,11 @@ ENI.Fatturazione.Elenco = (function() {
                 '<div style="display:flex;justify-content:flex-end;margin-bottom:0.5rem;">' +
                     '<button class="btn btn-sm" id="btn-email-tutte" style="background:#17a2b8;border-color:#17a2b8;color:#fff;">Invia tutte le emesse via email</button>' +
                 '</div>' : '') +
+            bulkBar +
             '<div class="table-wrapper"><table class="table table-hover">' +
             theadHtml +
             '<tbody>' + rows + '</tbody>' +
-            '<tfoot><tr><th colspan="4" class="text-right">Totali:</th>' +
+            '<tfoot><tr><th colspan="5" class="text-right">Totali:</th>' +
                 '<th class="text-right">\u20AC ' + _fmtNum(totali.tot) + '</th>' +
                 '<th colspan="3">Bozze: \u20AC ' + _fmtNum(totali.bozza) + ' | Emesso: \u20AC ' + _fmtNum(totali.emesso) + ' | Pagato: \u20AC ' + _fmtNum(totali.pagato) + '</th></tr></tfoot>' +
             '</table></div>';
@@ -304,6 +321,75 @@ ENI.Fatturazione.Elenco = (function() {
                 } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
             });
         });
+        // Bulk selection: checkboxes + action bar
+        function _aggiornaBulkBar() {
+            var bar = document.getElementById('fatt-bulk-bar');
+            if (!bar) return;
+            var sel = document.querySelectorAll('.fatt-sel:checked');
+            var count = sel.length;
+            if (count === 0) {
+                bar.style.display = 'none';
+            } else {
+                bar.style.display = 'flex';
+                var tot = 0;
+                sel.forEach(function(cb) { tot += parseFloat(cb.dataset.totale) || 0; });
+                document.getElementById('fatt-bulk-count').textContent = count;
+                document.getElementById('fatt-bulk-tot').textContent = _fmtNum(tot);
+            }
+            // Sync header "select all" stato
+            var head = document.getElementById('fatt-sel-all');
+            if (head) {
+                var all = document.querySelectorAll('.fatt-sel');
+                head.checked = all.length > 0 && count === all.length;
+                head.indeterminate = count > 0 && count < all.length;
+            }
+        }
+        document.querySelectorAll('.fatt-sel').forEach(function(cb) {
+            cb.addEventListener('change', _aggiornaBulkBar);
+        });
+        var headSel = document.getElementById('fatt-sel-all');
+        if (headSel) {
+            headSel.addEventListener('change', function() {
+                document.querySelectorAll('.fatt-sel').forEach(function(cb) { cb.checked = headSel.checked; });
+                _aggiornaBulkBar();
+            });
+        }
+        var btnBulkClear = document.getElementById('btn-bulk-clear');
+        if (btnBulkClear) {
+            btnBulkClear.addEventListener('click', function() {
+                document.querySelectorAll('.fatt-sel').forEach(function(cb) { cb.checked = false; });
+                _aggiornaBulkBar();
+            });
+        }
+        var btnBulkDelete = document.getElementById('btn-bulk-delete');
+        if (btnBulkDelete) {
+            btnBulkDelete.addEventListener('click', async function() {
+                var sel = document.querySelectorAll('.fatt-sel:checked');
+                if (!sel.length) return;
+                var ids = Array.from(sel).map(function(cb) { return cb.dataset.id; });
+                var totale = Array.from(sel).reduce(function(s, cb) { return s + (parseFloat(cb.dataset.totale) || 0); }, 0);
+                var numeri = _fatture.filter(function(f) { return ids.indexOf(f.id) >= 0; })
+                    .map(function(f) { return f.numero_formattato; });
+                var preview = numeri.slice(0, 5).join(', ') + (numeri.length > 5 ? ', …e altre ' + (numeri.length - 5) : '');
+                if (!await ENI.UI.confirm('Eliminare ' + ids.length + ' bozze definitivamente?\n\n' +
+                    'Numeri: ' + preview + '\nTotale: € ' + _fmtNum(totale) + '\n\n' +
+                    'L\'operazione è irreversibile. Le righe e i movimenti collegati verranno cancellati.')) return;
+                btnBulkDelete.disabled = true;
+                btnBulkDelete.textContent = 'Eliminazione…';
+                try {
+                    var res = await ENI.API.eliminaFatture(ids);
+                    var msg = res.eliminate + ' bozze eliminate';
+                    if (res.logRimossi) msg += ' (anche ' + res.logRimossi + ' log import puliti)';
+                    ENI.UI.toast(msg, 'success');
+                    _ricarica();
+                } catch(e) {
+                    ENI.UI.toast('Errore: ' + e.message, 'danger');
+                    btnBulkDelete.disabled = false;
+                    btnBulkDelete.textContent = 'Elimina selezionate';
+                }
+            });
+        }
+
         // Dropdown toggle
         document.querySelectorAll('.fatt-dropdown-toggle').forEach(function(b) {
             b.addEventListener('click', function(e) {
