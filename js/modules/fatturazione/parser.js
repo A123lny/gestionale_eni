@@ -41,13 +41,16 @@ ENI.Fatturazione.Parser = (function() {
             var dataScadenza = _parseDataIt(r['Data Scadenza'] || r['Data scadenza']);
             var mese = dataContabile ? dataContabile.getMonth() : null;    // 0-11
             var anno = dataContabile ? dataContabile.getFullYear() : null;
-            // Data Contabile = data chiusura consuntivo (primo del mese successivo)
-            // Il mese di COMPETENZA è il mese precedente
+            // ENI può chiudere il consuntivo al 1° del mese successivo (vecchio formato: 01/05/2026)
+            // o all'ultimo giorno del mese di competenza (nuovo formato: 30/04/2026).
+            // Se giorno = 1 → primo del mese successivo, competenza = mese precedente.
+            // Altrimenti la competenza coincide col mese di Data Contabile.
             var meseCompetenza = null, annoCompetenza = null;
             if (dataContabile) {
                 var d = new Date(dataContabile.getTime());
-                d.setDate(1);
-                d.setMonth(d.getMonth() - 1);
+                if (d.getDate() === 1) {
+                    d.setMonth(d.getMonth() - 1);
+                }
                 meseCompetenza = d.getMonth() + 1;  // 1-12
                 annoCompetenza = d.getFullYear();
             }
