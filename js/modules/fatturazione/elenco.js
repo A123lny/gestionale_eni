@@ -157,6 +157,7 @@ ENI.Fatturazione.Elenco = (function() {
                 '<td>' + _fmtData(f.data_emissione) + '</td>' +
                 '<td>' + ENI.UI.escapeHtml(cli) + '</td>' +
                 '<td>' + (f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura') + ' <span class="text-xs text-muted">(' + (f.tipo === 'MANUALE' ? 'Man.' : 'ENI') + ')</span></td>' +
+                '<td>' + _fmtPagamento(f.modalita_pagamento) + '</td>' +
                 '<td class="text-right">€ ' + _fmtNum(f.totale) + '</td>' +
                 '<td>' + (f.data_scadenza ? _fmtData(f.data_scadenza) : '-') + '</td>' +
                 '<td>' + _badge(f.stato) + '</td>' +
@@ -181,14 +182,14 @@ ENI.Fatturazione.Elenco = (function() {
         var headerCheckbox = numBozze ?
             '<th style="text-align:center;width:32px;"><input type="checkbox" id="fatt-sel-all" title="Seleziona tutte le bozze visibili"></th>' :
             '<th style="width:32px;"></th>';
-        var theadHtml = '<thead><tr>' + headerCheckbox + '<th>N\u00b0</th><th>Data</th><th>Cliente</th><th>Tipo</th><th class="text-right">Totale</th><th>Scadenza</th><th>Stato</th><th>Azioni</th></tr></thead>';
+        var theadHtml = '<thead><tr>' + headerCheckbox + '<th>N\u00b0</th><th>Data</th><th>Cliente</th><th>Tipo</th><th>Pagamento</th><th class="text-right">Totale</th><th>Scadenza</th><th>Stato</th><th>Azioni</th></tr></thead>';
 
         if (mostraGruppi) {
             var totFatt = fatture.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
             var totRic = ricevute.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
-            rows += '<tr><td colspan="9" style="background:var(--color-primary);color:#fff;font-weight:700;padding:0.5rem 1rem;">FATTURE (' + fatture.length + ') \u2014 \u20AC ' + _fmtNum(totFatt) + '</td></tr>';
+            rows += '<tr><td colspan="10" style="background:var(--color-primary);color:#fff;font-weight:700;padding:0.5rem 1rem;">FATTURE (' + fatture.length + ') \u2014 \u20AC ' + _fmtNum(totFatt) + '</td></tr>';
             rows += fatture.map(_rigaHtml).join('');
-            rows += '<tr><td colspan="9" style="background:var(--color-gray-600,#555);color:#fff;font-weight:700;padding:0.5rem 1rem;">RICEVUTE (' + ricevute.length + ') \u2014 \u20AC ' + _fmtNum(totRic) + '</td></tr>';
+            rows += '<tr><td colspan="10" style="background:var(--color-gray-600,#555);color:#fff;font-weight:700;padding:0.5rem 1rem;">RICEVUTE (' + ricevute.length + ') \u2014 \u20AC ' + _fmtNum(totRic) + '</td></tr>';
             rows += ricevute.map(_rigaHtml).join('');
         } else {
             rows = lista.map(_rigaHtml).join('');
@@ -225,7 +226,7 @@ ENI.Fatturazione.Elenco = (function() {
             '<div class="table-wrapper"><table class="table table-hover">' +
             theadHtml +
             '<tbody>' + rows + '</tbody>' +
-            '<tfoot><tr><th colspan="5" class="text-right">Totali:</th>' +
+            '<tfoot><tr><th colspan="6" class="text-right">Totali:</th>' +
                 '<th class="text-right">\u20AC ' + _fmtNum(totali.tot) + '</th>' +
                 '<th colspan="3">Bozze: \u20AC ' + _fmtNum(totali.bozza) + ' | Emesso: \u20AC ' + _fmtNum(totali.emesso) + ' | Pagato: \u20AC ' + _fmtNum(totali.pagato) + '</th></tr></tfoot>' +
             '</table></div>';
@@ -746,6 +747,18 @@ ENI.Fatturazione.Elenco = (function() {
     }
     function _fmtNum(n) {
         return (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function _fmtPagamento(m) {
+        if (!m) return '<span class="text-muted">-</span>';
+        var map = {
+            RID_SDD: 'RID/SDD',
+            RIBA: 'RIBA',
+            BONIFICO: 'Bonifico',
+            CONTANTI: 'Contanti',
+            FINE_MESE: 'Fine mese',
+            RIMESSA_DIRETTA: 'Rimessa diretta'
+        };
+        return ENI.UI.escapeHtml(map[m] || m);
     }
 
     return { render: render };
