@@ -207,10 +207,20 @@ ENI.Fatturazione.Elenco = (function() {
                 '<span><strong>' + numBozze + ' bozze</strong> in attesa di emissione (\u20AC ' + _fmtNum(totali.bozza) + ')</span>' +
                 '<button class="btn btn-primary btn-sm" id="btn-emetti-tutte">Emetti tutte le bozze</button>' +
             '</div>' : '') +
-            (lista.filter(function(f) { return f.stato === 'EMESSA'; }).length ?
-                '<div style="display:flex;justify-content:flex-end;margin-bottom:0.5rem;">' +
-                    '<button class="btn btn-sm" id="btn-email-tutte" style="background:#17a2b8;border-color:#17a2b8;color:#fff;">Invia tutte le emesse via email</button>' +
-                '</div>' : '') +
+            (function() {
+                var emesse = lista.filter(function(f) { return f.stato === 'EMESSA'; });
+                if (!emesse.length) return '';
+                var nomi = ['','Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+                var periodo = _filtri.mese_riferimento ?
+                    nomi[parseInt(_filtri.mese_riferimento, 10)] + ' ' + _filtri.anno :
+                    'Anno ' + _filtri.anno + ' (tutti i mesi)';
+                var conEmail = emesse.filter(function(f) { return f.cliente && f.cliente.email; }).length;
+                return '<div style="display:flex;justify-content:flex-end;margin-bottom:0.5rem;">' +
+                    '<button class="btn btn-sm" id="btn-email-tutte" style="background:#17a2b8;border-color:#17a2b8;color:#fff;" data-periodo="' + ENI.UI.escapeHtml(periodo) + '">' +
+                        '\u{1F4E7} Invia ' + conEmail + ' email — ' + ENI.UI.escapeHtml(periodo) +
+                    '</button>' +
+                '</div>';
+            })() +
             bulkBar +
             '<div class="table-wrapper"><table class="table table-hover">' +
             theadHtml +
@@ -410,8 +420,14 @@ ENI.Fatturazione.Elenco = (function() {
                 var emesse = _fatture.filter(function(f) { return f.stato === 'EMESSA' && f.cliente && f.cliente.email; });
                 var senzaEmail = _fatture.filter(function(f) { return f.stato === 'EMESSA' && (!f.cliente || !f.cliente.email); });
                 if (!emesse.length) { ENI.UI.toast('Nessuna fattura emessa con email cliente disponibile', 'warning'); return; }
-                var msg = 'Inviare ' + emesse.length + ' email?';
-                if (senzaEmail.length) msg += '\n(' + senzaEmail.length + ' clienti senza email verranno saltati)';
+                var periodo = btnEmailTutte.dataset.periodo || ('Anno ' + _filtri.anno);
+                var totale = emesse.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
+                var numeri = emesse.map(function(f) { return f.numero_formattato; });
+                var preview = numeri.slice(0, 5).join(', ') + (numeri.length > 5 ? ', …e altre ' + (numeri.length - 5) : '');
+                var msg = 'Inviare ' + emesse.length + ' email per ' + periodo + '?\n\n' +
+                    'Numeri: ' + preview + '\n' +
+                    'Totale: € ' + _fmtNum(totale);
+                if (senzaEmail.length) msg += '\n\n⚠️ ' + senzaEmail.length + ' fatture emesse senza email cliente saranno saltate.';
                 if (!await ENI.UI.confirm(msg)) return;
                 btnEmailTutte.disabled = true;
                 btnEmailTutte.textContent = 'Invio in corso...';
@@ -427,8 +443,7 @@ ENI.Fatturazione.Elenco = (function() {
                 }
                 ENI.UI.toast(ok + ' email inviate' + (err ? ', ' + err + ' errori' : ''), ok ? 'success' : 'danger');
                 btnEmailTutte.disabled = false;
-                btnEmailTutte.textContent = 'Invia tutte le emesse via email';
-                _ricarica();
+                _ricarica();  // re-render rigenera il label corretto
             });
         }
         // Invio email singola

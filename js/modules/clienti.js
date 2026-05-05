@@ -340,10 +340,7 @@ ENI.Modules.Clienti = (function() {
                             '<option value="CONTANTI">Contanti</option>' +
                             '<option value="FINE_MESE">Fine mese</option>' +
                         '</select>' +
-                    '</div>' +
-                    '<div class="form-group">' +
-                        '<label class="form-label">Scadenza (giorni)</label>' +
-                        '<input type="number" class="form-input" id="cl-scadenza-gg" value="30" min="0" max="365">' +
+                        '<span class="text-xs text-muted" id="cl-scadenza-info" style="display:block;margin-top:0.25rem;">Scadenza: ' + ENI.Fatturazione.Scadenza.descrivi('') + '</span>' +
                     '</div>' +
                     '<div class="form-group">' +
                         '<label class="form-label">Rif. amministrazione</label>' +
@@ -387,6 +384,15 @@ ENI.Modules.Clienti = (function() {
         });
 
         var vociHelper = _vociRicorrentiAttach(modal);
+
+        // Aggiorna info scadenza al cambio modalita pagamento fattura
+        var clModPagSel = modal.querySelector('#cl-mod-pag-fatt');
+        var clScadInfo = modal.querySelector('#cl-scadenza-info');
+        if (clModPagSel && clScadInfo) {
+            clModPagSel.addEventListener('change', function() {
+                clScadInfo.textContent = 'Scadenza: ' + ENI.Fatturazione.Scadenza.descrivi(clModPagSel.value);
+            });
+        }
 
         // Toggle tipo
         modal.querySelectorAll('input[name="tipo"]').forEach(function(radio) {
@@ -472,7 +478,6 @@ ENI.Modules.Clienti = (function() {
                 pec: modal.querySelector('#cl-pec').value.trim() || null,
                 iban: modal.querySelector('#cl-iban').value.trim() || null,
                 modalita_pagamento_fattura: modal.querySelector('#cl-mod-pag-fatt').value || null,
-                scadenza_giorni: parseInt(modal.querySelector('#cl-scadenza-gg').value, 10) || 30,
                 rif_amministrazione: modal.querySelector('#cl-rif-amm').value.trim() || null,
                 applica_monofase: modal.querySelector('#cl-monofase').checked,
                 note_fatturazione: modal.querySelector('#cl-note-fatt').value.trim() || null,
@@ -550,7 +555,7 @@ ENI.Modules.Clienti = (function() {
                     (cliente.sede_legale_indirizzo ? _infoRow('Sede legale', [cliente.sede_legale_indirizzo, cliente.sede_legale_cap, cliente.sede_legale_comune, cliente.sede_legale_provincia, cliente.sede_legale_nazione].filter(Boolean).join(', ')) : '') +
                     (cliente.pec ? _infoRow('PEC', cliente.pec) : '') +
                     (cliente.iban ? _infoRow('IBAN', cliente.iban) : '') +
-                    (cliente.scadenza_giorni ? _infoRow('Scadenza', cliente.scadenza_giorni + ' giorni') : '') +
+                    _infoRow('Scadenza', ENI.Fatturazione.Scadenza.descrivi(cliente.modalita_pagamento_fattura)) +
                     (cliente.rif_amministrazione ? _infoRow('Rif. amministrazione', cliente.rif_amministrazione) : '') +
                     (cliente.applica_monofase ? _infoRow('Monofase', 'Attivo') : '') +
                     (cliente.note_fatturazione ? _infoRow('Note fatturazione', cliente.note_fatturazione) : '') +
@@ -672,9 +677,8 @@ ENI.Modules.Clienti = (function() {
                 '</div>' +
                 '<div class="form-row">' +
                     '<div class="form-group"><label class="form-label">Pagamento fattura</label>' +
-                        '<select class="form-select" id="mod-modpag-fatt">' + modPagFattOpts + '</select></div>' +
-                    '<div class="form-group"><label class="form-label">Scadenza (giorni)</label>' +
-                        '<input type="number" class="form-input" id="mod-scadgg" value="' + (c.scadenza_giorni || 30) + '" min="0" max="365"></div>' +
+                        '<select class="form-select" id="mod-modpag-fatt">' + modPagFattOpts + '</select>' +
+                        '<span class="text-xs text-muted" id="mod-scadenza-info" style="display:block;margin-top:0.25rem;">Scadenza: ' + ENI.Fatturazione.Scadenza.descrivi(c.modalita_pagamento_fattura) + '</span></div>' +
                     '<div class="form-group"><label class="form-label">Rif. amministrazione</label>' +
                         '<input type="text" class="form-input" id="mod-rif-amm" value="' + ENI.UI.escapeHtml(c.rif_amministrazione || '') + '"></div>' +
                 '</div>' +
@@ -696,6 +700,15 @@ ENI.Modules.Clienti = (function() {
         });
 
         var vociHelper = _vociRicorrentiAttach(modal);
+
+        // Aggiorna info scadenza al cambio modalita pagamento
+        var modPagSel = modal.querySelector('#mod-modpag-fatt');
+        var scadInfo = modal.querySelector('#mod-scadenza-info');
+        if (modPagSel && scadInfo) {
+            modPagSel.addEventListener('change', function() {
+                scadInfo.textContent = 'Scadenza: ' + ENI.Fatturazione.Scadenza.descrivi(modPagSel.value);
+            });
+        }
 
         modal.querySelector('#btn-salva-modifica').addEventListener('click', async function() {
             var nome = modal.querySelector('#mod-nome').value.trim();
@@ -722,7 +735,6 @@ ENI.Modules.Clienti = (function() {
                 cab_banca: modal.querySelector('#mod-cab').value.trim() || null,
                 mandate_id: modal.querySelector('#mod-mandate').value.trim() || null,
                 modalita_pagamento_fattura: modal.querySelector('#mod-modpag-fatt').value || null,
-                scadenza_giorni: parseInt(modal.querySelector('#mod-scadgg').value, 10) || 30,
                 rif_amministrazione: modal.querySelector('#mod-rif-amm').value.trim() || null,
                 applica_monofase: modal.querySelector('#mod-monofase').checked,
                 note_fatturazione: modal.querySelector('#mod-note-fatt').value.trim() || null,

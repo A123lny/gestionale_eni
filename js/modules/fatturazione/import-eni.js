@@ -848,9 +848,9 @@ ENI.Fatturazione.ImportEni = (function() {
                     };
                 });
 
-                var scadGg = cli && cli.scadenza_giorni ? cli.scadenza_giorni : (impostazioni ? impostazioni.scadenza_default_giorni : 30) || 30;
                 var dataEm = new Date();
-                var dataScad = new Date(dataEm.getTime() + scadGg * 86400000);
+                var modPag = cli && cli.modalita_pagamento_fattura ? cli.modalita_pagamento_fattura : null;
+                var dataScad = ENI.Fatturazione.Scadenza.calcola(dataEm, modPag);
 
                 var tipoDocumento = cli && cli.tipo === 'Privato' ? 'RICEVUTA' : 'FATTURA';
                 var fattura = {

@@ -56,8 +56,9 @@ ENI.Fatturazione.Manuale = (function() {
                                 '<option value="CONTANTI">Contanti</option>' +
                                 '<option value="FINE_MESE">Fine mese</option>' +
                             '</select></div>' +
-                        '<div class="form-group"><label class="form-label">Scadenza giorni</label>' +
-                            '<input type="number" class="form-input" id="fatt-m-scadgg" value="30" min="0" max="365"></div>' +
+                        '<div class="form-group"><label class="form-label">Data scadenza</label>' +
+                            '<input type="date" class="form-input" id="fatt-m-scad-data">' +
+                            '<span class="text-xs text-muted" id="fatt-m-scad-info">Auto: dipende dalla modalità pagamento</span></div>' +
                     '</div>' +
                     '<div class="form-group" id="fatt-m-iban-group" style="display:none;"><label class="form-label">IBAN beneficiario</label>' +
                         '<select class="form-select" id="fatt-m-iban"></select></div>' +
@@ -127,7 +128,10 @@ ENI.Fatturazione.Manuale = (function() {
             var val = document.getElementById('fatt-m-modpag').value;
             var show = (val === 'BONIFICO' || val === 'RIBA' || val === 'RID_SDD');
             document.getElementById('fatt-m-iban-group').style.display = show ? '' : 'none';
+            _aggiornaScadenzaAuto();
         });
+        document.getElementById('fatt-m-data').addEventListener('change', _aggiornaScadenzaAuto);
+        _aggiornaScadenzaAuto();
 
         // Aggiungi riga
         document.getElementById('fatt-m-add-riga').addEventListener('click', _aggiungiRiga);
@@ -173,9 +177,7 @@ ENI.Fatturazione.Manuale = (function() {
         if (cliente.modalita_pagamento_fattura) {
             document.getElementById('fatt-m-modpag').value = cliente.modalita_pagamento_fattura;
         }
-        if (cliente.scadenza_giorni) {
-            document.getElementById('fatt-m-scadgg').value = cliente.scadenza_giorni;
-        }
+        _aggiornaScadenzaAuto();
 
         // Monofase
         var monoDiv = document.getElementById('fatt-m-monofase');
@@ -190,8 +192,18 @@ ENI.Fatturazione.Manuale = (function() {
                 (cliente.p_iva_coe ? ' &mdash; COE/P.IVA: ' + ENI.UI.escapeHtml(cliente.p_iva_coe) : '') +
                 (cliente.sede_legale_indirizzo ? '<br>' + ENI.UI.escapeHtml([cliente.sede_legale_indirizzo, cliente.sede_legale_cap, cliente.sede_legale_comune].filter(Boolean).join(', ')) : '') +
                 (cliente.rif_amministrazione ? '<br>Rif. amm.: ' + ENI.UI.escapeHtml(cliente.rif_amministrazione) : '') +
-                (cliente.modalita_pagamento_fattura ? '<br>Pagamento: ' + cliente.modalita_pagamento_fattura + ' - Scadenza: ' + (cliente.scadenza_giorni || 30) + 'gg' : '') +
+                (cliente.modalita_pagamento_fattura ? '<br>Pagamento: ' + cliente.modalita_pagamento_fattura + ' &mdash; Scadenza: ' + ENI.Fatturazione.Scadenza.descrivi(cliente.modalita_pagamento_fattura) : '') +
             '</div>';
+    }
+
+    function _aggiornaScadenzaAuto() {
+        var dataEm = document.getElementById('fatt-m-data').value;
+        var modPag = document.getElementById('fatt-m-modpag').value;
+        if (!dataEm) return;
+        var scad = ENI.Fatturazione.Scadenza.calcola(dataEm, modPag);
+        var iso = scad.getFullYear() + '-' + String(scad.getMonth()+1).padStart(2,'0') + '-' + String(scad.getDate()).padStart(2,'0');
+        document.getElementById('fatt-m-scad-data').value = iso;
+        document.getElementById('fatt-m-scad-info').textContent = ENI.Fatturazione.Scadenza.descrivi(modPag);
     }
 
     function _popolaDropdownIban() {
@@ -295,10 +307,13 @@ ENI.Fatturazione.Manuale = (function() {
         }
 
         var dataEm = document.getElementById('fatt-m-data').value;
-        var scadGg = parseInt(document.getElementById('fatt-m-scadgg').value, 10) || 30;
-        var dataScad = new Date(dataEm);
-        dataScad.setDate(dataScad.getDate() + scadGg);
-        var dataScadStr = dataScad.getFullYear() + '-' + String(dataScad.getMonth()+1).padStart(2,'0') + '-' + String(dataScad.getDate()).padStart(2,'0');
+        var dataScadStr = document.getElementById('fatt-m-scad-data').value;
+        if (!dataScadStr) {
+            // Fallback: ricalcola al volo
+            var modPag = document.getElementById('fatt-m-modpag').value;
+            var scad = ENI.Fatturazione.Scadenza.calcola(dataEm, modPag);
+            dataScadStr = scad.getFullYear() + '-' + String(scad.getMonth()+1).padStart(2,'0') + '-' + String(scad.getDate()).padStart(2,'0');
+        }
 
         var tipoDocumento = _clienteSelezionato.tipo === 'Privato' ? 'RICEVUTA' : 'FATTURA';
         var fattura = {
