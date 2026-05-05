@@ -1,8 +1,12 @@
 // ============================================================
 // FATTURAZIONE - Calcolo data scadenza fattura
-// Regola unica basata su modalita_pagamento_fattura del cliente:
-//   RID_SDD  -> 15 del mese successivo all'emissione
-//   altro    -> ultimo giorno del mese successivo all'emissione
+// La scadenza si calcola sul MESE DI RIFERIMENTO (consumo), NON
+// sulla data di emissione. Esempio: fattura per consumi di aprile
+// emessa il 5 maggio -> RID scade 15 maggio (NON 15 giugno).
+//
+// Regola in base a modalita_pagamento_fattura del cliente:
+//   RID_SDD  -> 15 del mese successivo al mese di riferimento
+//   altro    -> ultimo giorno del mese successivo al mese di riferimento
 // ============================================================
 
 var ENI = ENI || {};
@@ -11,12 +15,14 @@ ENI.Fatturazione = ENI.Fatturazione || {};
 ENI.Fatturazione.Scadenza = (function() {
     'use strict';
 
-    // dataEm: Date | string ISO yyyy-mm-dd
+    // meseRif: Date | string ISO yyyy-mm-dd — qualsiasi giorno del mese di riferimento.
+    //          Per fatture ENI: usare il primo del mese di competenza (anno+mese di consumo).
+    //          Per fatture manuali: usare data_emissione (mese di rif implicito).
     // modPagFattura: 'RID_SDD' | 'RIBA' | 'BONIFICO' | 'RIMESSA_DIRETTA' | null
     // Ritorna: Date
-    function calcola(dataEm, modPagFattura) {
-        var d = (dataEm instanceof Date) ? new Date(dataEm.getTime()) : new Date(dataEm);
-        d.setDate(1);  // evita overflow (es. 31 gennaio + 1 mese)
+    function calcola(meseRif, modPagFattura) {
+        var d = (meseRif instanceof Date) ? new Date(meseRif.getTime()) : new Date(meseRif);
+        d.setDate(1);  // evita overflow e normalizza al primo del mese
         if (modPagFattura === 'RID_SDD') {
             d.setMonth(d.getMonth() + 1);
             d.setDate(15);
@@ -30,8 +36,8 @@ ENI.Fatturazione.Scadenza = (function() {
 
     // Etichetta leggibile della regola applicata, per UI cliente
     function descrivi(modPagFattura) {
-        if (modPagFattura === 'RID_SDD') return '15 del mese successivo all’emissione';
-        return 'Ultimo giorno del mese successivo all’emissione';
+        if (modPagFattura === 'RID_SDD') return '15 del mese successivo al mese di riferimento';
+        return 'Ultimo giorno del mese successivo al mese di riferimento';
     }
 
     return {

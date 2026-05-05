@@ -850,7 +850,9 @@ ENI.Fatturazione.ImportEni = (function() {
 
                 var dataEm = new Date();
                 var modPag = cli && cli.modalita_pagamento_fattura ? cli.modalita_pagamento_fattura : null;
-                var dataScad = ENI.Fatturazione.Scadenza.calcola(dataEm, modPag);
+                // Scadenza calcolata sul MESE DI RIFERIMENTO (consumo), non su data_emissione
+                var meseRif = new Date(_annoSelez, _meseSelez - 1, 1);
+                var dataScad = ENI.Fatturazione.Scadenza.calcola(meseRif, modPag);
 
                 var tipoDocumento = cli && cli.tipo === 'Privato' ? 'RICEVUTA' : 'FATTURA';
                 var fattura = {
