@@ -333,20 +333,23 @@ ENI.Fatturazione.ImportEni = (function() {
             var nLav = movCli.filter(function(x) { return x.categoria === 'LAVAGGIO'; }).length;
             var nAcc = movCli.filter(function(x) { return x.categoria === 'ACCESSORIO'; }).length;
             var cli = _clientiDb.find(function(c) { return c.id === m.match.clienteId; });
+            var ricorrenti = (cli && Array.isArray(cli.voci_ricorrenti_fattura)) ? cli.voci_ricorrenti_fattura : [];
+            var ricorrentiTot = ricorrenti.reduce(function(s, r) { return s + (parseFloat(r.importo) || 0); }, 0);
 
             var saldoVal = m.saldo.saldo || 0;
             var consVal = _consTotPerCli[m.saldo.nomeNormalizzato] || 0;
-            // Totale "ufficiale" della fattura: override se presente, altrimenti saldo aggregato
-            var totaleFattura = (m.override && m.override.totale != null) ? m.override.totale : saldoVal;
-            // Subtotale righe: override se presente, altrimenti consuntivi
-            var subtotaleRighe = (m.override && m.override.righe) ?
-                m.override.righe.reduce(function(s, r) { return s + (r.importo || 0); }, 0) : consVal;
-            var delta = totaleFattura - subtotaleRighe;
+            // \u0394 resta SOLO sul confronto ENI saldi vs consuntivi (le ricorrenti sono fuori da ENI)
+            var delta = saldoVal - consVal;
             var hasDiscrepanza = Math.abs(delta) > TOLLERANZA;
 
-            // Override risolve la discrepanza solo se il modal forza subtotale==totale (vincolo nel modal)
+            // Override risolve la discrepanza (modal forza subtotale==totale)
             var risolto = !!m.override;
             if (hasDiscrepanza && !risolto) nDiscrepanze++;
+
+            // Totale fattura mostrato: include voci ricorrenti
+            var totaleFattura = (m.override && m.override.totale != null)
+                ? m.override.totale
+                : Math.round((saldoVal + ricorrentiTot) * 100) / 100;
 
             var rowStyle = risolto ? 'style="background:var(--bg-success-subtle);"' :
                 hasDiscrepanza ? 'style="background:var(--bg-danger-subtle);"' : '';
@@ -354,6 +357,10 @@ ENI.Fatturazione.ImportEni = (function() {
             var deltaCell = hasDiscrepanza ?
                 '<span class="text-danger"><strong>' + (delta > 0 ? '+' : '') + delta.toFixed(2) + '\u20AC</strong></span>' :
                 '<span class="text-success">\u2713</span>';
+
+            var extraCell = ricorrentiTot > 0 ?
+                '<span class="text-info" title="' + ENI.UI.escapeHtml(ricorrenti.map(function(r) { return r.descrizione + ' \u20AC' + (parseFloat(r.importo)||0).toFixed(2); }).join(' \u00B7 ')) + '">+\u20AC ' + ricorrentiTot.toLocaleString('it-IT', {minimumFractionDigits:2}) + '</span>' :
+                '<span class="text-muted">-</span>';
 
             var actionCell = risolto ?
                 '<span class="badge badge-success">\u270F\uFE0F Modificata</span> ' +
@@ -367,6 +374,8 @@ ENI.Fatturazione.ImportEni = (function() {
                 '<td class="text-right">\u20AC ' + saldoVal.toLocaleString('it-IT', {minimumFractionDigits:2}) + '</td>' +
                 '<td class="text-right">\u20AC ' + consVal.toLocaleString('it-IT', {minimumFractionDigits:2}) + '</td>' +
                 '<td class="text-right">' + deltaCell + '</td>' +
+                '<td class="text-right">' + extraCell + '</td>' +
+                '<td class="text-right"><strong>\u20AC ' + totaleFattura.toLocaleString('it-IT', {minimumFractionDigits:2}) + '</strong></td>' +
                 '<td>' + movCli.length + ' <span class="text-muted text-xs">(' + nCarb + 'C/' + nLav + 'L/' + nAcc + 'A)</span></td>' +
                 '<td>' + (cli && cli.applica_monofase ? 'S\u00ec' : '-') + '</td>' +
                 '<td>' + actionCell + '</td>' +
@@ -374,7 +383,12 @@ ENI.Fatturazione.ImportEni = (function() {
         }).join('');
 
         var totale = attivi.reduce(function(s, m) {
-            return s + ((m.override && m.override.totale != null) ? m.override.totale : (m.saldo.saldo || 0));
+            if (m.override && m.override.totale != null) return s + m.override.totale;
+            var cli = _clientiDb.find(function(c) { return c.id === m.match.clienteId; });
+            var ric = (cli && Array.isArray(cli.voci_ricorrenti_fattura))
+                ? cli.voci_ricorrenti_fattura.reduce(function(a, r) { return a + (parseFloat(r.importo) || 0); }, 0)
+                : 0;
+            return s + (m.saldo.saldo || 0) + ric;
         }, 0);
 
         var avvisoDiscrepanze = nDiscrepanze > 0 ?
@@ -388,15 +402,17 @@ ENI.Fatturazione.ImportEni = (function() {
             '<div class="table-wrapper"><table class="table">' +
                 '<thead><tr>' +
                     '<th>Cliente</th>' +
-                    '<th class="text-right">Saldo</th>' +
+                    '<th class="text-right">Saldo ENI</th>' +
                     '<th class="text-right">Consuntivi</th>' +
                     '<th class="text-right">\u0394</th>' +
+                    '<th class="text-right">Extra</th>' +
+                    '<th class="text-right">Totale</th>' +
                     '<th>Movimenti</th>' +
                     '<th>Monofase</th>' +
                     '<th>Azioni</th>' +
                 '</tr></thead>' +
                 '<tbody>' + rows + '</tbody>' +
-                '<tfoot><tr><th>TOTALE</th><th class="text-right">\u20AC ' + totale.toLocaleString('it-IT',{minimumFractionDigits:2}) + '</th><th colspan="5"></th></tr></tfoot>' +
+                '<tfoot><tr><th colspan="5" class="text-right">TOTALE</th><th class="text-right">\u20AC ' + totale.toLocaleString('it-IT',{minimumFractionDigits:2}) + '</th><th colspan="3"></th></tr></tfoot>' +
             '</table></div>' +
             '<div style="display:flex;justify-content:space-between;margin-top:1rem;">' +
                 '<button class="btn btn-secondary" id="imp-step3-back">\u{2190} Indietro</button>' +
@@ -436,6 +452,13 @@ ENI.Fatturazione.ImportEni = (function() {
         var saldoVal = m.saldo.saldo || 0;
         var consVal = _consTotPerCli[m.saldo.nomeNormalizzato] || 0;
 
+        // Voci ricorrenti del cliente (configurate in scheda cliente, fuori da ENI)
+        var cliRicorrenti = (function() {
+            var cli = _clientiDb.find(function(c) { return c.id === m.match.clienteId; });
+            return (cli && Array.isArray(cli.voci_ricorrenti_fattura)) ? cli.voci_ricorrenti_fattura : [];
+        })();
+        var ricorrentiTot = cliRicorrenti.reduce(function(s, r) { return s + (parseFloat(r.importo) || 0); }, 0);
+
         // Stato locale del modal: righe in editing + totale
         var righeEdit, totaleEdit;
         if (m.override) {
@@ -465,7 +488,18 @@ ENI.Fatturazione.ImportEni = (function() {
                     categoria: k
                 };
             });
-            totaleEdit = saldoVal;  // default: usa il saldo riepilogativi come totale
+            // Aggiungi voci ricorrenti del cliente
+            cliRicorrenti.forEach(function(r) {
+                righeEdit.push({
+                    descrizione: r.descrizione || 'Voce ricorrente',
+                    quantita: r.quantita != null ? r.quantita : 1,
+                    unita_misura: r.unita_misura || 'pz',
+                    prezzo_unitario: (r.quantita ? (r.importo / r.quantita) : r.importo) || 0,
+                    importo: parseFloat(r.importo) || 0,
+                    categoria: r.categoria || 'ACCESSORIO'
+                });
+            });
+            totaleEdit = Math.round((saldoVal + ricorrentiTot) * 100) / 100;  // default: saldo ENI + voci ricorrenti
         }
 
         var clienteNome = m.match.clienteNome || m.saldo.nomeCliente;
@@ -597,17 +631,18 @@ ENI.Fatturazione.ImportEni = (function() {
         }
 
         backdrop.querySelector('#ovr-allinea-saldo').addEventListener('click', function() {
-            // Imposta totale = saldo aggregato; se manca, aggiungi una riga ALTRO con descrizione "Rettifica importo"
+            // Imposta totale = saldo ENI + voci ricorrenti del cliente; rettifica per chiudere il delta
             righeEdit = righeEdit.filter(function(r) { return !_isRettifica(r); });
             var totRighe = righeEdit.reduce(function(s, r) { return s + (r.importo || 0); }, 0);
-            var diff = Math.round((saldoVal - totRighe) * 100) / 100;
+            var target = Math.round((saldoVal + ricorrentiTot) * 100) / 100;
+            var diff = Math.round((target - totRighe) * 100) / 100;
             if (Math.abs(diff) > 0.005) {
                 righeEdit.push({
                     descrizione: DESCR_RETTIFICA + ' ' + nomiMese[_meseSelez] + ' ' + _annoSelez,
                     quantita: 1, unita_misura: '', prezzo_unitario: diff, importo: diff, categoria: 'ALTRO'
                 });
             }
-            backdrop.querySelector('#ovr-totale').value = saldoVal;
+            backdrop.querySelector('#ovr-totale').value = target;
             rendRighe();
         });
 
@@ -774,6 +809,27 @@ ENI.Fatturazione.ImportEni = (function() {
                     });
                 }
 
+                // Voci ricorrenti del cliente (solo per generazione standard, non override:
+                // nel flusso override sono gia' incluse manualmente nel m.override.righe)
+                var ricorrentiTotCli = 0;
+                if (!m.override && cli && Array.isArray(cli.voci_ricorrenti_fattura)) {
+                    cli.voci_ricorrenti_fattura.forEach(function(r) {
+                        var imp = parseFloat(r.importo) || 0;
+                        if (Math.abs(imp) < 0.005) return;
+                        var qta = r.quantita != null ? parseFloat(r.quantita) || 1 : 1;
+                        righe.push({
+                            ordine: righe.length,
+                            descrizione: r.descrizione || 'Voce ricorrente',
+                            quantita: qta,
+                            unita_misura: r.unita_misura || 'pz',
+                            prezzo_unitario: Math.round((imp / (qta || 1)) * 10000) / 10000,
+                            importo: Math.round(imp * 100) / 100,
+                            categoria: r.categoria || 'ACCESSORIO'
+                        });
+                        ricorrentiTotCli += imp;
+                    });
+                }
+
                 // Movimenti dettaglio
                 var movimenti = movCli.map(function(mov) {
                     return {
@@ -805,7 +861,7 @@ ENI.Fatturazione.ImportEni = (function() {
                     tipo_documento: tipoDocumento,
                     mese_riferimento: _meseSelez,
                     anno_riferimento: _annoSelez,
-                    totale: (m.override && m.override.totale != null) ? m.override.totale : (m.saldo.saldo || 0),
+                    totale: (m.override && m.override.totale != null) ? m.override.totale : Math.round(((m.saldo.saldo || 0) + ricorrentiTotCli) * 100) / 100,
                     modalita_pagamento: cli && cli.modalita_pagamento_fattura ? cli.modalita_pagamento_fattura : null,
                     iban_beneficiario: (cli && (cli.modalita_pagamento_fattura === 'BONIFICO' || cli.modalita_pagamento_fattura === 'RIBA' || cli.modalita_pagamento_fattura === 'RID_SDD') && impostazioni && impostazioni.iban_lista && impostazioni.iban_lista.length) ? impostazioni.iban_lista[0].iban : null,
                     stato: (cli && cli.modalita_pagamento_fattura) ? 'BOZZA' : 'IN_ATTESA',

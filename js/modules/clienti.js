@@ -13,6 +13,86 @@ ENI.Modules.Clienti = (function() {
     var _filtroTipo = 'Tutti';
     var _searchTerm = '';
 
+    // ============================================================
+    // Helper: voci ricorrenti in fattura ENI (per cliente)
+    // ============================================================
+    function _vociRicorrentiSectionHtml(voci) {
+        voci = Array.isArray(voci) ? voci : [];
+        var rows = voci.map(_voceRigaHtml).join('');
+        return '<div class="section-title mt-3">Voci ricorrenti in fattura ENI</div>' +
+            '<p class="text-xs text-muted mb-1">Righe aggiunte automaticamente alle fatture mensili (es. lubrificanti, AdBlue, ricariche). Devono corrispondere a beni/servizi realmente forniti.</p>' +
+            '<div class="table-wrapper"><table class="table table-sm" style="margin-bottom:0.5rem;">' +
+                '<thead><tr>' +
+                    '<th style="width:40%;">Descrizione</th>' +
+                    '<th style="width:10%;">Qtà</th>' +
+                    '<th style="width:10%;">UM</th>' +
+                    '<th style="width:18%;">Importo €</th>' +
+                    '<th style="width:14%;">Categoria</th>' +
+                    '<th style="width:8%;"></th>' +
+                '</tr></thead>' +
+                '<tbody class="voci-ric-tbody">' + rows + '</tbody>' +
+            '</table></div>' +
+            '<button type="button" class="btn btn-sm btn-outline voci-ric-add">+ Aggiungi voce</button>';
+    }
+
+    function _voceRigaHtml(v) {
+        v = v || {};
+        var catOpts = ['ACCESSORIO','ALTRO'].map(function(c) {
+            return '<option value="' + c + '"' + ((v.categoria || 'ACCESSORIO') === c ? ' selected' : '') + '>' + c + '</option>';
+        }).join('');
+        return '<tr>' +
+            '<td><input type="text" class="form-input form-input-sm voce-fld" data-k="descrizione" value="' + ENI.UI.escapeHtml(v.descrizione || '') + '" placeholder="Es: Forfait lubrificanti"></td>' +
+            '<td><input type="number" step="0.01" class="form-input form-input-sm voce-fld" data-k="quantita" value="' + (v.quantita != null ? v.quantita : 1) + '"></td>' +
+            '<td><input type="text" class="form-input form-input-sm voce-fld" data-k="unita_misura" value="' + ENI.UI.escapeHtml(v.unita_misura || 'pz') + '"></td>' +
+            '<td><input type="number" step="0.01" class="form-input form-input-sm voce-fld" data-k="importo" value="' + (v.importo != null ? v.importo : 0) + '"></td>' +
+            '<td><select class="form-select form-select-sm voce-fld" data-k="categoria">' + catOpts + '</select></td>' +
+            '<td><button type="button" class="btn btn-sm btn-danger voce-del">✕</button></td>' +
+        '</tr>';
+    }
+
+    function _vociRicorrentiAttach(modal) {
+        function _attachDel() {
+            modal.querySelectorAll('.voce-del').forEach(function(b) {
+                b.onclick = function() {
+                    var tr = b.closest('tr');
+                    if (tr) tr.remove();
+                };
+            });
+        }
+        var btnAdd = modal.querySelector('.voci-ric-add');
+        if (btnAdd) {
+            btnAdd.addEventListener('click', function() {
+                var tbody = modal.querySelector('.voci-ric-tbody');
+                if (!tbody) return;
+                tbody.insertAdjacentHTML('beforeend', _voceRigaHtml({}));
+                _attachDel();
+            });
+        }
+        _attachDel();
+
+        return {
+            readAll: function() {
+                var out = [];
+                modal.querySelectorAll('.voci-ric-tbody tr').forEach(function(tr) {
+                    var v = {};
+                    tr.querySelectorAll('.voce-fld').forEach(function(el) {
+                        var k = el.dataset.k;
+                        v[k] = (el.type === 'number') ? parseFloat(el.value) || 0 : el.value;
+                    });
+                    if (!v.descrizione && !v.importo) return;  // skip righe vuote
+                    out.push({
+                        descrizione: (v.descrizione || '').trim(),
+                        quantita: v.quantita || 1,
+                        unita_misura: v.unita_misura || 'pz',
+                        importo: v.importo || 0,
+                        categoria: v.categoria || 'ACCESSORIO'
+                    });
+                });
+                return out;
+            }
+        };
+    }
+
     async function render(container) {
         var canWrite = ENI.State.canWrite('clienti');
 
@@ -275,7 +355,8 @@ ENI.Modules.Clienti = (function() {
                         '<label class="form-check" style="margin-top:1.5rem;"><input type="checkbox" id="cl-monofase"> Applica coefficiente monofase in fattura</label>' +
                     '</div>' +
                 '</div>' +
-                '<div class="form-group">' +
+                _vociRicorrentiSectionHtml([]) +
+                '<div class="form-group mt-3">' +
                     '<label class="form-label">Note fatturazione</label>' +
                     '<textarea class="form-textarea" id="cl-note-fatt" rows="2"></textarea>' +
                 '</div>' +
@@ -304,6 +385,8 @@ ENI.Modules.Clienti = (function() {
                 '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
                 '<button class="btn btn-primary" id="btn-salva-cliente">\u{1F4BE} Salva Cliente</button>'
         });
+
+        var vociHelper = _vociRicorrentiAttach(modal);
 
         // Toggle tipo
         modal.querySelectorAll('input[name="tipo"]').forEach(function(radio) {
@@ -392,7 +475,8 @@ ENI.Modules.Clienti = (function() {
                 scadenza_giorni: parseInt(modal.querySelector('#cl-scadenza-gg').value, 10) || 30,
                 rif_amministrazione: modal.querySelector('#cl-rif-amm').value.trim() || null,
                 applica_monofase: modal.querySelector('#cl-monofase').checked,
-                note_fatturazione: modal.querySelector('#cl-note-fatt').value.trim() || null
+                note_fatturazione: modal.querySelector('#cl-note-fatt').value.trim() || null,
+                voci_ricorrenti_fattura: vociHelper.readAll()
             };
 
             try {
@@ -597,7 +681,8 @@ ENI.Modules.Clienti = (function() {
                 '<div class="form-row">' +
                     '<label class="form-check" style="margin-top:0.5rem;"><input type="checkbox" id="mod-monofase"' + (c.applica_monofase ? ' checked' : '') + '> Applica coefficiente monofase</label>' +
                 '</div>' +
-                '<div class="form-group"><label class="form-label">Note fatturazione</label>' +
+                _vociRicorrentiSectionHtml(c.voci_ricorrenti_fattura) +
+                '<div class="form-group mt-3"><label class="form-label">Note fatturazione</label>' +
                     '<textarea class="form-textarea" id="mod-note-fatt" rows="2">' + ENI.UI.escapeHtml(c.note_fatturazione || '') + '</textarea></div>' +
             '</form>';
 
@@ -609,6 +694,8 @@ ENI.Modules.Clienti = (function() {
                 '<button class="btn btn-primary" id="btn-salva-modifica">Salva modifiche</button>',
             size: 'lg'
         });
+
+        var vociHelper = _vociRicorrentiAttach(modal);
 
         modal.querySelector('#btn-salva-modifica').addEventListener('click', async function() {
             var nome = modal.querySelector('#mod-nome').value.trim();
@@ -638,7 +725,8 @@ ENI.Modules.Clienti = (function() {
                 scadenza_giorni: parseInt(modal.querySelector('#mod-scadgg').value, 10) || 30,
                 rif_amministrazione: modal.querySelector('#mod-rif-amm').value.trim() || null,
                 applica_monofase: modal.querySelector('#mod-monofase').checked,
-                note_fatturazione: modal.querySelector('#mod-note-fatt').value.trim() || null
+                note_fatturazione: modal.querySelector('#mod-note-fatt').value.trim() || null,
+                voci_ricorrenti_fattura: vociHelper.readAll()
             };
 
             try {
