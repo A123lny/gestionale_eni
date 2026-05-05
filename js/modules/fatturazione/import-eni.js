@@ -341,6 +341,7 @@ ENI.Fatturazione.ImportEni = (function() {
         _renderStep();
         var box = document.getElementById('imp-step-content');
         var attivi = _mapping.filter(function(m) { return !m.escluso && m.match.clienteId; });
+        var nomi = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
         var progressHtml = '<div id="imp-progress"><p>Generazione in corso...</p><div class="progress-bar" style="width:100%;height:20px;background:var(--bg-secondary);border-radius:10px;overflow:hidden;"><div id="imp-prog-fill" style="height:100%;background:var(--primary);width:0%;transition:width 0.3s;"></div></div><p id="imp-prog-text">0/' + attivi.length + '</p></div>';
         box.innerHTML = progressHtml;
 
@@ -374,6 +375,8 @@ ENI.Fatturazione.ImportEni = (function() {
                 ' non \u00e8 ancora chiuso (valore provvisorio: ' + _coeffMonofase + ').\n\n' +
                 clientiMonofase.length + ' clienti richiedono il monofase.\n' +
                 'Vuoi procedere con il valore provvisorio o attendere la chiusura?')) {
+                ENI.UI.toast('Generazione annullata', 'info');
+                _step = 3; _renderStep();
                 return;
             }
         }
