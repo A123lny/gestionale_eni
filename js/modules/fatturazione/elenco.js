@@ -1,0 +1,823 @@
+// ============================================================
+// FATTURAZIONE - Tab Elenco fatture
+// ============================================================
+// PROMEMORIA EMAIL TRACKING (TODO future):
+// Lo SMTP attuale (Alice/TIM via print-server) garantisce solo che il
+// server abbia ACCETTATO il messaggio, non la consegna effettiva.
+// Quando vorremo veri delivery receipts (delivered/bounced/opened)
+// migrare a un provider transazionale: SendGrid, Postmark, Mailgun,
+// Amazon SES. Tutti free fino a ~100 mail/giorno e con webhook.
+// Lavori richiesti alla migrazione:
+//   1. Sostituire trasporto in print-server/server.js
+//   2. Configurare SPF/DKIM/DMARC sul dominio mittente
+//   3. Aggiungere endpoint webhook per ricevere eventi delivery
+//   4. Aggiungere colonne fatture: email_delivered_at, email_bounced_at,
+//      email_opened_at, email_bounce_reason
+//   5. Mostrare in UI lo stato reale (non solo "inviata via SMTP")
+// Il campo email_message_id che salviamo OGGI servira' a correlare
+// i messaggi tra il vecchio sistema e i nuovi webhook al momento della
+// migrazione.
+// ============================================================
+
+var ENI = ENI || {};
+ENI.Fatturazione = ENI.Fatturazione || {};
+
+ENI.Fatturazione.Elenco = (function() {
+    'use strict';
+
+    var _filtri = {
+        anno: new Date().getFullYear(),
+        mese_riferimento: '',
+        cliente_id: '',
+        stato: '',
+        tipo_documento: '',
+        cerca: ''
+    };
+    var _fatture = [];
+    var _impostazioni = null;
+    var _container = null;
+
+    async function render(container) {
+        _container = container;
+        container.innerHTML = _renderShell();
+        _attachHandlers();
+        await _ricarica();
+    }
+
+    function _renderShell() {
+        var anniOpt = _anniOptions();
+        return '' +
+        '<div class="fatt-toolbar mb-3">' +
+            '<div class="form-row" style="align-items:flex-end;gap:0.5rem;flex-wrap:wrap;">' +
+                '<div class="form-group" style="min-width:110px;"><label class="form-label">Anno</label>' +
+                    '<select class="form-select" id="f-anno">' + anniOpt + '</select></div>' +
+                '<div class="form-group" style="min-width:140px;"><label class="form-label">Mese riferim.</label>' +
+                    '<select class="form-select" id="f-mese">' + _meseOptions() + '</select></div>' +
+                '<div class="form-group" style="min-width:160px;"><label class="form-label">Stato</label>' +
+                    '<select class="form-select" id="f-stato">' +
+                        '<option value="">Tutti</option>' +
+                        '<option value="BOZZA">Bozza</option>' +
+                        '<option value="IN_ATTESA">In attesa</option>' +
+                        '<option value="EMESSA">Emessa</option>' +
+                        '<option value="PAGATA">Pagata</option>' +
+                        '<option value="ANNULLATA">Annullata</option>' +
+                    '</select></div>' +
+                '<div class="form-group" style="min-width:160px;"><label class="form-label">Documento</label>' +
+                    '<select class="form-select" id="f-tipodoc">' +
+                        '<option value="">Tutti</option>' +
+                        '<option value="FATTURA">Fatture</option>' +
+                        '<option value="RICEVUTA">Ricevute</option>' +
+                    '</select></div>' +
+                '<div class="form-group" style="min-width:200px;flex:1;"><label class="form-label">Cerca cliente</label>' +
+                    '<input type="text" class="form-input" id="f-cerca" placeholder="Nome cliente..."></div>' +
+            '</div>' +
+        '</div>' +
+        '<div id="fatt-lista-container"></div>';
+    }
+
+    function _anniOptions() {
+        var curr = new Date().getFullYear();
+        var out = '';
+        for (var a = curr + 1; a >= 2024; a--) {
+            out += '<option value="' + a + '"' + (a === _filtri.anno ? ' selected' : '') + '>' + a + '</option>';
+        }
+        return out;
+    }
+    function _meseOptions() {
+        var nomi = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+        var out = '<option value="">Tutti</option>';
+        for (var i = 1; i <= 12; i++) out += '<option value="' + i + '">' + nomi[i-1] + '</option>';
+        return out;
+    }
+
+    function _attachHandlers() {
+        var _cercaTimer = null;
+        document.getElementById('f-cerca').addEventListener('input', function(e) {
+            clearTimeout(_cercaTimer);
+            _cercaTimer = setTimeout(function() {
+                _filtri.cerca = e.target.value.trim().toLowerCase();
+                _ricarica();
+            }, 300);
+        });
+
+        ['f-anno','f-mese','f-stato','f-tipodoc'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('change', function() {
+                _filtri.anno = parseInt(document.getElementById('f-anno').value, 10);
+                _filtri.mese_riferimento = document.getElementById('f-mese').value;
+                _filtri.stato = document.getElementById('f-stato').value;
+                _filtri.tipo_documento = document.getElementById('f-tipodoc').value;
+                _ricarica();
+            });
+        });
+    }
+
+    async function _ricarica() {
+        var box = document.getElementById('fatt-lista-container');
+        box.innerHTML = '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>';
+        try {
+            var filtri = { anno: _filtri.anno };
+            if (_filtri.mese_riferimento) filtri.mese_riferimento = parseInt(_filtri.mese_riferimento, 10);
+            if (_filtri.stato) filtri.stato = _filtri.stato;
+            if (_filtri.tipo_documento) filtri.tipo_documento = _filtri.tipo_documento;
+            _fatture = await ENI.API.getFatture(filtri);
+            if (!_impostazioni) {
+                try { _impostazioni = await ENI.API.getImpostazioniFatturazione(); } catch(e) {}
+            }
+            box.innerHTML = _renderTabella();
+            _attachRigheHandlers();
+        } catch(e) {
+            box.innerHTML = '<div class="empty-state"><p class="text-danger">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p></div>';
+        }
+    }
+
+    function _renderTabella() {
+        // Filtra per ricerca testo
+        var lista = _fatture;
+        if (_filtri.cerca) {
+            var term = _filtri.cerca;
+            lista = lista.filter(function(f) {
+                var cli = f.cliente ? f.cliente.nome_ragione_sociale.toLowerCase() : '';
+                var num = (f.numero_formattato || '').toLowerCase();
+                return cli.indexOf(term) >= 0 || num.indexOf(term) >= 0;
+            });
+        }
+
+        if (!lista.length) {
+            return '<div class="empty-state"><div class="empty-state-icon">\u{1F4C4}</div><p class="empty-state-text">Nessuna fattura per i filtri selezionati</p></div>';
+        }
+
+        var numBozze = lista.filter(function(f) { return f.stato === 'BOZZA'; }).length;
+        var totali = lista.reduce(function(acc, f) {
+            var t = parseFloat(f.totale) || 0;
+            acc.tot += t;
+            if (f.stato === 'PAGATA') acc.pagato += t;
+            else if (f.stato === 'EMESSA') acc.emesso += t;
+            else if (f.stato === 'BOZZA') acc.bozza += t;
+            return acc;
+        }, { tot: 0, emesso: 0, pagato: 0, bozza: 0 });
+
+        // Raggruppa per tipo documento quando si vedono tutti
+        var fatture = lista.filter(function(f) { return f.tipo_documento !== 'RICEVUTA'; });
+        var ricevute = lista.filter(function(f) { return f.tipo_documento === 'RICEVUTA'; });
+        var mostraGruppi = !_filtri.tipo_documento && fatture.length > 0 && ricevute.length > 0;
+
+        function _rigaHtml(f) {
+            var cli = f.cliente ? f.cliente.nome_ragione_sociale : '';
+            var checkboxCell = f.stato === 'BOZZA' ?
+                '<td style="text-align:center;width:32px;"><input type="checkbox" class="fatt-sel" data-id="' + f.id + '" data-totale="' + (parseFloat(f.totale) || 0) + '"></td>' :
+                '<td style="width:32px;"></td>';
+            var emailBadge = f.email_inviata_at ?
+                ' <span title="Email inviata il ' + _fmtData(f.email_inviata_at) + '" style="color:var(--success,#198754);">✉</span>' : '';
+            return '<tr data-id="' + f.id + '">' +
+                checkboxCell +
+                '<td><strong>' + ENI.UI.escapeHtml(f.numero_formattato) + '</strong>' + emailBadge + '</td>' +
+                '<td>' + _fmtData(f.data_emissione) + '</td>' +
+                '<td>' + ENI.UI.escapeHtml(cli) + '</td>' +
+                '<td>' + (f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura') + ' <span class="text-xs text-muted">(' + (f.tipo === 'MANUALE' ? 'Man.' : 'ENI') + ')</span></td>' +
+                '<td>' + _fmtPagamento(f.modalita_pagamento) + '</td>' +
+                '<td class="text-right">€ ' + _fmtNum(f.totale) + '</td>' +
+                '<td>' + (f.data_scadenza ? _fmtData(f.data_scadenza) : '-') + '</td>' +
+                '<td>' + _badge(f.stato) + '</td>' +
+                '<td style="white-space:nowrap;">' +
+                    '<button class="btn btn-sm btn-secondary btn-pdf" data-id="' + f.id + '">PDF</button> ' +
+                    (f.stato === 'BOZZA' ? '<button class="btn btn-sm btn-primary btn-emetti" data-id="' + f.id + '">Emetti</button> ' : '') +
+                    (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-info btn-email" data-id="' + f.id + '" data-email="' + ENI.UI.escapeHtml((f.cliente && f.cliente.email) || '') + '" data-cli="' + ENI.UI.escapeHtml(cli) + '" data-num="' + ENI.UI.escapeHtml(f.numero_formattato) + '" data-tipodoc="' + f.tipo_documento + '" style="background:#17a2b8;border-color:#17a2b8;">Email</button> ' : '') +
+                    (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-success btn-paga" data-id="' + f.id + '">Pagata</button> ' : '') +
+                    '<div class="fatt-dropdown" style="display:inline-block;position:relative;">' +
+                        '<button class="btn btn-sm btn-outline fatt-dropdown-toggle" style="padding:0.2rem 0.5rem;">&#8943;</button>' +
+                        '<div class="fatt-dropdown-menu" style="display:none;position:absolute;right:0;top:100%;background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:20;min-width:150px;">' +
+                            (f.stato !== 'ANNULLATA' ? '<a class="fatt-dd-item btn-modifica" data-id="' + f.id + '">Modifica</a>' : '') +
+                            (f.stato === 'EMESSA' ? '<a class="fatt-dd-item btn-riemetti" data-id="' + f.id + '" data-tipo="' + f.tipo_documento + '" data-cliente-id="' + f.cliente_id + '" data-cliente-nome="' + ENI.UI.escapeHtml(cli) + '">' + (f.tipo_documento === 'FATTURA' ? '\u{2192} Cambia in Ricevuta' : '\u{2192} Cambia in Fattura') + '</a>' : '') +
+                            (f.stato !== 'ANNULLATA' ? '<a class="fatt-dd-item btn-annulla" data-id="' + f.id + '" style="color:var(--color-danger);">Annulla</a>' : '') +
+                        '</div>' +
+                    '</div>' +
+                '</td>' +
+            '</tr>';
+        }
+
+        var rows = '';
+        var headerCheckbox = numBozze ?
+            '<th style="text-align:center;width:32px;"><input type="checkbox" id="fatt-sel-all" title="Seleziona tutte le bozze visibili"></th>' :
+            '<th style="width:32px;"></th>';
+        var theadHtml = '<thead><tr>' + headerCheckbox + '<th>N\u00b0</th><th>Data</th><th>Cliente</th><th>Tipo</th><th>Pagamento</th><th class="text-right">Totale</th><th>Scadenza</th><th>Stato</th><th>Azioni</th></tr></thead>';
+
+        if (mostraGruppi) {
+            var totFatt = fatture.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
+            var totRic = ricevute.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
+            rows += '<tr><td colspan="10" style="background:var(--color-primary);color:#fff;font-weight:700;padding:0.5rem 1rem;">FATTURE (' + fatture.length + ') \u2014 \u20AC ' + _fmtNum(totFatt) + '</td></tr>';
+            rows += fatture.map(_rigaHtml).join('');
+            rows += '<tr><td colspan="10" style="background:var(--color-gray-600,#555);color:#fff;font-weight:700;padding:0.5rem 1rem;">RICEVUTE (' + ricevute.length + ') \u2014 \u20AC ' + _fmtNum(totRic) + '</td></tr>';
+            rows += ricevute.map(_rigaHtml).join('');
+        } else {
+            rows = lista.map(_rigaHtml).join('');
+        }
+
+        var bulkBar = numBozze ?
+            '<div id="fatt-bulk-bar" style="display:none;align-items:center;justify-content:space-between;margin-bottom:0.5rem;padding:0.6rem 0.85rem;background:var(--bg-info-subtle,#cfe2ff);border-radius:var(--radius-sm);border:1px solid var(--info,#0d6efd);">' +
+                '<span><strong id="fatt-bulk-count">0</strong> bozze selezionate \u2014 <strong>\u20AC <span id="fatt-bulk-tot">0,00</span></strong></span>' +
+                '<div style="display:flex;gap:0.5rem;">' +
+                    '<button class="btn btn-sm btn-outline" id="btn-bulk-clear">Annulla selezione</button>' +
+                    '<button class="btn btn-sm btn-danger" id="btn-bulk-delete">Elimina selezionate</button>' +
+                '</div>' +
+            '</div>' : '';
+
+        return (numBozze ? '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;padding:0.75rem;background:var(--bg-warning-subtle,#fff3cd);border-radius:var(--radius-sm);">' +
+                '<span><strong>' + numBozze + ' bozze</strong> in attesa di emissione (\u20AC ' + _fmtNum(totali.bozza) + ')</span>' +
+                '<button class="btn btn-primary btn-sm" id="btn-emetti-tutte">Emetti tutte le bozze</button>' +
+            '</div>' : '') +
+            (function() {
+                var emesse = lista.filter(function(f) { return f.stato === 'EMESSA'; });
+                if (!emesse.length) return '';
+                var nomi = ['','Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+                var periodo = _filtri.mese_riferimento ?
+                    nomi[parseInt(_filtri.mese_riferimento, 10)] + ' ' + _filtri.anno :
+                    'Anno ' + _filtri.anno + ' (tutti i mesi)';
+                var maiInviate = emesse.filter(function(f) { return f.cliente && f.cliente.email && !f.email_inviata_at; }).length;
+                var giaInviate = emesse.filter(function(f) { return f.email_inviata_at; }).length;
+                var label = maiInviate > 0 ?
+                    '\u{1F4E7} Invia ' + maiInviate + ' email mai spedite — ' + periodo :
+                    '\u{1F4E7} Tutte già inviate — ' + periodo;
+                var html = '<div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-bottom:0.5rem;align-items:center;">';
+                if (giaInviate > 0) html += '<span class="text-xs text-muted">' + giaInviate + ' già inviate</span>';
+                html += '<button class="btn btn-sm" id="btn-email-tutte" style="background:#17a2b8;border-color:#17a2b8;color:#fff;" data-periodo="' + ENI.UI.escapeHtml(periodo) + '"' + (maiInviate === 0 ? ' disabled' : '') + '>' +
+                        ENI.UI.escapeHtml(label) +
+                    '</button>';
+                if (giaInviate > 0) {
+                    html += '<button class="btn btn-sm btn-outline" id="btn-email-reinvia" data-periodo="' + ENI.UI.escapeHtml(periodo) + '" title="Include anche le fatture già inviate in precedenza">Re-invia tutte</button>';
+                }
+                html += '</div>';
+                return html;
+            })() +
+            bulkBar +
+            '<div class="table-wrapper"><table class="table table-hover">' +
+            theadHtml +
+            '<tbody>' + rows + '</tbody>' +
+            '<tfoot><tr><th colspan="6" class="text-right">Totali:</th>' +
+                '<th class="text-right">\u20AC ' + _fmtNum(totali.tot) + '</th>' +
+                '<th colspan="3">Bozze: \u20AC ' + _fmtNum(totali.bozza) + ' | Emesso: \u20AC ' + _fmtNum(totali.emesso) + ' | Pagato: \u20AC ' + _fmtNum(totali.pagato) + '</th></tr></tfoot>' +
+            '</table></div>';
+    }
+
+    function _attachRigheHandlers() {
+        document.querySelectorAll('.btn-pdf').forEach(function(b) {
+            b.addEventListener('click', async function() {
+                try {
+                    var full = await ENI.API.getFatturaCompleta(b.dataset.id);
+                    await ENI.Fatturazione.Pdf.generaPdf(full, _impostazioni);
+                } catch(e) { ENI.UI.toast('Errore PDF: ' + e.message, 'danger'); }
+            });
+        });
+        document.querySelectorAll('.btn-paga').forEach(function(b) {
+            b.addEventListener('click', async function() {
+                if (!await ENI.UI.confirm('Segnare come PAGATA?')) return;
+                try {
+                    await ENI.API.aggiornaStatoFattura(b.dataset.id, 'PAGATA');
+                    ENI.UI.toast('Fattura aggiornata', 'success');
+                    _ricarica();
+                } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
+            });
+        });
+        document.querySelectorAll('.btn-annulla').forEach(function(b) {
+            b.addEventListener('click', async function() {
+                if (!await ENI.UI.confirm('Annullare questa fattura? (operazione irreversibile)')) return;
+                try {
+                    await ENI.API.annullaFattura(b.dataset.id, 'Annullata da utente');
+                    ENI.UI.toast('Fattura annullata', 'success');
+                    _ricarica();
+                } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
+            });
+        });
+        // Emetti singola bozza
+        document.querySelectorAll('.btn-emetti').forEach(function(b) {
+            b.addEventListener('click', async function() {
+                if (!await ENI.UI.confirm('Emettere questo documento? Una volta emesso il numero sar\u00e0 definitivo.')) return;
+                try {
+                    await ENI.API.aggiornaStatoFattura(b.dataset.id, 'EMESSA');
+                    ENI.UI.toast('Documento emesso', 'success');
+                    _ricarica();
+                } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
+            });
+        });
+        // Emetti tutte le bozze
+        var btnEmettiTutte = document.getElementById('btn-emetti-tutte');
+        if (btnEmettiTutte) {
+            btnEmettiTutte.addEventListener('click', async function() {
+                var bozze = _fatture.filter(function(f) { return f.stato === 'BOZZA'; });
+                if (!bozze.length) return;
+                if (!await ENI.UI.confirm('Emettere tutte le ' + bozze.length + ' bozze? I numeri diventeranno definitivi.')) return;
+                btnEmettiTutte.disabled = true;
+                btnEmettiTutte.textContent = 'Emissione in corso...';
+                var ok = 0, err = 0;
+                for (var i = 0; i < bozze.length; i++) {
+                    try {
+                        await ENI.API.aggiornaStatoFattura(bozze[i].id, 'EMESSA');
+                        ok++;
+                    } catch(e) { err++; }
+                }
+                ENI.UI.toast(ok + ' documenti emessi' + (err ? ', ' + err + ' errori' : ''), ok ? 'success' : 'danger');
+                _ricarica();
+            });
+        }
+        // Modifica
+        document.querySelectorAll('.btn-modifica').forEach(function(b) {
+            b.addEventListener('click', async function() {
+                try {
+                    var full = await ENI.API.getFatturaCompleta(b.dataset.id);
+                    _showModificaFattura(full);
+                } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
+            });
+        });
+        // Annulla e riemetti come tipo diverso
+        document.querySelectorAll('.btn-riemetti').forEach(function(b) {
+            b.addEventListener('click', async function() {
+                var tipoAttuale = b.dataset.tipo;
+                var nuovoTipo = tipoAttuale === 'FATTURA' ? 'RICEVUTA' : 'FATTURA';
+                var label = nuovoTipo === 'FATTURA' ? 'Fattura' : 'Ricevuta';
+                var clienteNome = b.dataset.clienteNome || '';
+                var clienteId = b.dataset.clienteId;
+
+                if (!await ENI.UI.confirm('Annullare questo documento e riemetterlo come ' + label + '?\nIl numero attuale rester\u00e0 occupato, verr\u00e0 assegnato un nuovo numero.')) return;
+                try {
+                    var nuova = await ENI.API.annullaERiemetti(b.dataset.id, nuovoTipo);
+                    ENI.UI.toast(label + ' ' + nuova.numero_formattato + ' emessa', 'success');
+
+                    // Proponi aggiornamento tipo cliente
+                    if (clienteId) {
+                        var nuovoTipoCliente = nuovoTipo === 'RICEVUTA' ? 'Privato' : 'Corporate';
+                        var tipoClienteAttuale = nuovoTipo === 'RICEVUTA' ? 'Corporate/Fornitore' : 'Privato';
+                        var aggiornaCliente = await ENI.UI.confirm(
+                            'Vuoi aggiornare anche il tipo del cliente "' + clienteNome + '" da ' + tipoClienteAttuale + ' a ' + nuovoTipoCliente + '?\n' +
+                            'Cos\u00ec i prossimi documenti saranno automaticamente ' + (nuovoTipo === 'RICEVUTA' ? 'ricevute' : 'fatture') + '.'
+                        );
+                        if (aggiornaCliente) {
+                            await ENI.API.aggiornaCliente(clienteId, { tipo: nuovoTipoCliente });
+                            ENI.State.cacheClear();
+                        }
+                    }
+                    _ricarica();
+                } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
+            });
+        });
+        // Bulk selection: checkboxes + action bar
+        function _aggiornaBulkBar() {
+            var bar = document.getElementById('fatt-bulk-bar');
+            if (!bar) return;
+            var sel = document.querySelectorAll('.fatt-sel:checked');
+            var count = sel.length;
+            if (count === 0) {
+                bar.style.display = 'none';
+            } else {
+                bar.style.display = 'flex';
+                var tot = 0;
+                sel.forEach(function(cb) { tot += parseFloat(cb.dataset.totale) || 0; });
+                document.getElementById('fatt-bulk-count').textContent = count;
+                document.getElementById('fatt-bulk-tot').textContent = _fmtNum(tot);
+            }
+            // Sync header "select all" stato
+            var head = document.getElementById('fatt-sel-all');
+            if (head) {
+                var all = document.querySelectorAll('.fatt-sel');
+                head.checked = all.length > 0 && count === all.length;
+                head.indeterminate = count > 0 && count < all.length;
+            }
+        }
+        document.querySelectorAll('.fatt-sel').forEach(function(cb) {
+            cb.addEventListener('change', _aggiornaBulkBar);
+        });
+        var headSel = document.getElementById('fatt-sel-all');
+        if (headSel) {
+            headSel.addEventListener('change', function() {
+                document.querySelectorAll('.fatt-sel').forEach(function(cb) { cb.checked = headSel.checked; });
+                _aggiornaBulkBar();
+            });
+        }
+        var btnBulkClear = document.getElementById('btn-bulk-clear');
+        if (btnBulkClear) {
+            btnBulkClear.addEventListener('click', function() {
+                document.querySelectorAll('.fatt-sel').forEach(function(cb) { cb.checked = false; });
+                _aggiornaBulkBar();
+            });
+        }
+        var btnBulkDelete = document.getElementById('btn-bulk-delete');
+        if (btnBulkDelete) {
+            btnBulkDelete.addEventListener('click', async function() {
+                var sel = document.querySelectorAll('.fatt-sel:checked');
+                if (!sel.length) return;
+                var ids = Array.from(sel).map(function(cb) { return cb.dataset.id; });
+                var totale = Array.from(sel).reduce(function(s, cb) { return s + (parseFloat(cb.dataset.totale) || 0); }, 0);
+                var numeri = _fatture.filter(function(f) { return ids.indexOf(f.id) >= 0; })
+                    .map(function(f) { return f.numero_formattato; });
+                var preview = numeri.slice(0, 5).join(', ') + (numeri.length > 5 ? ', …e altre ' + (numeri.length - 5) : '');
+                if (!await ENI.UI.confirm('Eliminare ' + ids.length + ' bozze definitivamente?\n\n' +
+                    'Numeri: ' + preview + '\nTotale: € ' + _fmtNum(totale) + '\n\n' +
+                    'L\'operazione è irreversibile. Le righe e i movimenti collegati verranno cancellati.')) return;
+                btnBulkDelete.disabled = true;
+                btnBulkDelete.textContent = 'Eliminazione…';
+                try {
+                    var res = await ENI.API.eliminaFatture(ids);
+                    var msg = res.eliminate + ' bozze eliminate';
+                    if (res.logRimossi) msg += ' (anche ' + res.logRimossi + ' log import puliti)';
+                    ENI.UI.toast(msg, 'success');
+                    _ricarica();
+                } catch(e) {
+                    ENI.UI.toast('Errore: ' + e.message, 'danger');
+                    btnBulkDelete.disabled = false;
+                    btnBulkDelete.textContent = 'Elimina selezionate';
+                }
+            });
+        }
+
+        // Dropdown toggle
+        document.querySelectorAll('.fatt-dropdown-toggle').forEach(function(b) {
+            b.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var menu = b.nextElementSibling;
+                var open = menu.style.display === 'block';
+                document.querySelectorAll('.fatt-dropdown-menu').forEach(function(m) { m.style.display = 'none'; });
+                menu.style.display = open ? 'none' : 'block';
+            });
+        });
+        document.addEventListener('click', function() {
+            document.querySelectorAll('.fatt-dropdown-menu').forEach(function(m) { m.style.display = 'none'; });
+        });
+        // Invio massivo email
+        async function _eseguiInvioMassivo(includeGiaInviate) {
+            var tutte = _fatture.filter(function(f) { return f.stato === 'EMESSA'; });
+            var conEmail = tutte.filter(function(f) { return f.cliente && f.cliente.email; });
+            var daInviare = includeGiaInviate ? conEmail : conEmail.filter(function(f) { return !f.email_inviata_at; });
+            var giaInviate = conEmail.filter(function(f) { return f.email_inviata_at; });
+            var senzaEmail = tutte.filter(function(f) { return !f.cliente || !f.cliente.email; });
+
+            if (!daInviare.length) {
+                ENI.UI.toast(includeGiaInviate ? 'Nessuna fattura con email cliente' : 'Tutte le emesse con email sono gia\' state inviate', 'warning');
+                return;
+            }
+            var periodo = btnEmailTutte.dataset.periodo || ('Anno ' + _filtri.anno);
+            var totale = daInviare.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
+            var numeri = daInviare.map(function(f) { return f.numero_formattato; });
+            var preview = numeri.slice(0, 5).join(', ') + (numeri.length > 5 ? ', …e altre ' + (numeri.length - 5) : '');
+            var msg = 'Inviare ' + daInviare.length + ' email per ' + periodo + '?\n\n' +
+                'Numeri: ' + preview + '\n' +
+                'Totale: € ' + _fmtNum(totale);
+            if (!includeGiaInviate && giaInviate.length) {
+                msg += '\n\n' + giaInviate.length + ' gia\' inviate in precedenza saranno saltate.';
+            }
+            if (senzaEmail.length) {
+                var nomiSenza = senzaEmail.map(function(f) {
+                    return f.numero_formattato + ' (' + (f.cliente ? f.cliente.nome_ragione_sociale : 'cliente sconosciuto') + ')';
+                });
+                msg += '\n\n⚠️ ' + senzaEmail.length + ' fatture senza email cliente saranno SALTATE — sistema l\'anagrafica prima:\n' +
+                    nomiSenza.slice(0, 6).join('\n') +
+                    (nomiSenza.length > 6 ? '\n…e altre ' + (nomiSenza.length - 6) : '');
+            }
+            if (!await ENI.UI.confirm(msg)) return;
+            btnEmailTutte.disabled = true;
+            btnEmailTutte.textContent = 'Invio in corso...';
+            var ok = 0, err = 0;
+            for (var i = 0; i < daInviare.length; i++) {
+                var f = daInviare[i];
+                var tipoDoc = f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura';
+                try {
+                    await _inviaEmailFattura(f.id, f.cliente.email, f.cliente.nome_ragione_sociale, f.numero_formattato, tipoDoc);
+                    ok++;
+                } catch(e) { err++; console.error('Errore email per', f.numero_formattato, e); }
+                btnEmailTutte.textContent = 'Invio ' + (i+1) + '/' + daInviare.length + '...';
+            }
+            ENI.UI.toast(ok + ' email inviate' + (err ? ', ' + err + ' errori' : ''), ok ? 'success' : 'danger');
+            btnEmailTutte.disabled = false;
+            _ricarica();  // re-render rigenera label, badge e count
+        }
+
+        var btnEmailTutte = document.getElementById('btn-email-tutte');
+        if (btnEmailTutte) {
+            btnEmailTutte.addEventListener('click', function() { _eseguiInvioMassivo(false); });
+        }
+        var btnEmailReinvia = document.getElementById('btn-email-reinvia');
+        if (btnEmailReinvia) {
+            btnEmailReinvia.addEventListener('click', function() { _eseguiInvioMassivo(true); });
+        }
+        // Invio email singola
+        document.querySelectorAll('.btn-email').forEach(function(b) {
+            b.addEventListener('click', async function() {
+                var fatturaId = b.dataset.id;
+                var num = b.dataset.num;
+                var tipoDoc = b.dataset.tipodoc === 'RICEVUTA' ? 'Ricevuta' : 'Fattura';
+                try {
+                    var full = await ENI.API.getFatturaCompleta(fatturaId);
+                    var cliente = full.fattura.cliente;
+                    var email = cliente ? cliente.email : null;
+                    var cli = cliente ? cliente.nome_ragione_sociale : '';
+                    if (!email) {
+                        ENI.UI.toast('Il cliente "' + cli + '" non ha un indirizzo email in anagrafica. Impostalo prima.', 'danger');
+                        return;
+                    }
+                    if (!await ENI.UI.confirm('Inviare ' + tipoDoc + ' ' + num + ' a ' + email + '?')) return;
+                    await _inviaEmailFattura(fatturaId, email, cli, num, tipoDoc);
+                } catch(e) { ENI.UI.toast('Errore: ' + e.message, 'danger'); }
+            });
+        });
+    }
+
+    // --- Invio email fattura ---
+    async function _inviaEmailFattura(fatturaId, email, clienteNome, numFormattato, tipoDoc) {
+        var full = await ENI.API.getFatturaCompleta(fatturaId);
+        var imp = _impostazioni || await ENI.API.getImpostazioniFatturazione();
+
+        // Genera PDF come base64
+        var doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        // Riusa il generatore PDF esistente ma cattura il blob
+        var blob = await ENI.Fatturazione.Pdf.generaPdfBlob(full, imp);
+        var reader = new FileReader();
+        var base64 = await new Promise(function(resolve) {
+            reader.onload = function() { resolve(reader.result.split(',')[1]); };
+            reader.readAsDataURL(blob);
+        });
+
+        var meseNomi = ['','Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+        var meseLabel = full.fattura.mese_riferimento ? meseNomi[full.fattura.mese_riferimento] + ' ' + full.fattura.anno_riferimento : '';
+        var oggetto = tipoDoc + ' N. ' + numFormattato + (meseLabel ? ' - ' + meseLabel : '') + ' - Enilive Station Cervellini';
+
+        var corpo = '<p>Gentile ' + clienteNome + ',</p>' +
+            '<p>in allegato la ' + tipoDoc.toLowerCase() + ' N. ' + numFormattato +
+            (meseLabel ? ' relativa al mese di ' + meseLabel : '') + '.</p>' +
+            '<p>Cordiali saluti,<br>Enilive Station di Cervellini Andrea</p>';
+
+        var result = await fetch(ENI.Config.PRINT_SERVER_URL + '/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to: email,
+                subject: oggetto,
+                body: corpo,
+                attachments: [{
+                    filename: tipoDoc + '_' + numFormattato.replace('/', '-') + '.pdf',
+                    content_base64: base64
+                }]
+            })
+        });
+        var json = await result.json();
+        if (!json.success) throw new Error(json.message);
+        ENI.UI.toast('Email inviata a ' + email, 'success');
+
+        // Persisti tracking invio (sostituisce vecchio hack su note)
+        // TODO future: quando migreremo da SMTP Alice a provider transazionale
+        // (SendGrid / Postmark / Mailgun), agganciare i webhook delivery/bounce/open
+        // per popolare colonne aggiuntive es. email_delivered_at / email_bounced_at.
+        // Il messageId qui salvato resta utile per correlare anche col nuovo provider.
+        await ENI.API.aggiornaFattura(fatturaId, {
+            email_inviata_at: new Date().toISOString(),
+            email_message_id: json.messageId || null
+        });
+    }
+
+    // --- Form modifica fattura ---
+    function _showModificaFattura(full) {
+        var f = full.fattura;
+        var righe = full.righe || [];
+        var isBozza = f.stato === 'BOZZA' || f.stato === 'IN_ATTESA';
+
+        var modPagOpts = ['','RIBA','RID_SDD','BONIFICO','CONTANTI','FINE_MESE'].map(function(v) {
+            return '<option value="' + v + '"' + (f.modalita_pagamento === v ? ' selected' : '') + '>' + (v || '-- Nessuno --') + '</option>';
+        }).join('');
+
+        var righeHtml = '';
+        if (isBozza) {
+            righeHtml = '<div id="mod-fatt-righe">' + righe.map(function(r) {
+                if (r.categoria === 'NOTA') {
+                    return '<div class="form-row mod-fatt-riga" data-tipo="nota" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
+                        '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-desc" value="' + ENI.UI.escapeHtml(r.descrizione || '') + '" placeholder="Nota / annotazione..." style="font-style:italic;"></div>' +
+                        '<input type="hidden" class="mfr-qta" value="0"><input type="hidden" class="mfr-um" value=""><input type="hidden" class="mfr-prezzo" value="0"><input type="hidden" class="mfr-cat" value="NOTA">' +
+                        '<button type="button" class="btn btn-danger btn-sm mfr-del" style="margin-bottom:0.75rem;">&times;</button>' +
+                    '</div>';
+                }
+                return '<div class="form-row mod-fatt-riga" data-tipo="riga" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
+                    '<div class="form-group" style="flex:3;"><input type="text" class="form-input mfr-desc" value="' + ENI.UI.escapeHtml(r.descrizione || '') + '"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-qta" value="' + r.quantita + '" step="0.001"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-um" value="' + ENI.UI.escapeHtml(r.unita_misura || 'pz') + '"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-prezzo" value="' + r.prezzo_unitario + '" step="0.01"></div>' +
+                    '<div class="form-group" style="flex:1;"><select class="form-select mfr-cat">' +
+                        ['CARBURANTE','LAVAGGIO','ACCESSORIO','ALTRO'].map(function(c) { return '<option value="' + c + '"' + (r.categoria === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') +
+                    '</select></div>' +
+                    '<button type="button" class="btn btn-danger btn-sm mfr-del" style="margin-bottom:0.75rem;">&times;</button>' +
+                '</div>';
+            }).join('') + '</div>' +
+            '<div style="display:flex;gap:0.5rem;margin-top:0.5rem;">' +
+                '<button type="button" class="btn btn-outline btn-sm" id="mod-fatt-add-riga">+ Aggiungi riga</button>' +
+                '<button type="button" class="btn btn-outline btn-sm" id="mod-fatt-add-nota">+ Aggiungi nota</button>' +
+            '</div>';
+        } else {
+            righeHtml = '<table class="table table-sm"><thead><tr><th>Descrizione</th><th>Qt\u00e0</th><th>U.M.</th><th>Prezzo</th><th>Importo</th></tr></thead><tbody>' +
+                righe.map(function(r) {
+                    if (r.categoria === 'NOTA') return '<tr><td colspan="5" style="font-style:italic;color:var(--text-secondary);">' + ENI.UI.escapeHtml(r.descrizione) + '</td></tr>';
+                    return '<tr><td>' + ENI.UI.escapeHtml(r.descrizione) + '</td><td>' + r.quantita + '</td><td>' + r.unita_misura + '</td><td>' + _fmtNum(r.prezzo_unitario) + '</td><td>\u20AC ' + _fmtNum(r.importo) + '</td></tr>';
+                }).join('') + '</tbody></table>';
+        }
+
+        var tipoDocOpts = '';
+        if (isBozza) {
+            tipoDocOpts = '<div class="form-group"><label class="form-label">Tipo documento</label>' +
+                '<select class="form-select" id="mod-fatt-tipodoc">' +
+                    '<option value="FATTURA"' + (f.tipo_documento === 'FATTURA' ? ' selected' : '') + '>Fattura</option>' +
+                    '<option value="RICEVUTA"' + (f.tipo_documento === 'RICEVUTA' ? ' selected' : '') + '>Ricevuta</option>' +
+                '</select></div>';
+        }
+
+        var numField = '';
+        if (isBozza) {
+            numField = '<div class="form-group" style="max-width:120px;"><label class="form-label">Numero</label>' +
+                '<input type="number" class="form-input" id="mod-fatt-numero" value="' + (f.numero || '') + '" min="1"></div>';
+        }
+
+        var body =
+            '<form id="form-mod-fatt">' +
+                '<p><strong>' + (f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura') + ' ' + f.numero_formattato + '</strong> &mdash; Stato: ' + f.stato + '</p>' +
+                '<p>Cliente: <strong>' + ENI.UI.escapeHtml(f.cliente ? f.cliente.nome_ragione_sociale : '') + '</strong></p>' +
+                '<div class="form-row">' +
+                    numField +
+                    tipoDocOpts +
+                    '<div class="form-group"><label class="form-label">Data emissione</label>' +
+                        '<input type="date" class="form-input" id="mod-fatt-data" value="' + (f.data_emissione || '') + '"' + (isBozza ? '' : ' disabled') + '></div>' +
+                    '<div class="form-group"><label class="form-label">Data scadenza</label>' +
+                        '<input type="date" class="form-input" id="mod-fatt-scad" value="' + (f.data_scadenza || '') + '"></div>' +
+                    '<div class="form-group"><label class="form-label">Modalit\u00e0 pagamento</label>' +
+                        '<select class="form-select" id="mod-fatt-modpag">' + modPagOpts + '</select></div>' +
+                '</div>' +
+                '<div class="form-group"><label class="form-label">Note</label>' +
+                    '<textarea class="form-input" id="mod-fatt-note" rows="2">' + ENI.UI.escapeHtml(f.note || '') + '</textarea></div>' +
+                (isBozza ? '<h4 class="mt-3 mb-2">Righe</h4>' : '<h4 class="mt-3 mb-2">Righe (non modificabili - fattura emessa)</h4>') +
+                righeHtml +
+            '</form>';
+
+        var modal = ENI.UI.showModal({
+            title: 'Modifica ' + (f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura') + ' ' + f.numero_formattato,
+            body: body,
+            footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                    '<button class="btn btn-primary" id="btn-salva-mod-fatt">Salva modifiche</button>',
+            size: 'lg'
+        });
+
+        // Righe dinamiche per bozze
+        if (isBozza) {
+            modal.querySelector('#mod-fatt-add-riga').addEventListener('click', function() {
+                var html = '<div class="form-row mod-fatt-riga" data-tipo="riga" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
+                    '<div class="form-group" style="flex:3;"><input type="text" class="form-input mfr-desc" value=""></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-qta" value="1" step="0.001"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-um" value="pz"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-prezzo" value="0" step="0.01"></div>' +
+                    '<div class="form-group" style="flex:1;"><select class="form-select mfr-cat"><option value="CARBURANTE">CARBURANTE</option><option value="LAVAGGIO">LAVAGGIO</option><option value="ACCESSORIO">ACCESSORIO</option><option value="ALTRO">ALTRO</option></select></div>' +
+                    '<button type="button" class="btn btn-danger btn-sm mfr-del" style="margin-bottom:0.75rem;">&times;</button></div>';
+                modal.querySelector('#mod-fatt-righe').insertAdjacentHTML('beforeend', html);
+            });
+            modal.querySelector('#mod-fatt-add-nota').addEventListener('click', function() {
+                var html = '<div class="form-row mod-fatt-riga" data-tipo="nota" style="align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">' +
+                    '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-desc" value="" placeholder="Nota / annotazione..." style="font-style:italic;"></div>' +
+                    '<input type="hidden" class="mfr-qta" value="0"><input type="hidden" class="mfr-um" value=""><input type="hidden" class="mfr-prezzo" value="0"><input type="hidden" class="mfr-cat" value="NOTA">' +
+                    '<button type="button" class="btn btn-danger btn-sm mfr-del" style="margin-bottom:0.75rem;">&times;</button></div>';
+                modal.querySelector('#mod-fatt-righe').insertAdjacentHTML('beforeend', html);
+            });
+            modal.addEventListener('click', function(e) {
+                if (e.target.classList.contains('mfr-del')) e.target.closest('.mod-fatt-riga').remove();
+            });
+        }
+
+        modal.querySelector('#btn-salva-mod-fatt').addEventListener('click', async function() {
+            var dati = {
+                data_scadenza: modal.querySelector('#mod-fatt-scad').value || null,
+                modalita_pagamento: modal.querySelector('#mod-fatt-modpag').value || null,
+                note: modal.querySelector('#mod-fatt-note').value.trim() || null
+            };
+
+            var nuovoTipoDoc = null;
+            if (isBozza) {
+                var selTipoDoc = modal.querySelector('#mod-fatt-tipodoc');
+                if (selTipoDoc) {
+                    nuovoTipoDoc = selTipoDoc.value;
+                    dati.tipo_documento = nuovoTipoDoc;
+                }
+                // Numero e data emissione modificabili per bozze
+                var numInput = modal.querySelector('#mod-fatt-numero');
+                if (numInput && numInput.value) {
+                    var nuovoNum = parseInt(numInput.value, 10);
+                    if (nuovoNum > 0) {
+                        dati.numero = nuovoNum;
+                        var prefisso = (nuovoTipoDoc || f.tipo_documento) === 'RICEVUTA' ? 'R' : '';
+                        dati.numero_formattato = prefisso + nuovoNum + '/' + f.anno;
+                    }
+                }
+                var dataInput = modal.querySelector('#mod-fatt-data');
+                if (dataInput && dataInput.value) {
+                    dati.data_emissione = dataInput.value;
+                }
+            }
+
+            var nuoveRighe = null;
+            if (isBozza) {
+                nuoveRighe = [];
+                var totale = 0;
+                modal.querySelectorAll('.mod-fatt-riga').forEach(function(row, i) {
+                    var qta = parseFloat(row.querySelector('.mfr-qta').value) || 0;
+                    var prezzo = parseFloat(row.querySelector('.mfr-prezzo').value) || 0;
+                    var importo = Math.round(qta * prezzo * 100) / 100;
+                    totale += importo;
+                    nuoveRighe.push({
+                        ordine: i,
+                        descrizione: row.querySelector('.mfr-desc').value.trim(),
+                        quantita: qta,
+                        unita_misura: row.querySelector('.mfr-um').value.trim(),
+                        prezzo_unitario: prezzo,
+                        importo: importo,
+                        categoria: row.querySelector('.mfr-cat').value
+                    });
+                });
+                dati.totale = totale;
+            }
+
+            // Controllo numero duplicato
+            if (dati.numero && (dati.numero !== f.numero || (nuovoTipoDoc && nuovoTipoDoc !== f.tipo_documento))) {
+                var tipoCheck = nuovoTipoDoc || f.tipo_documento;
+                var esistenti = await ENI.API.getFatture({ anno: f.anno, tipo: null });
+                var duplicato = esistenti.find(function(x) {
+                    return x.id !== f.id && x.numero === dati.numero && x.tipo_documento === tipoCheck;
+                });
+                if (duplicato) {
+                    var cliDup = duplicato.cliente ? duplicato.cliente.nome_ragione_sociale : '';
+                    if (!await ENI.UI.confirm('Attenzione: il numero ' + dati.numero_formattato + ' \u00e8 gi\u00e0 usato dalla ' +
+                        (tipoCheck === 'RICEVUTA' ? 'ricevuta' : 'fattura') + ' di "' + cliDup + '".\n\nVuoi salvare comunque?')) return;
+                }
+            }
+
+            // Se era IN_ATTESA e ora ha una modalità pagamento, porta a BOZZA
+            if (f.stato === 'IN_ATTESA' && dati.modalita_pagamento) {
+                dati.stato = 'BOZZA';
+            }
+
+            try {
+                await ENI.API.aggiornaFattura(f.id, dati, nuoveRighe);
+
+                // Se il tipo documento è cambiato, proponi aggiornamento anagrafica cliente
+                if (nuovoTipoDoc && nuovoTipoDoc !== f.tipo_documento && f.cliente_id) {
+                    var nuovoTipoCliente = nuovoTipoDoc === 'RICEVUTA' ? 'Privato' : 'Corporate';
+                    var clienteNome = f.cliente ? f.cliente.nome_ragione_sociale : '';
+                    var aggiornaCliente = await ENI.UI.confirm(
+                        'Hai cambiato da ' + (f.tipo_documento === 'FATTURA' ? 'Fattura' : 'Ricevuta') + ' a ' + (nuovoTipoDoc === 'FATTURA' ? 'Fattura' : 'Ricevuta') + '.\n\n' +
+                        'Vuoi aggiornare anche il tipo del cliente "' + clienteNome + '" a ' + nuovoTipoCliente + '?\n' +
+                        'Cos\u00ec i prossimi documenti saranno automaticamente ' + (nuovoTipoDoc === 'RICEVUTA' ? 'ricevute' : 'fatture') + '.'
+                    );
+                    if (aggiornaCliente) {
+                        await ENI.API.aggiornaCliente(f.cliente_id, { tipo: nuovoTipoCliente });
+                        ENI.State.cacheClear();
+                    }
+                }
+
+                // Se cambiata modalità pagamento, proponi salvataggio in anagrafica
+                if (f.stato === 'IN_ATTESA' && dati.modalita_pagamento && f.cliente_id) {
+                    var cliNome = f.cliente ? f.cliente.nome_ragione_sociale : '';
+                    var salvaPag = await ENI.UI.confirm(
+                        'Vuoi salvare la modalit\u00e0 "' + dati.modalita_pagamento + '" anche nell\'anagrafica di "' + cliNome + '"?\n' +
+                        'Cos\u00ec i prossimi mesi sar\u00e0 automatico.'
+                    );
+                    if (salvaPag) {
+                        await ENI.API.aggiornaCliente(f.cliente_id, { modalita_pagamento_fattura: dati.modalita_pagamento });
+                        ENI.State.cacheClear();
+                    }
+                }
+
+                ENI.UI.closeModal(modal);
+                ENI.UI.toast('Documento aggiornato', 'success');
+                _ricarica();
+            } catch(e) {
+                ENI.UI.toast('Errore: ' + e.message, 'danger');
+            }
+        });
+    }
+
+    function _badge(stato) {
+        var map = { BOZZA: 'secondary', EMESSA: 'primary', PAGATA: 'success', ANNULLATA: 'danger', IN_ATTESA: 'warning' };
+        var label = stato === 'IN_ATTESA' ? 'IN ATTESA' : stato;
+        return '<span class="badge badge-' + (map[stato] || 'secondary') + '">' + label + '</span>';
+    }
+    function _fmtData(d) {
+        if (!d) return '-';
+        var dt = new Date(d);
+        return String(dt.getDate()).padStart(2,'0') + '/' + String(dt.getMonth()+1).padStart(2,'0') + '/' + dt.getFullYear();
+    }
+    function _fmtNum(n) {
+        return (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function _fmtPagamento(m) {
+        if (!m) return '<span class="text-muted">-</span>';
+        var map = {
+            RID_SDD: 'RID/SDD',
+            RIBA: 'RIBA',
+            BONIFICO: 'Bonifico',
+            CONTANTI: 'Contanti',
+            FINE_MESE: 'Fine mese',
+            RIMESSA_DIRETTA: 'Rimessa diretta'
+        };
+        return ENI.UI.escapeHtml(map[m] || m);
+    }
+
+    return { render: render };
+})();

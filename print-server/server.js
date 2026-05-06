@@ -3,6 +3,8 @@
 // Server locale per stampa su stampante termica Epson 80mm
 // ============================================================
 
+require('dotenv').config();
+
 var express = require('express');
 var cors = require('cors');
 var net = require('net');
@@ -21,9 +23,10 @@ var LAYOUT_FILE = path.join(__dirname, 'layout.json');
 
 // ============================================================
 // Supabase - per coda stampa remota (smartphone)
+// Le credenziali vengono lette da variabili d'ambiente (.env)
 // ============================================================
-var SUPABASE_URL = 'https://upwkodrmfljgikmstogy.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwd2tvZHJtZmxqZ2lrbXN0b2d5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyNzMwMTEsImV4cCI6MjA4Njg0OTAxMX0.BVhpeBdiX75TFdlAsqpLQgWR7bG6MABCMWWt2zUkXqQ';
+var SUPABASE_URL = process.env.SUPABASE_URL || '';
+var SUPABASE_KEY = process.env.SUPABASE_KEY || '';
 var _supabase = null;
 
 function getSupabase() {
@@ -577,6 +580,85 @@ async function pollPrintQueue() {
 }
 
 // ============================================================
+// EMAIL - Invio fatture/ricevute via SMTP
+// ============================================================
+var nodemailer = require('nodemailer');
+
+var SMTP_HOST = process.env.SMTP_HOST || 'out.alice.sm';
+var SMTP_PORT = parseInt(process.env.SMTP_PORT) || 587;
+var SMTP_USER = process.env.SMTP_USER || 'enilivestation@alice.sm';
+var SMTP_PASS = process.env.SMTP_PASS || '';
+var SMTP_FROM = process.env.SMTP_FROM || 'enilivestation@alice.sm';
+
+var _transporter = null;
+function getTransporter() {
+    if (_transporter) return _transporter;
+    if (!SMTP_PASS) {
+        console.log('[EMAIL] SMTP_PASS non configurata nel .env. Invio email disabilitato.');
+        return null;
+    }
+    _transporter = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: false,
+        tls: { rejectUnauthorized: false },
+        auth: { user: SMTP_USER, pass: SMTP_PASS }
+    });
+    return _transporter;
+}
+
+// POST /send-email
+// Body: { to, subject, body, attachments: [{ filename, content_base64 }] }
+app.post('/send-email', async function(req, res) {
+    var data = req.body;
+    if (!data || !data.to || !data.subject) {
+        return res.status(400).json({ success: false, message: 'Campi mancanti: to, subject' });
+    }
+
+    var transport = getTransporter();
+    if (!transport) {
+        return res.status(500).json({ success: false, message: 'SMTP non configurato. Imposta SMTP_PASS nel file .env' });
+    }
+
+    var mailOpts = {
+        from: '"Enilive Station Cervellini" <' + SMTP_FROM + '>',
+        to: data.to,
+        subject: data.subject,
+        html: data.body || '',
+        attachments: []
+    };
+
+    if (data.attachments && data.attachments.length) {
+        data.attachments.forEach(function(att) {
+            mailOpts.attachments.push({
+                filename: att.filename || 'documento.pdf',
+                content: Buffer.from(att.content_base64, 'base64'),
+                contentType: att.content_type || 'application/pdf'
+            });
+        });
+    }
+
+    try {
+        var info = await transport.sendMail(mailOpts);
+        console.log('[EMAIL] Inviata a ' + data.to + ' - ID: ' + info.messageId);
+        res.json({ success: true, message: 'Email inviata a ' + data.to, messageId: info.messageId });
+    } catch(err) {
+        console.error('[EMAIL] Errore invio a ' + data.to + ':', err.message);
+        res.status(500).json({ success: false, message: 'Errore invio: ' + err.message });
+    }
+});
+
+// GET /email-status
+app.get('/email-status', function(req, res) {
+    res.json({
+        configured: !!SMTP_PASS,
+        smtp_host: SMTP_HOST,
+        smtp_port: SMTP_PORT,
+        smtp_user: SMTP_USER
+    });
+});
+
+// ============================================================
 // START SERVER
 // ============================================================
 app.listen(PORT, function() {
@@ -587,9 +669,13 @@ app.listen(PORT, function() {
     console.log('========================================');
     console.log('');
     console.log('Endpoints:');
-    console.log('  GET  /status  - Stato server');
-    console.log('  GET  /test    - Stampa test');
-    console.log('  POST /print   - Stampa scontrino');
+    console.log('  GET  /status       - Stato server');
+    console.log('  GET  /test         - Stampa test');
+    console.log('  POST /print        - Stampa scontrino');
+    console.log('  POST /send-email   - Invio email con allegati');
+    console.log('  GET  /email-status - Stato configurazione email');
+    console.log('');
+    console.log('Email SMTP: ' + (SMTP_PASS ? 'CONFIGURATA (' + SMTP_USER + ')' : 'NON CONFIGURATA (imposta SMTP_PASS nel .env)'));
     console.log('');
 
     // Avvia polling coda stampa remota

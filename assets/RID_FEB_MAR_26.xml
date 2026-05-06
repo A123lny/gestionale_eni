@@ -1,0 +1,1320 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CBISDDReqLogMsg xmlns="urn:CBI:xsd:CBISDDReqLogMsg.00.01.01"  xmlns:xs="http://www.w3.org/2001/XMLSchema-instance"  xs:schemaLocation="urn:CBI:xsd:CBISDDReqLogMsg.00.01.01 CBISDDReqLogMsg.00.01.01.xsd">
+  <GrpHdr>
+    <MsgId>SDDCAR001000126040901</MsgId>
+    <CreDtTm>2026-04-09T08:56:07+02:00</CreDtTm>
+    <NbOfTxs>34</NbOfTxs>
+    <CtrlSum>5903.75</CtrlSum>
+    <InitgPty>
+      <Nm>ENILIVE STATION</Nm>
+      <Id>
+        <OrgId>
+          <Othr>
+            <Id>1987558U</Id>
+            <Issr>CBI</Issr>
+          </Othr>
+          <Othr>
+            <Id>IT00000030756</Id>
+            <Issr>ADE</Issr>
+          </Othr>
+        </OrgId>
+      </Id>
+    </InitgPty>
+  </GrpHdr>
+  <PmtInf>
+    <PmtInfId>001-15/03/2026</PmtInfId>
+    <PmtMtd>DD</PmtMtd>
+    <BtchBookg>false</BtchBookg>
+    <PmtTpInf>
+      <SvcLvl>
+        <Cd>SEPA</Cd>
+      </SvcLvl>
+      <LclInstrm>
+        <Cd>CORE</Cd>
+      </LclInstrm>
+      <SeqTp>RCUR</SeqTp>
+    </PmtTpInf>
+    <ReqdColltnDt>2026-03-15</ReqdColltnDt>
+    <Cdtr>
+      <Nm>ENILIVE STATION</Nm>
+      <PstlAdr>
+        <Ctry>SM</Ctry>
+        <AdrLine>VIA 28 LUGLIO, 105</AdrLine>
+        <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+      </PstlAdr>
+      <Id>
+        <PrvtId>
+          <Othr>
+            <Id>IT00000030756</Id>
+            <Issr>ADE</Issr>
+          </Othr>
+        </PrvtId>
+      </Id>
+    </Cdtr>
+    <CdtrAcct>
+      <Id>
+        <IBAN>SM20D0606709801000013650644</IBAN>
+      </Id>
+    </CdtrAcct>
+    <CdtrAgt>
+      <FinInstnId>
+        <ClrSysMmbId>
+          <MmbId>06067</MmbId>
+        </ClrSysMmbId>
+      </FinInstnId>
+    </CdtrAgt>
+    <ChrgBr>SLEV</ChrgBr>
+    <CdtrSchmeId>
+      <Id>
+        <PrvtId>
+          <Othr>
+            <Id>SM31001000000000SM30756</Id>
+          </Othr>
+        </PrvtId>
+      </Id>
+    </CdtrSchmeId>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>1</InstrId>
+        <EndToEndId>00001-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">72</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200007</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>ARMERIA BATTISTINI</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA BASILICIUS 23</AdrLine>
+          <AdrLine>47890, SAN MARINO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM02F0328709804000040305405</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/1 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>2</InstrId>
+        <EndToEndId>00002-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">66</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200011</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>CARDOGNA AVV. CECILIA</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA Ca DEI LUNGHI 64</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM37U0303409804000040110023</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/2 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>3</InstrId>
+        <EndToEndId>00003-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">69</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200021</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>GIANNINI JEAN PAUL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA Ca CARLO 19</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM24Y0328709802000020303525</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/3 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>4</InstrId>
+        <EndToEndId>00004-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">60</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200030</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>LANCIOLI MATTEO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA Ca RICCIO 66</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, , SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM42N0328709803000038100016</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/5 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>5</InstrId>
+        <EndToEndId>00005-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">122</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF40000000050200079</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>L'ANTENNA DI MOLARONI GUIDO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA FONDO RIO 65</AdrLine>
+          <AdrLine>47899, SERRAVALLE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM26L0854009803000030169064</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/11 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>6</InstrId>
+        <EndToEndId>00006-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">124</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200092</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>OUTLET DEL PROFUMO SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA SALITA ALLA ROCCA 40</AdrLine>
+          <AdrLine>47890, SAN MARINO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM04R0328709804000040315836</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/14 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>7</InstrId>
+        <EndToEndId>00007-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">795</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200094</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>IPPO SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA DEI BOSCHETTI 61</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM45Z0606709811000110100803</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/15 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>8</InstrId>
+        <EndToEndId>00008-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">70</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200095</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>BEST CAR SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA CINQUE FEBBRAIO 122A</AdrLine>
+          <AdrLine>47895, DOMAGNANO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM41P0328709803000030314376</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/16 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>9</InstrId>
+        <EndToEndId>00009-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">114</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200096</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>COMPAGNIA ARTE SPETTACOLO E TECNOLOGIA SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>STRADA DI GUALDRE 5</AdrLine>
+          <AdrLine>47897, FIORENTINO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM58F0303409804000040151245</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/17 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>10</InstrId>
+        <EndToEndId>00010-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">160</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200103</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>ORLANDO.SM ONORANZE FUNEBRI SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA Ca DEI LUNGHI 115</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM41S0854009813000130189572</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/18 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>11</InstrId>
+        <EndToEndId>00011-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">115</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200124</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>TAMAGNINI ROBERTO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA DEI SALTARI 2</AdrLine>
+          <AdrLine>47891, FALCIANO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM11F0854009809000090153887</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>RIF. D.D.T.   1/3 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>12</InstrId>
+        <EndToEndId>00012-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">119</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200125</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>URBINATI GIUGLIANO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA FONDO BANDIERA 27</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM86R0854009805000050183296</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>RIF. D.D.T.   1/4 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>13</InstrId>
+        <EndToEndId>00013-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">42</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200126</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>VAGLIO ALBERTO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA PODERE DEL CIPRESSO 15</AdrLine>
+          <AdrLine>47892, ACQUAVIVA, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM47U0303409804000040115760</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>RIF. D.D.T.   1/5 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>14</InstrId>
+        <EndToEndId>00014-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">30</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200132</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>ZONZINI GIACOMO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>STRADA SESTA GUALDARIA 4</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM27T0854009811000110183067</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>RIF. D.D.T.   1/6 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>15</InstrId>
+        <EndToEndId>00015-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">301</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF40000000050200150</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>STUDIO BIAGIOLI SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA PIETRO TONNINI 4</AdrLine>
+          <AdrLine>47893, SAN MARINO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM55L0303409801000010123300</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/21 DEL 28-02-2026 SCADENZA 15-03-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+  </PmtInf>
+  <PmtInf>
+    <PmtInfId>002-15/04/2026</PmtInfId>
+    <PmtMtd>DD</PmtMtd>
+    <BtchBookg>false</BtchBookg>
+    <PmtTpInf>
+      <SvcLvl>
+        <Cd>SEPA</Cd>
+      </SvcLvl>
+      <LclInstrm>
+        <Cd>CORE</Cd>
+      </LclInstrm>
+      <SeqTp>RCUR</SeqTp>
+    </PmtTpInf>
+    <ReqdColltnDt>2026-04-15</ReqdColltnDt>
+    <Cdtr>
+      <Nm>ENILIVE STATION</Nm>
+      <PstlAdr>
+        <Ctry>SM</Ctry>
+        <AdrLine>VIA 28 LUGLIO, 105</AdrLine>
+        <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+      </PstlAdr>
+      <Id>
+        <PrvtId>
+          <Othr>
+            <Id>IT00000030756</Id>
+            <Issr>ADE</Issr>
+          </Othr>
+        </PrvtId>
+      </Id>
+    </Cdtr>
+    <CdtrAcct>
+      <Id>
+        <IBAN>SM20D0606709801000013650644</IBAN>
+      </Id>
+    </CdtrAcct>
+    <CdtrAgt>
+      <FinInstnId>
+        <ClrSysMmbId>
+          <MmbId>06067</MmbId>
+        </ClrSysMmbId>
+      </FinInstnId>
+    </CdtrAgt>
+    <ChrgBr>SLEV</ChrgBr>
+    <CdtrSchmeId>
+      <Id>
+        <PrvtId>
+          <Othr>
+            <Id>SM31001000000000SM30756</Id>
+          </Othr>
+        </PrvtId>
+      </Id>
+    </CdtrSchmeId>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>16</InstrId>
+        <EndToEndId>00016-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">112</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200007</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>ARMERIA BATTISTINI</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA BASILICIUS 23</AdrLine>
+          <AdrLine>47890, SAN MARINO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM02F0328709804000040305405</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/27 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>17</InstrId>
+        <EndToEndId>00017-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">94</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200011</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>CARDOGNA AVV. CECILIA</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA Ca DEI LUNGHI 64</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM37U0303409804000040110023</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/28 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>18</InstrId>
+        <EndToEndId>00018-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">67</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200021</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>GIANNINI JEAN PAUL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA Ca CARLO 19</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM24Y0328709802000020303525</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/30 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>19</InstrId>
+        <EndToEndId>00019-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">120</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200030</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>LANCIOLI MATTEO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA Ca RICCIO 66</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, , SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM42N0328709803000038100016</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/32 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>20</InstrId>
+        <EndToEndId>00020-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">201.01</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200037</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>ROSSINI COMMERCE SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>CONTRADA DEL PIANELLO 18</AdrLine>
+          <AdrLine>47890, SAN MARINO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM08A0328709804000040301833</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/34 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>21</InstrId>
+        <EndToEndId>00021-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">91</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200045</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>SOLUTION S.R.L.</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA VENTOTTO LUGLIO 212</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM59O0328709801000010305793</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/35 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>22</InstrId>
+        <EndToEndId>00022-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">453</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200050</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>TABACCHERIA COLOMBO SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA SALITA ALLA ROCCA 17</AdrLine>
+          <AdrLine>47890, SAN MARINO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM78A0303409800000060115459</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/37 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>23</InstrId>
+        <EndToEndId>00023-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">122</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF40000000050200079</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>L'ANTENNA DI MOLARONI GUIDO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA FONDO RIO 65</AdrLine>
+          <AdrLine>47899, SERRAVALLE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM26L0854009803000030169064</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/41 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>24</InstrId>
+        <EndToEndId>00024-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">30</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200092</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>OUTLET DEL PROFUMO SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA SALITA ALLA ROCCA 40</AdrLine>
+          <AdrLine>47890, SAN MARINO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM04R0328709804000040315836</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/44 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>25</InstrId>
+        <EndToEndId>00025-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">921.06</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200094</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>IPPO SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA DEI BOSCHETTI 61</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM45Z0606709811000110100803</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/45 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>26</InstrId>
+        <EndToEndId>00026-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">128</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200095</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>BEST CAR SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA CINQUE FEBBRAIO 122A</AdrLine>
+          <AdrLine>47895, DOMAGNANO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM41P0328709803000030314376</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/46 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>27</InstrId>
+        <EndToEndId>00027-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">298</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200096</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>COMPAGNIA ARTE SPETTACOLO E TECNOLOGIA SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>STRADA DI GUALDRE 5</AdrLine>
+          <AdrLine>47897, FIORENTINO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM58F0303409804000040151245</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/47 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>28</InstrId>
+        <EndToEndId>00028-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">16</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200103</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>ORLANDO.SM ONORANZE FUNEBRI SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA Ca DEI LUNGHI 115</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM41S0854009813000130189572</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/48 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>29</InstrId>
+        <EndToEndId>00029-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">52.01</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200122</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>SAN MARTINI GIOVANNI</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA FONDO BANDIERA 25</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM38Y0854009805000050182530</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>RIF. D.D.T.   1/10 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>30</InstrId>
+        <EndToEndId>00030-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">90</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200124</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>TAMAGNINI ROBERTO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA DEI SALTARI 2</AdrLine>
+          <AdrLine>47891, FALCIANO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM11F0854009809000090153887</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>RIF. D.D.T.   1/11 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>31</InstrId>
+        <EndToEndId>00031-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">223</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200125</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>URBINATI GIUGLIANO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA FONDO BANDIERA 27</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM86R0854009805000050183296</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>RIF. D.D.T.   1/12 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>32</InstrId>
+        <EndToEndId>00032-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">150.50</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200126</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>VAGLIO ALBERTO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA PODERE DEL CIPRESSO 15</AdrLine>
+          <AdrLine>47892, ACQUAVIVA, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM47U0303409804000040115760</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>RIF. D.D.T.   1/13 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>33</InstrId>
+        <EndToEndId>00033-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">137.17</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF450200132</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>ZONZINI GIACOMO</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>STRADA SESTA GUALDARIA 4</AdrLine>
+          <AdrLine>47893, BORGO MAGGIORE, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM27T0854009811000110183067</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>RIF. D.D.T.   1/14 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+    <DrctDbtTxInf>
+      <PmtId>
+        <InstrId>34</InstrId>
+        <EndToEndId>00034-SDDCAR001000126040901</EndToEndId>
+      </PmtId>
+      <InstdAmt Ccy="EUR">339</InstdAmt>
+      <DrctDbtTx>
+        <MndtRltdInf>
+          <MndtId>C43SF40000000050200150</MndtId>
+          <DtOfSgntr>2012-01-02</DtOfSgntr>
+        </MndtRltdInf>
+      </DrctDbtTx>
+      <Dbtr>
+        <Nm>STUDIO BIAGIOLI SRL</Nm>
+        <PstlAdr>
+          <Ctry>SM</Ctry>
+          <AdrLine>VIA PIETRO TONNINI 4</AdrLine>
+          <AdrLine>47893, SAN MARINO, RSM, SAN MARINO</AdrLine>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>SM55L0303409801000010123300</IBAN>
+        </Id>
+      </DbtrAcct>
+      <Purp>
+        <Cd>GDSV</Cd>
+      </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>CRED</DbtCdtRptgInd>
+      </RgltryRptg>
+      <RmtInf>
+        <Ustrd>FATT. EMESSE   1/50 DEL 31-03-2026 SCADENZA 15-04-2026</Ustrd>
+      </RmtInf>
+    </DrctDbtTxInf>
+  </PmtInf>
+</CBISDDReqLogMsg>

@@ -373,7 +373,7 @@ ENI.Modules.MagazzinoImport = (function() {
         var footer = modal.querySelector('.modal-footer');
         footer.innerHTML = '<button class="btn btn-outline" disabled>Importazione in corso...</button>';
 
-        var BATCH_SIZE = 50;
+        var BATCH_SIZE = ENI.Config.CONSTANTS.BATCH_SIZE_CSV;
         var totale = prodotti.length;
         var importati = 0;
         var errori = 0;

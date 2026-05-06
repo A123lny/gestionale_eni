@@ -257,8 +257,8 @@ ENI.Modules.Lavaggi = (function() {
             return;
         }
 
-        var startHour = 7;
-        var endHour = 21;
+        var startHour = ENI.Config.CONSTANTS.ORARIO_APERTURA;
+        var endHour = ENI.Config.CONSTANTS.ORARIO_CHIUSURA;
         var totalHours = endHour - startHour;
 
         // Header con etichette posizionate assolutamente: stesse % delle barre → allineamento perfetto
@@ -290,7 +290,7 @@ ENI.Modules.Lavaggi = (function() {
             var barLabel = (l.veicolo || l.nome_cliente) + ' - ' + l.tipo_lavaggio;
 
             // Barre più corte di ~1 ora: nascondi testo, accessibile solo via click
-            var isShort = width < 8;
+            var isShort = width < ENI.Config.CONSTANTS.TIMELINE_SOGLIA_CORTA;
 
             rowsHtml +=
                 '<div class="timeline-row">' +

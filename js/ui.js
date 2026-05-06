@@ -59,8 +59,11 @@ ENI.UI = (function() {
     function showModal(options) {
         var backdrop = document.createElement('div');
         backdrop.className = 'modal-backdrop';
+        var modalStyle = '';
+        if (options.size === 'lg') modalStyle = ' style="max-width:900px;width:95%;"';
+        else if (options.size === 'xl') modalStyle = ' style="max-width:1100px;width:95%;"';
         backdrop.innerHTML =
-            '<div class="modal">' +
+            '<div class="modal"' + modalStyle + '>' +
                 '<div class="modal-header">' +
                     '<h3 class="modal-title">' + _escapeHtml(options.title || '') + '</h3>' +
                     '<button class="modal-close" data-modal-close>&times;</button>' +
@@ -234,6 +237,39 @@ ENI.UI = (function() {
         return badge(stato, map[stato] || '');
     }
 
+    // --- Gestione Errori Centralizzata ---
+
+    function handleError(err, contesto) {
+        var msg = '';
+        if (!err) {
+            msg = contesto ? 'Errore in ' + contesto : 'Errore sconosciuto';
+        } else if (typeof err === 'string') {
+            msg = err;
+        } else if (err.message) {
+            // Mappa messaggi Supabase/tecnici → testo leggibile
+            var m = err.message;
+            if (m.indexOf('Failed to fetch') !== -1 || m.indexOf('NetworkError') !== -1) {
+                msg = 'Connessione assente. Verifica la rete e riprova.';
+            } else if (m.indexOf('JWT') !== -1 || m.indexOf('token') !== -1) {
+                msg = 'Sessione scaduta. Ricarica la pagina.';
+            } else if (m.indexOf('duplicate key') !== -1 || m.indexOf('unique') !== -1) {
+                msg = 'Record già presente nel sistema.';
+            } else if (m.indexOf('foreign key') !== -1) {
+                msg = 'Impossibile eliminare: il record è collegato ad altri dati.';
+            } else if (m.indexOf('not found') !== -1 || m.indexOf('PGRST116') !== -1) {
+                msg = 'Elemento non trovato.';
+            } else if (m.indexOf('permission') !== -1 || m.indexOf('RLS') !== -1) {
+                msg = 'Permesso negato.';
+            } else {
+                msg = contesto ? 'Errore ' + contesto + ': ' + m : m;
+            }
+        } else {
+            msg = contesto ? 'Errore in ' + contesto : 'Errore sconosciuto';
+        }
+        toast(msg, 'error');
+        console.error('[ENI Error]' + (contesto ? ' [' + contesto + ']' : ''), err);
+    }
+
     // --- Helpers HTML ---
 
     function _escapeHtml(str) {
@@ -293,6 +329,7 @@ ENI.UI = (function() {
         oraCorrente: oraCorrente,
         badge: badge,
         badgeStato: badgeStato,
+        handleError: handleError,
         escapeHtml: escapeHtml,
         render: render,
         delegate: delegate

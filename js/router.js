@@ -22,6 +22,10 @@ ENI.Router = (function() {
         'vendita':      { module: 'Vendita',      id: 'vendita' },
         'magazzino':    { module: 'Magazzino',    id: 'magazzino' },
         'buoni':        { module: 'Buoni',        id: 'buoni' },
+        'coefficiente-monofase': { module: 'CoefficienteMonofase', id: 'coefficiente-monofase' },
+        'marginalita-carburante': { module: 'MarginalitaCarburante', id: 'marginalita-carburante' },
+        'tesoreria':  { module: 'Tesoreria',  id: 'tesoreria' },
+        'fatturazione': { module: 'Fatturazione', id: 'fatturazione' },
         'personale':    { module: 'Personale',    id: 'personale' },
         'manutenzioni': { module: 'Manutenzioni', id: 'manutenzioni' },
         'log':          { module: 'Log',          id: 'log' },
@@ -154,9 +158,22 @@ ENI.Router = (function() {
     // --- Update Navigation Active State ---
 
     function _updateNav(activeId) {
-        // Sidebar nav items
+        // Sidebar nav items (incluse sotto-voci sezioni)
         document.querySelectorAll('.nav-item').forEach(function(el) {
             el.classList.toggle('active', el.dataset.route === activeId);
+        });
+
+        // Auto-apri sezione se la route attiva è una sotto-voce
+        document.querySelectorAll('.nav-section').forEach(function(section) {
+            var childActive = section.querySelector('.nav-item.active');
+            if (childActive) {
+                var toggle = section.querySelector('.nav-section-toggle');
+                var children = section.querySelector('.nav-section-children');
+                if (toggle && children) {
+                    toggle.classList.add('open');
+                    children.classList.add('open');
+                }
+            }
         });
 
         // Bottom nav items

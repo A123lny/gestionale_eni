@@ -1,0 +1,1362 @@
+<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Title>Anagrafica Clienti Fornitori per Excel</Title>
+  <Author>andrea</Author>
+  <LastAuthor>Utente</LastAuthor>
+  <Created>2026-04-24T15:40:13Z</Created>
+  <Company>ENILIVE STATION DI CERVELLINI ANDREA</Company>
+  <Version>16.00</Version>
+ </DocumentProperties>
+ <OfficeDocumentSettings xmlns="urn:schemas-microsoft-com:office:office">
+  <AllowPNG/>
+ </OfficeDocumentSettings>
+ <ExcelWorkbook xmlns="urn:schemas-microsoft-com:office:excel">
+  <WindowHeight>7740</WindowHeight>
+  <WindowWidth>21570</WindowWidth>
+  <WindowTopX>32767</WindowTopX>
+  <WindowTopY>32767</WindowTopY>
+  <ProtectStructure>False</ProtectStructure>
+  <ProtectWindows>False</ProtectWindows>
+ </ExcelWorkbook>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Bottom"/>
+   <Font ss:FontName="Arial"/>
+   <NumberFormat/>
+  </Style>
+  <Style ss:ID="s65">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Bottom"/>
+   <Font ss:FontName="Calibri" ss:Size="11.5" ss:Color="#000000" ss:Bold="1"/>
+   <NumberFormat ss:Format="@"/>
+  </Style>
+  <Style ss:ID="s66">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Bottom"/>
+   <Font ss:FontName="Calibri" ss:Size="11.5" ss:Color="#000000"/>
+   <NumberFormat ss:Format="@"/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="-Clifoex">
+  <Names>
+   <NamedRange ss:Name="_FilterDatabase" ss:RefersTo="='-Clifoex'!R1C1:R239C2"
+    ss:Hidden="1"/>
+  </Names>
+  <Table ss:ExpandedColumnCount="2" ss:ExpandedRowCount="239" x:FullColumns="1"
+   x:FullRows="1">
+   <Column ss:Width="243"/>
+   <Column ss:Width="142.5"/>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s65"><Data ss:Type="String">Ragione Sociale</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s65"><Data ss:Type="String">Pagamento</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">&#45;-Anonimo&#45;-</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">CLIENTE GENERICO</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Dr.ssa Marchi Eleonora</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">2 Fratelli Imbianchini s.r.l.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Acquamax di Melini Massimigliano</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Adriano Cavallari</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">ADVITAR SRL</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Agenzia Immobiliare San Marino Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Alleanza Riformista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Ambeta Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Antincendio Riminese Srl (stabile Organizzazione)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Aqua Viva Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Arch. Amedeo Grandoni (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">AREAUTO SRL</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Armeria Battistini</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Arti Grafiche Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">AscensoriSM Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Associazione Società Sportiva Pennarossa Calcio</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Audiofon San Marino Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Azienda Autonoma di Stato per i Lavori Pubblici</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bar Ospedale Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bartolini Design Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">BDrive Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Be Low di Ceccoli Beatrice</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Berardi Dott. Orietta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">BERARDI MANUEL RAG. COMM.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Best Car Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">BLT DIstribution Srl (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bontempo Patrizia</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Capicchioni Massimo</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Car Service Srl (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Cardelli Alessandro</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Cardinali Marco</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Cardogna Avv. Cecilia</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Cavalli Federico</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Cecchetti Gabriele</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Cellarosi Luca (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Cervellini Andrea</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Cis-Coop Sistemi Informatici</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Compagnia Arte Spettacolo e Tecnologia Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Contucci Remo</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Coperativa Allevatori C/O Titancoop</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">CORPO DI POLIZIA CIVILE</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Croce Rossa Sammarinese</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Cuckin Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">De Lugii Samuele (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">De Marini Fausto</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Della Valle Nicola</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">DELLA VALLE ORAZIO</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">DOMECAR S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Dr. Marchi Eleonora</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Elettrauto E Ricambi di Cesarini Leonardo</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Enilive Spa</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Ercolani Lorenzo (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Estetikale di Zonzini Alessandra</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">FASHION FORCE SRL</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Federazione Sammarinese Giuoco Calcio</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Federazione Sammarinese Nuoto</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Federazione Tennis RSM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Federico Filippo Bernardi (p)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Felici Gianluca</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Ferri Ing. Stefano</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Filo D'Erba di Loris Riccardi (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Fondazione Renata Tebaldi</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Fonti Luca Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">G.R. Finiture Edili di Giancecchi Roberto</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Garavelli Erika</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Garbellano Omar</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Gattei Ing. Marco</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">GEM BB Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Geom. Casali Matteo</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">GF PROFUMI SRL (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Giancecchi Luca</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Giannini Jean Paul</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Giardi Ivan</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Giorgetti Spa</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Giovagnoli Gerardo</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Glesa Spa</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Grandoni Associati Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Grandoni Real Estate Srl (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Grandoni Simone (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Grassi Ing. Daniel</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Grossi Andrea</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Guerra Stefano</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">I Frutti della Terra di Alan Toccaceli</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">ICAS Spa</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">ICAS Spa (PALA)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Idraulica Mazza di Mazza Andrea</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Idraulica Si.Sa Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Idris di Muscioni Luca</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Il Gommista Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Il Semaforo Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">ING. STEFANO CIACCI (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Ippo srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Iuliano Antonio</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Krea di Agarici Gianfranco e Sandro</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">L'Antenna di Molaroni Guido</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">LA COCCINELLA (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">La Nuova Termoidraulica di Mularoni Enea</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">La Pitagora di Macrelli Dott, Giancarlo</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">LaChiara (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Lancioli Matteo</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Lenny Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Linknet Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Lonfernini Irene (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Loris Zanchi</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">luca d'errico</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Madera s.r.l.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Maksymenko Oleksandra</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Mancini Valter</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Mas o Mano Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Massimo Molinari</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Massimo Service di Moretti Massimo (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">MCS SRL</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">MDR SRL (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Media Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">MICHELE ROMAGNOLI (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Micronics Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">movimento ideali socialisti (mis)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Muscioni Marco</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">My Bike Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">My Time di Cucchi Emanuela (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Napoleone Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Napoleone srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Nutrigea Srl (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Olei Marcello</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Orlando.sm Onoranze Funebri Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Outlet del profumo Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Overview Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Paoloni Sara</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Passepartout Spa (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Passion Car Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Podeschi Fabio</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">PROMOPHARMA SPA</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Righi Giuseppe</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Romina Bronzetti</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rondelli Marco</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rossi Guido</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rossini Commerce Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Royal Car di Carlini Loris Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">S.J. Escavazioni e Lavori Edili</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Samuele Guiducci</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">San Marino RTV</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">San Martini Giovanni</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">SASIA DI BOTTINO MARIA TERESA (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Sbc srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">SE.BA.R spa</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Sebron Spa</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Segmento Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Severi Sergio</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Severi Sergio (ULTIMO)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">SHINDAY DI Cecchetti Michele</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Sicurezza e Salute Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Silvagni Ing. Marco (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Solution S.r.l.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Spray Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Stefanelli Stefano</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">STUDIO BIAGIOLI SRL</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Studio Volpinari</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Tabaccheria Colombo srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Tamagnini Roberto</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Target Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Tecnoedil Fiorentino Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Tecnoproject Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Telecom italia San Marino Spa</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Telefonia Mobile Sammarinese TMS Spa</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">TIM TRANSITORIO</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Titan Carni Srl (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Titan Pool</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Toccaceli Mattia (P)</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Pagato</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Ugolini Alessandro</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">UNIVERSITA' DELLA TERZA ETA'</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Urbinati Giugliano</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Vaglio Alberto</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Valpharma SPA</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Valtancoli Andrea</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Venerucci Matteo</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Volpinari Arch.Davide</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Rimessa Diretta</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Wonder Lab di Severi Andrea</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario a vista</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Wonderfood Spa</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Zanotti Stefano ZF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Zero Mille srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Bonifico Bancario 30gg DF</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Zonzini Giacomo</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RID</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">Zonzini Srl</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RI.BA. 30 gg DF FM</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">ALESSANDRO PANZERA</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">AUDES SUISSE SAGL</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">BRICOMAN ITALIA S.R.L. SOCIETA' A SOCIO UNICO</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">BRIXIA GOMME SAS DI FARINELLI D. &amp; C.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">CHIMICART S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">CO.RA. SPA</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">COSTRUZIONI TENOX SRL</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">ELCAR S.N.C. DI PERUGINI E. &amp; C.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">ENILIVE S.P.A.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">FORNITORE GENERICO</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">FORTECH S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">SOLO DETTAGLI DI CARLO RAIMONDI</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">SOLO DETTAGLI SRL</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">WUERTH S.R.L</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">A.A.S.S.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">AGRIGARDEN S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">AREAUTO S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">ASSOCIAZIONE TITANO ACADEMY</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">BERARDI MANUEL RAG. COMM.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">BRICOIO TITANO S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">COMIFER S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">COPYGRAF DI GUALANDI FABIO</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">DIBI S.P.A.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">DITTA KOPPE DI PELLICCIONI KEVIN</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">DML S.P.A.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">DOMECAR S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">ENILIVE STATION DI CERVELLINI ANDREA</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">FAETANINI MATTEO E CANINI DAVIDE</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">G.A.D. S.P.A.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">GF TECHNOLOGY DI GIRI FABIO</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">GM S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">I.S.E.A. S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">IDRAULICA SISA S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">KOPPE</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">KREOSOFT S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">L'ANTINCENDIO SAMMARINESE S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">LA PITAGORA DI MACRELLI DR. GIAN CARLO</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">M.C.S. S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">MI.NA. ELETTROIMPIANTI S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">MICRONICS S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">NEW ALARMS S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">NOLEGGI SAN MARINO S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">POWER TITANO DI TURA MICHELE</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">PROVA</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">REALCIBO SAN MARINO S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">RIGHI FERRAMENTA S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">SE.BA.R. S.P.A.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">SICUREZZA E SALUTE S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">SMART SYSTEM S.R.L.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">STUDIO LEGALE E NOTARILE DOLCINI</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">STUDIO LEGALE NOTARILE OLEI ALESSANDRO</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">TIM SAN MARINO S.P.A.</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">UNIONE SAMMARINESE COMMERCIO E TURISMO</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+   <Row ss:Height="15">
+    <Cell ss:StyleID="s66"><Data ss:Type="String">VIVAIO ZANOTTI</Data><NamedCell
+      ss:Name="_FilterDatabase"/></Cell>
+   </Row>
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <Selected/>
+   <Panes>
+    <Pane>
+     <Number>3</Number>
+     <ActiveRow>4</ActiveRow>
+     <ActiveCol>1</ActiveCol>
+    </Pane>
+   </Panes>
+   <ProtectObjects>False</ProtectObjects>
+   <ProtectScenarios>False</ProtectScenarios>
+  </WorksheetOptions>
+  <AutoFilter x:Range="R1C1:R239C2"
+   xmlns="urn:schemas-microsoft-com:office:excel">
+  </AutoFilter>
+ </Worksheet>
+</Workbook>

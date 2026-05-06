@@ -1175,6 +1175,673 @@ ENI.API = (function() {
         return record;
     }
 
+    // ============================================================
+    // TESORERIA (Cash Flow)
+    // ============================================================
+
+    // --- Categorie Tesoreria ---
+
+    async function getCategorieTesoreria() {
+        var cached = ENI.State.cacheGet('categorie_tesoreria');
+        if (cached) return cached;
+        var data = await getAll('categorie_tesoreria', {
+            order: { col: 'ordine', asc: true }
+        });
+        ENI.State.cacheSet('categorie_tesoreria', data);
+        return data;
+    }
+
+    async function salvaCategoriaTesoreria(dati) {
+        var record = await insert('categorie_tesoreria', dati);
+        ENI.State.cacheClear('categorie_tesoreria');
+        await scriviLog('Creata_Categoria_Tesoreria', 'Tesoreria', dati.nome);
+        return record;
+    }
+
+    async function aggiornaCategoriaTesoreria(id, dati) {
+        var record = await update('categorie_tesoreria', id, dati);
+        ENI.State.cacheClear('categorie_tesoreria');
+        await scriviLog('Modificata_Categoria_Tesoreria', 'Tesoreria', dati.nome || id);
+        return record;
+    }
+
+    async function eliminaCategoriaTesoreria(id, nome) {
+        await remove('categorie_tesoreria', id);
+        ENI.State.cacheClear('categorie_tesoreria');
+        await scriviLog('Eliminata_Categoria_Tesoreria', 'Tesoreria', nome);
+        return true;
+    }
+
+    // --- Movimenti Banca ---
+
+    async function getMovimentiBanca(options) {
+        options = options || {};
+        var query = getClient().from('movimenti_banca').select('*');
+
+        if (options.banca) query = query.eq('banca', options.banca);
+        if (options.da) query = query.gte('data_operazione', options.da);
+        if (options.a) query = query.lte('data_operazione', options.a);
+        if (options.categoria) query = query.eq('categoria', options.categoria);
+
+        query = query.order('data_operazione', { ascending: options.asc !== false });
+        if (options.limit) query = query.limit(options.limit);
+
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getHashMovimentiEsistenti(dataInizio, dataFine) {
+        var result = await getClient()
+            .from('movimenti_banca')
+            .select('hash_movimento')
+            .gte('data_operazione', dataInizio)
+            .lte('data_operazione', dataFine);
+        if (result.error) throw new Error(result.error.message);
+        return (result.data || []).map(function(r) { return r.hash_movimento; });
+    }
+
+    async function importaMovimentiBanca(movimenti) {
+        if (!movimenti || movimenti.length === 0) return [];
+        var result = await getClient().from('movimenti_banca').insert(movimenti).select();
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Import_Movimenti_Banca', 'Tesoreria',
+            movimenti.length + ' movimenti importati - Banca: ' + movimenti[0].banca);
+        return result.data;
+    }
+
+    async function aggiornaMovimentoBanca(id, dati) {
+        return await update('movimenti_banca', id, dati);
+    }
+
+    async function eliminaMovimentoBanca(id) {
+        await remove('movimenti_banca', id);
+        return true;
+    }
+
+    async function getUltimoSaldoBanca() {
+        var result = await getClient()
+            .from('movimenti_banca')
+            .select('saldo_progressivo, data_operazione, banca')
+            .not('saldo_progressivo', 'is', null)
+            .order('data_operazione', { ascending: false })
+            .limit(1);
+        if (result.error) throw new Error(result.error.message);
+        return (result.data && result.data.length > 0) ? result.data[0] : null;
+    }
+
+    // --- Pagamenti Ricorrenti ---
+
+    async function getPagamentiRicorrenti(soloAttivi) {
+        var options = { order: { col: 'created_at', asc: false } };
+        if (soloAttivi) {
+            options.filters = [{ op: 'eq', col: 'attivo', val: true }];
+        }
+        return await getAll('pagamenti_ricorrenti', options);
+    }
+
+    async function salvaPagamentoRicorrente(dati) {
+        var record = await insert('pagamenti_ricorrenti', dati);
+        await scriviLog('Creato_Pagamento_Ricorrente', 'Tesoreria',
+            dati.descrizione + ' - ' + ENI.UI.formatValuta(dati.importo) + ' (' + dati.frequenza + ')');
+        return record;
+    }
+
+    async function aggiornaPagamentoRicorrente(id, dati) {
+        var record = await update('pagamenti_ricorrenti', id, dati);
+        await scriviLog('Modificato_Pagamento_Ricorrente', 'Tesoreria', dati.descrizione || id);
+        return record;
+    }
+
+    async function eliminaPagamentoRicorrente(id, descrizione) {
+        await remove('pagamenti_ricorrenti', id);
+        await scriviLog('Eliminato_Pagamento_Ricorrente', 'Tesoreria', descrizione);
+        return true;
+    }
+
+    // --- Pagamenti Programmati ---
+
+    async function getPagamentiProgrammati(filtroStato) {
+        var options = { order: { col: 'data_scadenza', asc: true } };
+        if (filtroStato && filtroStato !== 'tutti') {
+            options.filters = [{ op: 'eq', col: 'stato', val: filtroStato }];
+        }
+        return await getAll('pagamenti_programmati', options);
+    }
+
+    async function salvaPagamentoProgrammato(dati) {
+        var record = await insert('pagamenti_programmati', dati);
+        await scriviLog('Creato_Pagamento_Programmato', 'Tesoreria',
+            dati.descrizione + ' - ' + ENI.UI.formatValuta(dati.importo) + ' scad. ' + dati.data_scadenza);
+        return record;
+    }
+
+    async function aggiornaPagamentoProgrammato(id, dati) {
+        var record = await update('pagamenti_programmati', id, dati);
+        await scriviLog('Modificato_Pagamento_Programmato', 'Tesoreria', dati.descrizione || id);
+        return record;
+    }
+
+    async function pagaPagamentoProgrammato(id, pagamento) {
+        var record = await update('pagamenti_programmati', id, {
+            stato: 'pagato',
+            data_pagamento: ENI.UI.oggiISO()
+        });
+        await scriviLog('Pagato_Pagamento_Programmato', 'Tesoreria',
+            pagamento.descrizione + ' - ' + ENI.UI.formatValuta(pagamento.importo));
+        return record;
+    }
+
+    async function annullaPagamentoProgrammato(id, pagamento) {
+        var record = await update('pagamenti_programmati', id, { stato: 'annullato' });
+        await scriviLog('Annullato_Pagamento_Programmato', 'Tesoreria', pagamento.descrizione);
+        return record;
+    }
+
+    // --- Cassa per periodo (per storico tesoreria) ---
+
+    async function getCassaPeriodo(da, a) {
+        var query = getClient()
+            .from('cassa')
+            .select('data, totale_venduto, totale_incassato, totale_spese, totale_crediti, crediti_4tscard');
+
+        if (da) query = query.gte('data', da);
+        if (a) query = query.lte('data', a);
+
+        query = query.order('data', { ascending: true });
+
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // --- Carichi Carburante (per auto-scadenze tesoreria) ---
+
+    async function getCarichiCarburante(da, a) {
+        var query = getClient()
+            .from('carichi_carburante')
+            .select('id, data, litri_fiscali, litri_fisici, prezzo_mp, accisa, costo_carico_totale, prodotto_id, note');
+
+        if (da) query = query.gte('data', da);
+        if (a) query = query.lte('data', a);
+
+        query = query.order('data', { ascending: true });
+
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // --- Spese cassa per periodo (per tesoreria previsione) ---
+
+    async function getSpeseCassaPeriodo(da, a) {
+        var query = getClient()
+            .from('spese_cassa')
+            .select('data, importo');
+
+        if (da) query = query.gte('data', da);
+        if (a) query = query.lte('data', a);
+
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // --- Totale 4TS Card per mese (crediti cumulativi dalla cassa) ---
+
+    async function get4TSCardMese(anno, mese) {
+        var primoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-01';
+        var ultimoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-' +
+            new Date(anno, mese, 0).getDate();
+
+        var result = await getClient()
+            .from('cassa')
+            .select('data, crediti_4tscard')
+            .gte('data', primoGiorno)
+            .lte('data', ultimoGiorno);
+
+        if (result.error) throw new Error(result.error.message);
+
+        var totale = 0;
+        (result.data || []).forEach(function(c) {
+            if (c.crediti_4tscard && Array.isArray(c.crediti_4tscard)) {
+                c.crediti_4tscard.forEach(function(item) {
+                    totale += parseFloat(item.importo) || 0;
+                });
+            }
+        });
+
+        return totale;
+    }
+
+    // --- Scadenze Tesoreria (per alert badge) ---
+
+    async function getScadenzeTesoreria(giorniAvanti) {
+        giorniAvanti = giorniAvanti || 7;
+        var oggi = ENI.UI.oggiISO();
+        var limite = new Date();
+        limite.setDate(limite.getDate() + giorniAvanti);
+        var limiteISO = limite.toISOString().split('T')[0];
+
+        // Pagamenti programmati in scadenza
+        var programmati = await getClient()
+            .from('pagamenti_programmati')
+            .select('id, descrizione, importo, tipo, data_scadenza')
+            .eq('stato', 'programmato')
+            .gte('data_scadenza', oggi)
+            .lte('data_scadenza', limiteISO);
+
+        if (programmati.error) throw new Error(programmati.error.message);
+
+        // Pagamenti ricorrenti attivi - restituiamo quelli attivi, il calcolo delle date avviene lato client
+        var ricorrenti = await getClient()
+            .from('pagamenti_ricorrenti')
+            .select('id, descrizione, importo, tipo, frequenza, giorno_scadenza, mese_riferimento')
+            .eq('attivo', true);
+
+        if (ricorrenti.error) throw new Error(ricorrenti.error.message);
+
+        return {
+            programmati: programmati.data || [],
+            ricorrenti: ricorrenti.data || []
+        };
+    }
+
+    // ============================================================
+    // SINCRONIZZAZIONE CARICHI → COEFFICIENTE MONOFASE
+    // ============================================================
+
+    async function sincronizzaMonofaseDaCarichi(meseDate) {
+        var anno = meseDate.getFullYear();
+        var mese = meseDate.getMonth() + 1;
+        var meseRef = anno + '-' + String(mese).padStart(2, '0') + '-01';
+        var ALIQUOTA_IVA = ENI.Config.ALIQUOTA_IVA_MONOFASE || 0.21;
+        var MESI = ['','Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+
+        // Carica tutti i carichi di GASOLIO del mese
+        var inizioMese = anno + '-' + String(mese).padStart(2, '0') + '-01';
+        var fineMese = mese === 12
+            ? (anno + 1) + '-01-01'
+            : anno + '-' + String(mese + 1).padStart(2, '0') + '-01';
+
+        var carichi = await getAll('carichi_carburante', {
+            filters: [
+                { op: 'eq', col: 'prodotto_id', val: 'gasolio' },
+                { op: 'gte', col: 'data', val: inizioMese },
+                { op: 'lt', col: 'data', val: fineMese }
+            ],
+            order: { col: 'data', asc: true }
+        });
+
+        // Rimuovi le vecchie righe monofase del mese e ricreale dai carichi
+        var vecchie = await getAll('fatture_acquisto_gasolio', {
+            filters: [{ op: 'eq', col: 'mese_riferimento', val: meseRef }]
+        });
+        for (var d = 0; d < vecchie.length; d++) {
+            await remove('fatture_acquisto_gasolio', vecchie[d].id);
+        }
+
+        // Crea una riga monofase per ogni carico
+        for (var i = 0; i < carichi.length; i++) {
+            var c = carichi[i];
+            var imponibile = Math.round(c.litri_fiscali * c.prezzo_mp * 100) / 100;
+            var monofaseIvaImp = Math.round(imponibile * ALIQUOTA_IVA * 100) / 100;
+            var monofaseIvaAcc = Math.round((c.litri_fiscali * c.accisa) * ALIQUOTA_IVA * 100) / 100;
+            var totMonofase = Math.round((monofaseIvaImp + monofaseIvaAcc) * 100) / 100;
+            var coeff = c.litri_fisici > 0 ? Math.floor((totMonofase / c.litri_fisici) * 10000) / 10000 : 0;
+
+            await insert('fatture_acquisto_gasolio', {
+                mese_riferimento: meseRef,
+                numero_progressivo: i + 1,
+                data_fattura: c.data,
+                imponibile_fattura: imponibile,
+                litri_commerciali: Math.round(c.litri_fisici),
+                litri_fiscali: Math.round(c.litri_fiscali),
+                accisa_per_litro: c.accisa,
+                monofase_iva_imponibile: monofaseIvaImp,
+                monofase_iva_accisa: monofaseIvaAcc,
+                totale_monofase: totMonofase,
+                monofase_media_per_lt: coeff
+            });
+        }
+
+        // Aggiorna coefficiente mensile
+        var totImponibile = 0, totLitriComm = 0, totMonoImp = 0, totMonoAcc = 0, totMono = 0;
+        carichi.forEach(function(c) {
+            var imp = Math.round(c.litri_fiscali * c.prezzo_mp * 100) / 100;
+            var mImp = Math.round(imp * ALIQUOTA_IVA * 100) / 100;
+            var mAcc = Math.round((c.litri_fiscali * c.accisa) * ALIQUOTA_IVA * 100) / 100;
+            totImponibile += imp;
+            totLitriComm += c.litri_fisici;
+            totMonoImp += mImp;
+            totMonoAcc += mAcc;
+            totMono += mImp + mAcc;
+        });
+        var coeffMensile = totLitriComm > 0 ? Math.floor((totMono / totLitriComm) * 10000) / 10000 : null;
+
+        var coeffData = {
+            mese_riferimento: meseRef,
+            anno: anno,
+            mese: mese,
+            nome_mese: MESI[mese],
+            totale_imponibile: Math.round(totImponibile * 100) / 100,
+            totale_litri_commerciali: Math.round(totLitriComm),
+            totale_monofase_iva_imp: Math.round(totMonoImp * 100) / 100,
+            totale_monofase_iva_accisa: Math.round(totMonoAcc * 100) / 100,
+            totale_monofase: Math.round(totMono * 100) / 100,
+            coefficiente_monofase: coeffMensile,
+            numero_fatture: carichi.length
+        };
+
+        var esistente = await getAll('coefficiente_monofase_mensile', {
+            filters: [{ op: 'eq', col: 'mese_riferimento', val: meseRef }],
+            limit: 1
+        });
+
+        if (esistente && esistente.length > 0) {
+            if (esistente[0].stato !== 'chiuso') {
+                await update('coefficiente_monofase_mensile', esistente[0].id, coeffData);
+            }
+        } else {
+            coeffData.stato = 'aperto';
+            await insert('coefficiente_monofase_mensile', coeffData);
+        }
+
+        return { carichi: carichi.length, coefficiente: coeffMensile };
+    }
+
+    // ============================================================
+    // FATTURAZIONE
+    // ============================================================
+
+    async function getProssimoNumeroFattura(anno) {
+        var result = await getClient().rpc('get_prossimo_numero_fattura', { p_anno: anno });
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    async function getProssimoNumeroDocumento(anno, tipoDocumento) {
+        tipoDocumento = tipoDocumento || 'FATTURA';
+        var result = await getClient().rpc('get_prossimo_numero_documento', { p_anno: anno, p_tipo: tipoDocumento });
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    async function getImpostazioniFatturazione() {
+        var result = await getClient()
+            .from('impostazioni_fatturazione')
+            .select('*')
+            .limit(1);
+        if (result.error) throw new Error(result.error.message);
+        return (result.data && result.data.length > 0) ? result.data[0] : null;
+    }
+
+    async function salvaImpostazioniFatturazione(data) {
+        var esistente = await getImpostazioniFatturazione();
+        data.updated_at = new Date().toISOString();
+        if (esistente) {
+            var r = await getClient()
+                .from('impostazioni_fatturazione')
+                .update(data)
+                .eq('id', esistente.id)
+                .select().single();
+            if (r.error) throw new Error(r.error.message);
+            return r.data;
+        } else {
+            data.singleton = true;
+            var r2 = await getClient()
+                .from('impostazioni_fatturazione')
+                .insert(data)
+                .select().single();
+            if (r2.error) throw new Error(r2.error.message);
+            return r2.data;
+        }
+    }
+
+    async function getFatture(filtri) {
+        filtri = filtri || {};
+        var query = getClient()
+            .from('fatture')
+            .select('*, cliente:clienti(id, nome_ragione_sociale, p_iva_coe, email, telefono, iban, mandate_id, banca_appoggio, abi_banca, cab_banca, sede_legale_indirizzo, sede_legale_cap, sede_legale_comune, sede_legale_provincia, sede_legale_nazione, modalita_pagamento_fattura, scadenza_giorni, rif_amministrazione, applica_monofase)')
+            .order('numero', { ascending: true });
+
+        if (filtri.anno) query = query.eq('anno', filtri.anno);
+        if (filtri.mese_riferimento) query = query.eq('mese_riferimento', filtri.mese_riferimento);
+        if (filtri.cliente_id) query = query.eq('cliente_id', filtri.cliente_id);
+        if (filtri.stato) query = query.eq('stato', filtri.stato);
+        if (filtri.tipo) query = query.eq('tipo', filtri.tipo);
+        if (filtri.tipo_documento) query = query.eq('tipo_documento', filtri.tipo_documento);
+        if (filtri.import_eni_log_id) query = query.eq('import_eni_log_id', filtri.import_eni_log_id);
+
+        if (filtri.limit) {
+            var offset = filtri.offset || 0;
+            query = query.range(offset, offset + filtri.limit - 1);
+        }
+
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getFatturaCompleta(id) {
+        var fattura = await getClient()
+            .from('fatture')
+            .select('*, cliente:clienti(*)')
+            .eq('id', id).single();
+        if (fattura.error) throw new Error(fattura.error.message);
+
+        var righe = await getClient()
+            .from('fatture_righe')
+            .select('*')
+            .eq('fattura_id', id)
+            .order('ordine', { ascending: true });
+        if (righe.error) throw new Error(righe.error.message);
+
+        var movimenti = await getClient()
+            .from('fatture_movimenti')
+            .select('*')
+            .eq('fattura_id', id)
+            .order('data_movimento', { ascending: true });
+        if (movimenti.error) throw new Error(movimenti.error.message);
+
+        return {
+            fattura: fattura.data,
+            righe: righe.data || [],
+            movimenti: movimenti.data || []
+        };
+    }
+
+    async function salvaFattura(fattura, righe, movimenti) {
+        var anno = fattura.anno || new Date(fattura.data_emissione).getFullYear();
+        var tipoDoc = fattura.tipo_documento || 'FATTURA';
+        if (!fattura.numero) {
+            fattura.numero = await getProssimoNumeroDocumento(anno, tipoDoc);
+            fattura.anno = anno;
+            fattura.tipo_documento = tipoDoc;
+            var prefisso = tipoDoc === 'RICEVUTA' ? 'R' : '';
+            fattura.numero_formattato = prefisso + fattura.numero + '/' + anno;
+        }
+        fattura.utente_creazione = ENI.State.getUserId();
+
+        var result = await getClient()
+            .from('fatture')
+            .insert(fattura)
+            .select().single();
+        if (result.error) throw new Error(result.error.message);
+        var f = result.data;
+
+        if (righe && righe.length) {
+            var righeConId = righe.map(function(r, i) {
+                return Object.assign({}, r, { fattura_id: f.id, ordine: r.ordine != null ? r.ordine : i });
+            });
+            var r = await getClient().from('fatture_righe').insert(righeConId);
+            if (r.error) throw new Error(r.error.message);
+        }
+
+        if (movimenti && movimenti.length) {
+            var BATCH = 50;
+            for (var i = 0; i < movimenti.length; i += BATCH) {
+                var batch = movimenti.slice(i, i + BATCH).map(function(m) {
+                    return Object.assign({}, m, { fattura_id: f.id });
+                });
+                var rm = await getClient().from('fatture_movimenti').insert(batch);
+                if (rm.error) throw new Error(rm.error.message);
+            }
+        }
+
+        await scriviLog('Emessa fattura ' + f.numero_formattato, 'fatturazione',
+            { fattura_id: f.id, cliente_id: f.cliente_id, totale: f.totale });
+        return f;
+    }
+
+    async function aggiornaStatoFattura(id, stato, extra) {
+        var data = Object.assign({ stato: stato, updated_at: new Date().toISOString() }, extra || {});
+        var result = await getClient()
+            .from('fatture').update(data).eq('id', id).select().single();
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Cambio stato fattura -> ' + stato, 'fatturazione', { fattura_id: id });
+        return result.data;
+    }
+
+    async function annullaFattura(id, motivo) {
+        return aggiornaStatoFattura(id, 'ANNULLATA', { note: motivo || null });
+    }
+
+    // Eliminazione fisica multipla — consentita SOLO per fatture BOZZA.
+    // I record collegati (fatture_righe, fatture_movimenti) vengono cancellati a cascata via FK.
+    // Dopo l'eliminazione, i log import_eni rimasti senza fatture vengono rimossi.
+    async function eliminaFatture(ids) {
+        if (!ids || !ids.length) return { eliminate: 0, logRimossi: 0 };
+        var sb = getClient();
+
+        // 1. Verifica server-side: tutti gli id devono essere BOZZA
+        var check = await sb
+            .from('fatture')
+            .select('id, stato, mese_riferimento, anno_riferimento, import_eni_log_id, numero_formattato')
+            .in('id', ids);
+        if (check.error) throw new Error(check.error.message);
+        var trovate = check.data || [];
+        if (trovate.length !== ids.length) {
+            throw new Error('Alcune fatture non sono state trovate');
+        }
+        var nonBozza = trovate.filter(function(f) { return f.stato !== 'BOZZA'; });
+        if (nonBozza.length) {
+            throw new Error('Eliminazione bloccata: ' + nonBozza.length + ' fatture non sono in stato BOZZA (numeri: ' +
+                nonBozza.slice(0, 5).map(function(f) { return f.numero_formattato || f.id; }).join(', ') + ')');
+        }
+
+        // 2. Cancella le fatture (cascade pulisce righe e movimenti)
+        var del = await sb.from('fatture').delete().in('id', ids);
+        if (del.error) throw new Error(del.error.message);
+
+        // 3. Auto-cleanup log import_eni: per ogni mese/anno toccato, se non ci sono piu' fatture rimuovi il log
+        var periodi = {};
+        trovate.forEach(function(f) {
+            if (f.mese_riferimento && f.anno_riferimento) {
+                periodi[f.mese_riferimento + '/' + f.anno_riferimento] = {
+                    mese: f.mese_riferimento, anno: f.anno_riferimento
+                };
+            }
+        });
+        var logRimossi = 0;
+        for (var k in periodi) {
+            var p = periodi[k];
+            var rest = await sb.from('fatture').select('id', { count: 'exact', head: true })
+                .eq('mese_riferimento', p.mese).eq('anno_riferimento', p.anno);
+            if (rest.error) continue;
+            if ((rest.count || 0) === 0) {
+                var dlog = await sb.from('import_eni_log').delete().eq('mese', p.mese).eq('anno', p.anno);
+                if (!dlog.error) logRimossi++;
+            }
+        }
+
+        await scriviLog('Eliminate ' + trovate.length + ' bozze in batch', 'fatturazione', { count: trovate.length });
+        return { eliminate: trovate.length, logRimossi: logRimossi };
+    }
+
+    async function aggiornaFattura(id, dati, righe) {
+        dati.updated_at = new Date().toISOString();
+        var result = await getClient().from('fatture').update(dati).eq('id', id).select().single();
+        if (result.error) throw new Error(result.error.message);
+
+        if (righe) {
+            await getClient().from('fatture_righe').delete().eq('fattura_id', id);
+            if (righe.length) {
+                var righeConId = righe.map(function(r, i) {
+                    return Object.assign({}, r, { fattura_id: id, ordine: r.ordine != null ? r.ordine : i });
+                });
+                var rr = await getClient().from('fatture_righe').insert(righeConId);
+                if (rr.error) throw new Error(rr.error.message);
+            }
+        }
+
+        await scriviLog('Modificata fattura ' + result.data.numero_formattato, 'fatturazione', { fattura_id: id });
+        return result.data;
+    }
+
+    async function annullaERiemetti(id, nuovoTipoDocumento) {
+        var full = await getFatturaCompleta(id);
+        var f = full.fattura;
+
+        await annullaFattura(id, 'Annullata per riemissione come ' + nuovoTipoDocumento);
+
+        var nuova = {
+            data_emissione: new Date().toISOString().slice(0, 10),
+            data_scadenza: f.data_scadenza,
+            cliente_id: f.cliente_id,
+            tipo: f.tipo,
+            tipo_documento: nuovoTipoDocumento,
+            mese_riferimento: f.mese_riferimento,
+            anno_riferimento: f.anno_riferimento,
+            totale: f.totale,
+            monofase_coefficiente: f.monofase_coefficiente,
+            monofase_importo: f.monofase_importo,
+            monofase_mese: f.monofase_mese,
+            monofase_anno: f.monofase_anno,
+            modalita_pagamento: f.modalita_pagamento,
+            iban_beneficiario: f.iban_beneficiario,
+            stato: 'EMESSA',
+            note: f.note,
+            rif_amministrazione: f.rif_amministrazione,
+            import_eni_log_id: f.import_eni_log_id
+        };
+
+        var righe = full.righe.map(function(r) {
+            return { descrizione: r.descrizione, quantita: r.quantita, unita_misura: r.unita_misura, prezzo_unitario: r.prezzo_unitario, importo: r.importo, categoria: r.categoria, ordine: r.ordine };
+        });
+        var movimenti = full.movimenti.map(function(m) {
+            return { data_movimento: m.data_movimento, scontrino: m.scontrino, id_transazione: m.id_transazione, targa: m.targa, autista: m.autista, num_carta: m.num_carta, prodotto: m.prodotto, tipo_servizio: m.tipo_servizio, prezzo_unitario: m.prezzo_unitario, volume: m.volume, importo: m.importo, categoria: m.categoria };
+        });
+
+        var result = await salvaFattura(nuova, righe, movimenti.length ? movimenti : null);
+        return result;
+    }
+
+    async function getImportEniLog(anno, mese) {
+        var q = getClient().from('import_eni_log').select('*').order('created_at', { ascending: false });
+        if (anno) q = q.eq('anno', anno);
+        if (mese) q = q.eq('mese', mese);
+        var r = await q;
+        if (r.error) throw new Error(r.error.message);
+        return r.data || [];
+    }
+
+    async function registraImportEni(data) {
+        data.utente_id = ENI.State.getUserId();
+        var r = await getClient().from('import_eni_log').insert(data).select().single();
+        if (r.error) throw new Error(r.error.message);
+        return r.data;
+    }
+
+    async function aggiungiAliasCliente(clienteId, alias) {
+        var cli = await getById('clienti', clienteId);
+        var lista = cli.alias_import_eni || [];
+        var normalizzato = (alias || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        if (!normalizzato || lista.indexOf(normalizzato) >= 0) return cli;
+        lista.push(normalizzato);
+        return await update('clienti', clienteId, { alias_import_eni: lista });
+    }
+
     // API pubblica
     return {
         init: init,
@@ -1265,6 +1932,49 @@ ENI.API = (function() {
         eliminaPrezzoCliente: eliminaPrezzoCliente,
         // Vendita da lavaggio
         salvaVenditaDaLavaggio: salvaVenditaDaLavaggio,
-        getVenditaPerLavaggio: getVenditaPerLavaggio
+        getVenditaPerLavaggio: getVenditaPerLavaggio,
+        // Tesoreria
+        getCategorieTesoreria: getCategorieTesoreria,
+        salvaCategoriaTesoreria: salvaCategoriaTesoreria,
+        aggiornaCategoriaTesoreria: aggiornaCategoriaTesoreria,
+        eliminaCategoriaTesoreria: eliminaCategoriaTesoreria,
+        getMovimentiBanca: getMovimentiBanca,
+        getHashMovimentiEsistenti: getHashMovimentiEsistenti,
+        importaMovimentiBanca: importaMovimentiBanca,
+        aggiornaMovimentoBanca: aggiornaMovimentoBanca,
+        eliminaMovimentoBanca: eliminaMovimentoBanca,
+        getUltimoSaldoBanca: getUltimoSaldoBanca,
+        getPagamentiRicorrenti: getPagamentiRicorrenti,
+        salvaPagamentoRicorrente: salvaPagamentoRicorrente,
+        aggiornaPagamentoRicorrente: aggiornaPagamentoRicorrente,
+        eliminaPagamentoRicorrente: eliminaPagamentoRicorrente,
+        getPagamentiProgrammati: getPagamentiProgrammati,
+        salvaPagamentoProgrammato: salvaPagamentoProgrammato,
+        aggiornaPagamentoProgrammato: aggiornaPagamentoProgrammato,
+        pagaPagamentoProgrammato: pagaPagamentoProgrammato,
+        annullaPagamentoProgrammato: annullaPagamentoProgrammato,
+        getScadenzeTesoreria: getScadenzeTesoreria,
+        getCarichiCarburante: getCarichiCarburante,
+        getSpeseCassaPeriodo: getSpeseCassaPeriodo,
+        get4TSCardMese: get4TSCardMese,
+        getCassaPeriodo: getCassaPeriodo,
+        // Monofase sync
+        sincronizzaMonofaseDaCarichi: sincronizzaMonofaseDaCarichi,
+        // Fatturazione
+        getProssimoNumeroFattura: getProssimoNumeroFattura,
+        getProssimoNumeroDocumento: getProssimoNumeroDocumento,
+        getImpostazioniFatturazione: getImpostazioniFatturazione,
+        salvaImpostazioniFatturazione: salvaImpostazioniFatturazione,
+        getFatture: getFatture,
+        getFatturaCompleta: getFatturaCompleta,
+        salvaFattura: salvaFattura,
+        aggiornaStatoFattura: aggiornaStatoFattura,
+        annullaFattura: annullaFattura,
+        eliminaFatture: eliminaFatture,
+        aggiornaFattura: aggiornaFattura,
+        annullaERiemetti: annullaERiemetti,
+        getImportEniLog: getImportEniLog,
+        registraImportEni: registraImportEni,
+        aggiungiAliasCliente: aggiungiAliasCliente
     };
 })();

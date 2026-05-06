@@ -1722,3 +1722,607 @@
 .wallet-search-item:hover {
     background: var(--color-bg-hover) !important;
 }
+
+/* ============================================================
+   COEFFICIENTE MONOFASE - Layout compatto full-width
+   ============================================================ */
+.cm-table-compact th,
+.cm-table-compact td {
+    padding: var(--space-1) var(--space-2);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.cm-table-compact th {
+    font-size: 0.7rem;
+}
+
+.cm-stats-inline {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-top: var(--space-3);
+}
+
+.cm-stats-inline .stat-card {
+    flex: 1;
+    min-width: 140px;
+    padding: var(--space-2) var(--space-3);
+}
+
+.cm-stats-inline .stat-label {
+    font-size: 0.7rem;
+}
+
+.cm-stats-inline .stat-value {
+    font-size: 0.95rem;
+}
+
+/* ============================================================
+   TESORERIA - Cash Flow / Treasury Module
+   ============================================================ */
+
+/* --- Tabs --- */
+.tesoreria-tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: var(--space-4);
+    border-bottom: 2px solid var(--color-gray-200);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.tesoreria-tab {
+    background: none;
+    border: none;
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-gray-500);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.tesoreria-tab:hover {
+    color: var(--color-primary);
+}
+
+.tesoreria-tab.active {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+    font-weight: var(--font-weight-semibold);
+}
+
+.tesoreria-tab-icon {
+    font-size: 1rem;
+}
+
+@media (max-width: 600px) {
+    .tesoreria-tab {
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-xs);
+    }
+    .tesoreria-tab-label {
+        display: none;
+    }
+    .tesoreria-tab-icon {
+        font-size: 1.2rem;
+    }
+}
+
+/* --- Periodo Bar --- */
+.tesoreria-periodo-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    flex-wrap: wrap;
+}
+
+.tesoreria-periodo-toggle {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--color-gray-300);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.tesoreria-periodo-btn {
+    background: var(--bg-card);
+    border: none;
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-gray-600);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    border-right: 1px solid var(--color-gray-300);
+}
+
+.tesoreria-periodo-btn:last-child {
+    border-right: none;
+}
+
+.tesoreria-periodo-btn.active {
+    background: var(--color-primary);
+    color: var(--text-inverse);
+}
+
+.tesoreria-periodo-label {
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-base);
+    min-width: 120px;
+    text-align: center;
+}
+
+/* --- KPI Cards --- */
+.tesoreria-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+}
+
+@media (min-width: 768px) {
+    .tesoreria-kpi-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+.tesoreria-kpi-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    text-align: center;
+    border: 1px solid var(--color-gray-200);
+    border-top: 3px solid var(--color-gray-300);
+}
+
+.tesoreria-kpi-success { border-top-color: var(--color-success); }
+.tesoreria-kpi-danger { border-top-color: var(--color-danger); }
+.tesoreria-kpi-warning { border-top-color: var(--color-warning); }
+.tesoreria-kpi-info { border-top-color: var(--color-info); }
+
+.tesoreria-kpi-label {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: var(--space-1);
+}
+
+.tesoreria-kpi-value {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+}
+
+.tesoreria-kpi-sub {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    margin-top: var(--space-1);
+}
+
+/* --- Castelletto Table Rows --- */
+.tesoreria-row-entrata {
+    background-color: rgba(34, 197, 94, 0.04);
+}
+
+.tesoreria-row-uscita {
+    background-color: rgba(239, 68, 68, 0.04);
+}
+
+.tesoreria-row-scaduto {
+    background-color: rgba(239, 68, 68, 0.08);
+}
+
+/* --- Totali Row --- */
+.tesoreria-totali-row {
+    display: flex;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+    flex-wrap: wrap;
+}
+
+.tesoreria-totale {
+    flex: 1;
+    min-width: 140px;
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--font-size-sm);
+}
+
+.tesoreria-totale-entrata {
+    background: rgba(34, 197, 94, 0.1);
+    color: #166534;
+}
+
+.tesoreria-totale-uscita {
+    background: rgba(239, 68, 68, 0.1);
+    color: #991B1B;
+}
+
+.tesoreria-totale-positivo {
+    background: rgba(34, 197, 94, 0.15);
+    color: #166534;
+    border: 2px solid rgba(34, 197, 94, 0.3);
+}
+
+.tesoreria-totale-negativo {
+    background: rgba(239, 68, 68, 0.15);
+    color: #991B1B;
+    border: 2px solid rgba(239, 68, 68, 0.3);
+}
+
+/* --- Fonte Badge --- */
+.tesoreria-badge-banca { background: #dbeafe; color: #1e40af; }
+.tesoreria-badge-cassa { background: #dcfce7; color: #166534; }
+.tesoreria-badge-spese { background: #fee2e2; color: #991b1b; }
+.tesoreria-badge-crediti { background: #fef3c7; color: #92400e; }
+.tesoreria-badge-ricorrente { background: #e0e7ff; color: #3730a3; }
+.tesoreria-badge-programmato { background: #f3e8ff; color: #6b21a8; }
+
+/* --- Scadenze List --- */
+.tesoreria-scadenze-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.tesoreria-scadenza-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-gray-200);
+    transition: border-color 0.15s;
+}
+
+.tesoreria-scadenza-urgente {
+    border-color: var(--color-danger);
+    background: rgba(239, 68, 68, 0.04);
+}
+
+.tesoreria-scadenza-prossima {
+    border-color: var(--color-warning);
+    background: rgba(245, 158, 11, 0.04);
+}
+
+.tesoreria-scadenza-data {
+    text-align: center;
+    min-width: 50px;
+}
+
+.tesoreria-scadenza-giorno {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.tesoreria-scadenza-mese {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.tesoreria-scadenza-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+.tesoreria-scadenza-desc {
+    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-sm);
+}
+
+.tesoreria-scadenza-importo {
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-base);
+    white-space: nowrap;
+}
+
+/* --- Import Zone --- */
+.tesoreria-import-zone {
+    border: 2px dashed var(--color-primary);
+    background: rgba(91, 173, 214, 0.04);
+}
+
+.tesoreria-import-result {
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+}
+
+.tesoreria-import-success {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #166534;
+}
+
+.tesoreria-import-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #991B1B;
+}
+
+.tesoreria-import-info {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #1e40af;
+}
+
+/* --- Alert Pulse Animation --- */
+@keyframes pulse-tesoreria {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+@keyframes glow-tesoreria {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 8px rgba(245, 158, 11, 0.4); }
+}
+
+.nav-section-toggle.has-scadenze {
+    animation: pulse-tesoreria 2s ease-in-out infinite;
+}
+
+.nav-section-toggle.has-scadenze .nav-section-label {
+    color: var(--color-warning);
+}
+
+.nav-item[data-route="tesoreria"].has-scadenze {
+    animation: glow-tesoreria 2s ease-in-out infinite;
+    border-radius: var(--radius-md);
+}
+
+.nav-item[data-route="tesoreria"].has-scadenze span:last-child {
+    animation: pulse-tesoreria 1.5s ease-in-out infinite;
+    font-weight: var(--font-weight-bold);
+    color: var(--color-warning);
+}
+
+/* --- Column Mapper (Import) --- */
+.tesoreria-mapper {
+    background: var(--bg-card);
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin: var(--space-4) 0;
+}
+
+.tesoreria-mapper-title {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: var(--space-3);
+}
+
+.tesoreria-mapper-table {
+    font-size: var(--font-size-xs);
+    border: 1px solid var(--color-gray-200);
+}
+
+.tesoreria-mapper-table th {
+    background: var(--bg-secondary);
+    padding: var(--space-2) !important;
+    vertical-align: top;
+}
+
+.tesoreria-mapper-table td {
+    padding: var(--space-1) var(--space-2) !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+
+.tesoreria-mapper-select {
+    font-size: var(--font-size-xs) !important;
+    padding: var(--space-1) var(--space-2) !important;
+    min-width: 110px;
+}
+
+@media (max-width: 768px) {
+    .tesoreria-mapper {
+        padding: var(--space-2);
+    }
+    .tesoreria-mapper-table td {
+        max-width: 100px;
+    }
+}
+
+/* --- Import Content Zone --- */
+.tesoreria-import-content {
+    padding: var(--space-4);
+    text-align: center;
+}
+
+.tesoreria-import-content p {
+    margin-bottom: var(--space-2);
+    color: var(--text-secondary);
+}
+
+/* --- Badge Fonte: Carico Carburante --- */
+.tesoreria-badge-carico {
+    background: #fef3c7;
+    color: #92400e;
+    font-weight: var(--font-weight-medium);
+}
+
+/* --- Badge Fonte: 4TS Card --- */
+.tesoreria-badge-4tscard {
+    background: #dcfce7;
+    color: #166534;
+    font-weight: var(--font-weight-medium);
+}
+
+/* --- Badge Fonte: Banche --- */
+.tesoreria-badge-carisp {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.tesoreria-badge-bsi {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+/* Fallback per altre banche non mappate */
+[class*="tesoreria-badge-"]:not(.tesoreria-badge-banca):not(.tesoreria-badge-cassa):not(.tesoreria-badge-spese):not(.tesoreria-badge-crediti):not(.tesoreria-badge-ricorrente):not(.tesoreria-badge-programmato):not(.tesoreria-badge-carico):not(.tesoreria-badge-carisp):not(.tesoreria-badge-bsi) {
+    background: #f0f9ff;
+    color: #0369a1;
+}
+
+/* ============================================================
+   STORICO & PREVISIONI
+   ============================================================ */
+
+.storico-row-reale { cursor: pointer; }
+.storico-row-reale:hover { background: var(--bg-hover, #f1f5f9) !important; }
+
+.storico-row-corrente {
+    background: #fffbeb !important;
+    border-left: 4px solid #f59e0b;
+}
+.storico-row-corrente:hover { background: #fef3c7 !important; }
+
+.storico-row-previsione {
+    background: #eff6ff !important;
+    border-left: 4px solid #3b82f6;
+    font-style: italic;
+}
+.storico-row-previsione:hover { background: #dbeafe !important; }
+
+.storico-badge-reale {
+    background: #dcfce7; color: #166534;
+    font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 600;
+}
+.storico-badge-previsione {
+    background: #dbeafe; color: #1e40af;
+    font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; font-style: normal;
+}
+.storico-badge-corrente {
+    background: #fef3c7; color: #92400e;
+    font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 600;
+}
+
+.storico-chart-container {
+    position: relative;
+    height: 320px;
+    width: 100%;
+    margin-top: var(--space-3, 12px);
+}
+
+.storico-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #93c5fd;
+    color: #1e3a5f;
+    font-size: 10px;
+    font-weight: 700;
+    font-style: normal;
+    cursor: help;
+    position: relative;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+.storico-info:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1.4;
+    z-index: 1000;
+    max-width: 320px;
+    min-width: 180px;
+    white-space: normal;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    pointer-events: none;
+}
+.storico-info:hover::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #1e293b;
+    z-index: 1001;
+}
+
+.storico-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: var(--radius-md, 8px);
+    background: var(--bg-surface, #f1f5f9);
+    border: 1px solid var(--border-color, #e2e8f0);
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: var(--space-3, 12px);
+    transition: background 0.15s;
+}
+.storico-back-btn:hover { background: var(--bg-hover, #e2e8f0); }
+
+.storico-dettaglio-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 12px);
+    margin-bottom: var(--space-3, 12px);
+}
+.storico-dettaglio-header h3 { margin: 0; font-size: 1.2rem; }
+
+.storico-separator td {
+    padding: 4px 8px !important;
+    background: #f8fafc;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    border-top: 2px solid #e2e8f0;
+}
+
+/* Fatturazione - dropdown azioni */
+.fatt-dd-item {
+    display: block;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.fatt-dd-item:hover {
+    background: var(--bg-secondary);
+}
