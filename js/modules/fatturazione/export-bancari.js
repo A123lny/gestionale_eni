@@ -288,8 +288,26 @@ ENI.Fatturazione.ExportBancari = (function() {
         var oraHHMM = _pad(now.getHours(),2) + _pad(now.getMinutes(),2);
         // Codice SIA distinto dal codice CBI: 5 char esatti (es. "C43SF")
         var codSia = ((imp.codice_sia || 'C43SF') + '     ').substring(0, 5);
-        var coe = imp.coe_piva || imp.codice_fiscale_emittente || 'SM30756';
+        // Codice fiscale emittente normalizzato per CBI .car: 11 cifre zero-padded
+        // "IT00000030756" -> "00000030756", "SM30756" -> "00000030756"
+        function _coeNumerico(s) {
+            if (!s) return '00000000000';
+            var clean = String(s).toUpperCase().replace(/^[A-Z]+/, '').replace(/[^0-9]/g, '');
+            return clean.padStart(11, '0').substring(0, 11);
+        }
+        var coeNum = _coeNumerico(imp.codice_fiscale_emittente || imp.coe_piva || 'SM30756');
         var nomeAzienda = (imp.ragione_sociale_emittente || 'ENILIVE STATION');
+        // Helper P.IVA cliente: strip prefissi A/N applicati ai COE sammarinesi (ASM/NSM -> SM)
+        function _pivaCliente(s) {
+            var v = String(s || '').toUpperCase().trim();
+            return v.replace(/^[AN]SM/, 'SM');
+        }
+        // Helper nazione: 'SM' -> 'RSM' come fa Mexal
+        function _nazioneCBI(s) {
+            var v = String(s || 'RSM').toUpperCase().trim();
+            if (v === 'SM') return 'RSM';
+            return v;
+        }
 
         // Estrai conto creditore (12 char) dall'IBAN dell'IBAN dell'azienda emittente
         var ibanEmittente = (bancaItem.iban || '').replace(/\s/g, '');
@@ -368,25 +386,31 @@ ENI.Fatturazione.ExportBancari = (function() {
                 ((indCreditore + ' '.repeat(87)).substring(0, 87));
             content += _rec120(rec20);
 
-            // Record 30 (debitore: nome + p_iva) - 120 byte
+            // Record 30 (debitore: nome 60 + p_iva 7 + filler) - 120 byte
+            // Mexal: pos 9-68 nome (60), pos 69-75 p_iva normalizzato (7 char SM+5 digit)
+            var pivaNorm = _pivaCliente(cli.p_iva_coe);
             var rec30 = '30' + n + ((cli.nome_ragione_sociale || '') + ' '.repeat(60)).substring(0, 60) +
-                ((cli.p_iva_coe || '') + ' '.repeat(16)).substring(0, 16);
+                ((pivaNorm + '       ').substring(0, 7));
             content += _rec120(rec30);
 
-            // Record 40 (indirizzo debitore + banca) - 120 byte
-            var comNaz = (cli.sede_legale_comune || '') + ' ' + (cli.sede_legale_nazione || 'RSM');
+            // Record 40 (indirizzo + cap + comune + nazione + banca) - 120 byte
+            // Mexal layout: pos 9-38 ind (30), pos 39-43 cap (5), pos 44-64 comune (21),
+            //               pos 65-67 nazione (3), pos 68 spazio, pos 69-118 banca (50)
             var rec40 = '40' + n +
                 ((cli.sede_legale_indirizzo || '') + ' '.repeat(30)).substring(0, 30) +
                 ((cli.sede_legale_cap || '') + '     ').substring(0, 5) +
-                (comNaz + ' '.repeat(23)).substring(0, 23) +
+                ((cli.sede_legale_comune || '') + ' '.repeat(21)).substring(0, 21) +
+                (_nazioneCBI(cli.sede_legale_nazione) + '   ').substring(0, 3) +
+                ' ' +
                 ((cli.banca_appoggio || '') + ' '.repeat(50)).substring(0, 50);
             content += _rec120(rec40);
 
-            // Record 50 (riferimento documento) - 120 byte
+            // Record 50 (riferimento documento + codice fiscale numerico emittente) - 120 byte
+            // Mexal: codice fiscale come 11 digit zero-padded
             var rifDoc = 'RIF.DOCU.NUM.:  ' + ((f.numero_formattato || '') + ' '.repeat(10)).substring(0, 10) +
                 'del ' + _fmtDataSlash(f.data_emissione);
             var rec50 = '50' + n + (rifDoc + ' '.repeat(90)).substring(0, 90) +
-                ((coe || '') + ' '.repeat(16)).substring(0, 16);
+                coeNum + '          ';  // coeNum = 11 digit, poi 10 spazi filler
             content += _rec120(rec50);
 
             // Record 51 (codice fiscale creditore + nome) - 120 byte
@@ -395,7 +419,8 @@ ENI.Fatturazione.ExportBancari = (function() {
             content += _rec120(rec51);
 
             // Record 70 (chiusura disposizione) - 120 byte
-            var rec70 = '70' + n + ' '.repeat(99) + '0';  // 9 + 99 + 1 = 109. Pad a 120 nel _rec120
+            // Mexal: '70' + n(7) + 91 spazi + '0' + 19 spazi = 120
+            var rec70 = '70' + n + ' '.repeat(91) + '0' + ' '.repeat(19);
             content += _rec120(rec70);
         });
 
