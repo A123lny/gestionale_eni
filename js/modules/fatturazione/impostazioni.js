@@ -43,10 +43,13 @@ ENI.Fatturazione.Impostazioni = (function() {
                 '<div class="form-row">' +
                     _input('ABI', 'abi_emittente', d.abi_emittente || '06067') +
                     _input('CAB', 'cab_emittente', d.cab_emittente) +
-                    _input('Codice CBI', 'codice_cbi', d.codice_cbi || '1987558U') +
+                    _input('Codice SIA (RIBA, 5 char)', 'codice_sia', d.codice_sia || 'C43SF') +
                 '</div>' +
                 '<div class="form-row">' +
+                    _input('Codice CBI (RID)', 'codice_cbi', d.codice_cbi || '1987558U') +
                     _input('Codice creditore SDD', 'codice_creditore_sdd', d.codice_creditore_sdd || 'SM31001000000000SM30756') +
+                '</div>' +
+                '<div class="form-row">' +
                     _input('Codice fiscale emittente', 'codice_fiscale_emittente', d.codice_fiscale_emittente || 'IT00000030756') +
                 '</div>' +
                 '<hr style="margin:1rem 0;">' +

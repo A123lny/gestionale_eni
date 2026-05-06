@@ -279,61 +279,144 @@ ENI.Fatturazione.ExportBancari = (function() {
         var imp = _impostazioni || {};
         var bancaIdx = parseInt((document.getElementById('exp-banca') || {}).value, 10) || 0;
         var bancaItem = (imp.iban_lista && imp.iban_lista[bancaIdx]) ? imp.iban_lista[bancaIdx] : {};
-        var abiEmittente = imp.abi_emittente || '06067';
-        var cabEmittente = imp.cab_emittente || '09801';
+        var abiEmittente = ((imp.abi_emittente || '06067') + '00000').substring(0, 5);
+        var cabEmittente = ((imp.cab_emittente || '09801') + '00000').substring(0, 5);
         var nomi = ['','Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
         var now = new Date();
-        var dataCreazione = _pad(now.getDate(),2) + _pad(now.getMonth()+1,2) + now.getFullYear().toString().slice(-2);
-        var codSia = imp.codice_cbi || 'C43SF';
-        var coe = imp.coe_piva || 'SM30756';
+        var dataDDMMYY = _pad(now.getDate(),2) + _pad(now.getMonth()+1,2) + String(now.getFullYear()).slice(-2);
+        var dataDDMMYYYY = _pad(now.getDate(),2) + _pad(now.getMonth()+1,2) + String(now.getFullYear());
+        var oraHHMM = _pad(now.getHours(),2) + _pad(now.getMinutes(),2);
+        // Codice SIA distinto dal codice CBI: 5 char esatti (es. "C43SF")
+        var codSia = ((imp.codice_sia || 'C43SF') + '     ').substring(0, 5);
+        var coe = imp.coe_piva || imp.codice_fiscale_emittente || 'SM30756';
+        var nomeAzienda = (imp.ragione_sociale_emittente || 'ENILIVE STATION');
+
+        // Estrai conto creditore (12 char) dall'IBAN dell'IBAN dell'azienda emittente
+        var ibanEmittente = (bancaItem.iban || '').replace(/\s/g, '');
+        var contoEmittente12 = '';
+        if (ibanEmittente.length >= 27) {
+            // SM IBAN format: SM(2) + check(2) + CIN(1) + ABI(5) + CAB(5) + Conto(12)
+            contoEmittente12 = ibanEmittente.substring(15, 27);
+        }
+        contoEmittente12 = (contoEmittente12 + '000000000000').substring(0, 12);
+
+        // Helper: produce un record di esattamente 120 byte (truncate o pad con spazi a destra)
+        function _rec120(s) {
+            s = String(s || '');
+            if (s.length > 120) return s.substring(0, 120);
+            return s + ' '.repeat(120 - s.length);
+        }
 
         var content = '';
 
-        // Record IB (header) - 120 char
-        content += ' IB' + codSia + abiEmittente + dataCreazione + 'CAR' + dataCreazione + _rpad('', 4) + _rpad('', 58) + 'E       ';
+        // ============================================
+        // HEADER (121 byte: leading space + 120 byte content)
+        // Layout: ' IB' + codSia(5) + abi(5) + DDMMYY(6) + 'CAR' + DDMMYYYY(8) + HHMM(4)
+        //         + filler(79) + 'E       ' (8)
+        // ============================================
+        var header = ' IB' + codSia + abiEmittente + dataDDMMYY + 'CAR' + dataDDMMYYYY + oraHHMM;
+        // 3+5+5+6+3+8+4 = 34 char. Pad to 113, then 'E       ' (8 char) = 121 total
+        header = (header + ' '.repeat(79)).substring(0, 113) + 'E       ';
+        content += header;
 
-        // Disposizioni
+        // ============================================
+        // DATA RECORDS (7 record × 120 byte per disposizione)
+        // ============================================
         var totaleImporti = 0;
         fatture.forEach(function(f, i) {
             var cli = f.cliente || {};
             var n = _pad(i + 1, 7);
             var importoCent = Math.round((parseFloat(f.totale) || 0) * 100);
-            var importoStr = _pad(importoCent, 13);
+            // Importo: 14 char left-padded (formato Mexal verificato)
+            var importoStr = _pad(importoCent, 14);
             totaleImporti += importoCent;
             var scadGG = f.data_scadenza ? _fmtDataCBI(f.data_scadenza) : '000000';
-            var abiCli = cli.abi_banca || '';
-            var cabCli = cli.cab_banca || '';
-            var ibanEmittente = bancaItem.iban || '';
-            var tipoDoc = f.tipo_documento === 'RICEVUTA' ? 'RIF.DOCU.NUM.' : 'RIF.DOCU.NUM.';
+            var abiCli = ((cli.abi_banca || '') + '00000').substring(0, 5);
+            var cabCli = ((cli.cab_banca || '') + '00000').substring(0, 5);
+            var nContratto = '40000000050200' + _pad(i + 1, 3);  // 17 char (es. C43SF + sequenza)
 
-            // Record 14 (disposizione)
-            content += '14' + n + _rpad('', 12) + scadGG + '3' + '0' + importoStr + '-' + abiEmittente + cabEmittente + _rpad(ibanEmittente, 23) + _rpad(abiCli + cabCli, 10) + _rpad('', 12);
+            // Record 14 (disposizione) - 120 byte esatti
+            // Layout verificato da Mexal:
+            //  pos 0-1   : '14'
+            //  pos 2-8   : progressivo (7)
+            //  pos 9-20  : 12 spazi
+            //  pos 21-26 : data scadenza DDMMYY (6)
+            //  pos 27    : tipo '3'
+            //  pos 28-30 : '000' filler
+            //  pos 31-44 : importo cents padded 14
+            //  pos 45    : segno '-'
+            //  pos 46-50 : ABI cred (5)
+            //  pos 51-55 : CAB cred (5)
+            //  pos 56-67 : conto cred (12)
+            //  pos 68-72 : ABI deb (5)
+            //  pos 73-77 : CAB deb (5)
+            //  pos 78-89 : 12 spazi
+            //  pos 90-94 : codSia ripetuto (5)
+            //  pos 95-111: nContratto (17)
+            //  pos 112-117: 6 spazi
+            //  pos 118   : 'E'
+            //  pos 119   : 1 spazio
+            var rec14 = '14' + n + '            ' + scadGG + '3000' + importoStr + '-'
+                + abiEmittente + cabEmittente + contoEmittente12
+                + abiCli + cabCli + '            '
+                + codSia + nContratto + '      E ';
+            content += _rec120(rec14);
 
-            // Record 20 (creditore)
-            content += codSia;
-            content += '40000000050200' + _pad(i+1, 3) + _rpad('', 6) + 'E ';
-            content += '20' + n + _rpad(imp.ragione_sociale_emittente || 'ENILIVE STATION', 24) + _rpad((imp.indirizzo || '') + ' ' + (imp.cap || '') + ' ' + (imp.comune || ''), 96);
+            // Record 20 (creditore: nome + indirizzo) - 120 byte
+            var indCreditore = ((imp.indirizzo || '') + ' ' + (imp.cap || '') + ' ' + (imp.comune || '')).trim();
+            var rec20 = '20' + n + ((nomeAzienda + '                        ').substring(0, 24)) +
+                ((indCreditore + ' '.repeat(87)).substring(0, 87));
+            content += _rec120(rec20);
 
-            // Record 30 (debitore)
-            content += '30' + n + _rpad(cli.nome_ragione_sociale || '', 60) + _rpad(cli.p_iva_coe || '', 16) + _rpad('', 44);
+            // Record 30 (debitore: nome + p_iva) - 120 byte
+            var rec30 = '30' + n + ((cli.nome_ragione_sociale || '') + ' '.repeat(60)).substring(0, 60) +
+                ((cli.p_iva_coe || '') + ' '.repeat(16)).substring(0, 16);
+            content += _rec120(rec30);
 
-            // Record 40 (indirizzo debitore + banca)
-            content += '40' + n + _rpad(cli.sede_legale_indirizzo || '', 30) + _rpad(cli.sede_legale_cap || '', 5) + _rpad((cli.sede_legale_comune || '') + ' ' + (cli.sede_legale_nazione || 'RSM'), 23) + _rpad(cli.banca_appoggio || '', 50) + _rpad('', 12);
+            // Record 40 (indirizzo debitore + banca) - 120 byte
+            var comNaz = (cli.sede_legale_comune || '') + ' ' + (cli.sede_legale_nazione || 'RSM');
+            var rec40 = '40' + n +
+                ((cli.sede_legale_indirizzo || '') + ' '.repeat(30)).substring(0, 30) +
+                ((cli.sede_legale_cap || '') + '     ').substring(0, 5) +
+                (comNaz + ' '.repeat(23)).substring(0, 23) +
+                ((cli.banca_appoggio || '') + ' '.repeat(50)).substring(0, 50);
+            content += _rec120(rec40);
 
-            // Record 50 (riferimento documento)
-            content += '50' + n + tipoDoc + ':  ' + _rpad(f.numero_formattato, 10) + 'del ' + _fmtDataSlash(f.data_emissione) + _rpad('', 50) + _rpad(coe, 16) + _rpad('', 10);
+            // Record 50 (riferimento documento) - 120 byte
+            var rifDoc = 'RIF.DOCU.NUM.:  ' + ((f.numero_formattato || '') + ' '.repeat(10)).substring(0, 10) +
+                'del ' + _fmtDataSlash(f.data_emissione);
+            var rec50 = '50' + n + (rifDoc + ' '.repeat(90)).substring(0, 90) +
+                ((coe || '') + ' '.repeat(16)).substring(0, 16);
+            content += _rec120(rec50);
 
-            // Record 51 (codice fiscale creditore)
-            content += '51' + n + _pad(i + 1, 10) + _rpad(imp.ragione_sociale_emittente || '', 80) + _rpad('', 30);
+            // Record 51 (codice fiscale creditore + nome) - 120 byte
+            var rec51 = '51' + n + _pad(i + 1, 10) +
+                ((nomeAzienda || '') + ' '.repeat(80)).substring(0, 80);
+            content += _rec120(rec51);
 
-            // Record 70 (chiusura disposizione)
-            content += '70' + n + _rpad('', 110) + '0' + _rpad('', 7);
+            // Record 70 (chiusura disposizione) - 120 byte
+            var rec70 = '70' + n + ' '.repeat(99) + '0';  // 9 + 99 + 1 = 109. Pad a 120 nel _rec120
+            content += _rec120(rec70);
         });
 
-        // Record EF (footer)
-        content += ' EF' + codSia + abiEmittente + dataCreazione + 'CAR' + dataCreazione + _rpad('', 4) + _rpad('', 7);
-        content += _pad(fatture.length, 7) + _pad(totaleImporti, 15);
-        content += _rpad('', 30) + _pad(fatture.length, 7) + _rpad('', 24) + 'E      ';
+        // ============================================
+        // FOOTER (120 byte)
+        // Layout: ' EF' + codSia(5) + abi(5) + DDMMYY(6) + 'CAR' + DDMMYYYY(8) + HHMM(4)
+        //         + filler(11) + nDispo(7) + totaleNeg(15) + totalePos(15) + nRecTot(7)
+        //         + filler(24) + 'E      ' (7)
+        // ============================================
+        // Mexal usa totale × 10 nel campo da 15 char (formato millesimi convenzionale)
+        var totaleField = _pad(totaleImporti * 10, 15);
+        var nRecordsTot = 1 + (fatture.length * 7) + 1;  // header + 7 per dispo + footer
+        var footer = ' EF' + codSia + abiEmittente + dataDDMMYY + 'CAR' + dataDDMMYYYY + oraHHMM
+            + ' '.repeat(11)
+            + _pad(fatture.length, 7)
+            + totaleField
+            + _pad(0, 15)
+            + _pad(nRecordsTot, 7);
+        // 3+5+5+6+3+8+4+11+7+15+15+7 = 89 char
+        footer = (footer + ' '.repeat(24)).substring(0, 113) + 'E      ';  // 113 + 7 = 120
+        content += footer;
 
         _downloadFile(content, 'RIBA_' + nomi[_meseSelez] + '_' + _annoSelez + '.car', 'text/plain');
         ENI.UI.toast('File RIBA generato con ' + fatture.length + ' disposizioni', 'success');
