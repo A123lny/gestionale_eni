@@ -1842,6 +1842,53 @@ ENI.API = (function() {
         return await update('clienti', clienteId, { alias_import_eni: lista });
     }
 
+    // ============================================================
+    // EXPORT BANCARI LOG (RID/RIBA)
+    // ============================================================
+    async function getExportBancariLog(mese, anno) {
+        var r = await getClient()
+            .from('export_bancari_log')
+            .select('*')
+            .eq('mese', mese)
+            .eq('anno', anno);
+        if (r.error) throw new Error(r.error.message);
+        return r.data || [];
+    }
+
+    // Upsert: incrementa num_export se gia' esiste, altrimenti crea con num_export=1
+    async function upsertExportBancariLog(data) {
+        // data: { tipo, mese, anno, num_disposizioni, totale, banca_iban, fatture_ids }
+        var sb = getClient();
+        var existing = await sb.from('export_bancari_log')
+            .select('id, num_export')
+            .eq('tipo', data.tipo).eq('mese', data.mese).eq('anno', data.anno)
+            .maybeSingle();
+        if (existing.error && existing.error.code !== 'PGRST116') throw new Error(existing.error.message);
+        var now = new Date().toISOString();
+        if (existing.data) {
+            var upd = await sb.from('export_bancari_log').update({
+                ultima_export_at: now,
+                num_export: (existing.data.num_export || 1) + 1,
+                num_disposizioni: data.num_disposizioni,
+                totale: data.totale,
+                banca_iban: data.banca_iban,
+                fatture_ids: data.fatture_ids
+            }).eq('id', existing.data.id).select().single();
+            if (upd.error) throw new Error(upd.error.message);
+            return upd.data;
+        } else {
+            var ins = await sb.from('export_bancari_log').insert({
+                tipo: data.tipo, mese: data.mese, anno: data.anno,
+                num_disposizioni: data.num_disposizioni,
+                totale: data.totale,
+                banca_iban: data.banca_iban,
+                fatture_ids: data.fatture_ids
+            }).select().single();
+            if (ins.error) throw new Error(ins.error.message);
+            return ins.data;
+        }
+    }
+
     // API pubblica
     return {
         init: init,
@@ -1975,6 +2022,8 @@ ENI.API = (function() {
         annullaERiemetti: annullaERiemetti,
         getImportEniLog: getImportEniLog,
         registraImportEni: registraImportEni,
-        aggiungiAliasCliente: aggiungiAliasCliente
+        aggiungiAliasCliente: aggiungiAliasCliente,
+        getExportBancariLog: getExportBancariLog,
+        upsertExportBancariLog: upsertExportBancariLog
     };
 })();

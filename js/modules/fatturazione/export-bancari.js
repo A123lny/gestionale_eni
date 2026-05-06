@@ -60,6 +60,9 @@ ENI.Fatturazione.ExportBancari = (function() {
         }).join('');
     }
 
+    var _logRid = null;   // Log dell'export RID per il mese corrente (null = mai esportato)
+    var _logRiba = null;  // Log dell'export RIBA per il mese corrente
+
     async function _caricaFatture() {
         _meseSelez = parseInt(document.getElementById('exp-mese').value, 10);
         _annoSelez = parseInt(document.getElementById('exp-anno').value, 10);
@@ -72,6 +75,12 @@ ENI.Fatturazione.ExportBancari = (function() {
                 mese_riferimento: _meseSelez,
                 stato: 'EMESSA'
             });
+
+            // Carica eventuali log di export gia' fatti per questo mese/anno
+            var logs = [];
+            try { logs = await ENI.API.getExportBancariLog(_meseSelez, _annoSelez); } catch(e) {}
+            _logRid = logs.find(function(l) { return l.tipo === 'RID'; }) || null;
+            _logRiba = logs.find(function(l) { return l.tipo === 'RIBA'; }) || null;
 
             // Filtra solo RID e RIBA
             var rid = tutte.filter(function(f) { return f.modalita_pagamento === 'RID_SDD'; });
@@ -92,28 +101,87 @@ ENI.Fatturazione.ExportBancari = (function() {
         var html = '';
 
         // Sezione RID
-        html += '<h4 class="mt-3 mb-2">RID / SDD (' + rid.length + ' disposizioni) - ' + periodo + '</h4>';
-        if (rid.length) {
-            var totRid = rid.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
-            html += _renderTabella(rid, 'rid');
-            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0 1.5rem;">' +
-                '<strong>Totale RID: \u20AC ' + _fmtNum(totRid) + '</strong>' +
-                '<button class="btn btn-primary" id="btn-genera-rid">Genera file RID (.xml)</button></div>';
+        if (_logRid) {
+            html += _renderSezioneChiusa('rid', 'RID / SDD', _logRid, rid, periodo);
         } else {
-            html += '<p class="text-muted">Nessuna fattura RID emessa per questo periodo</p>';
+            html += '<h4 class="mt-3 mb-2">RID / SDD (' + rid.length + ' disposizioni) - ' + periodo + '</h4>';
+            if (rid.length) {
+                var totRid = rid.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
+                html += _renderTabella(rid, 'rid');
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0 1.5rem;">' +
+                    '<strong>Totale RID: \u20AC ' + _fmtNum(totRid) + '</strong>' +
+                    '<button class="btn btn-primary" id="btn-genera-rid">Genera file RID (.xml)</button></div>';
+            } else {
+                html += '<p class="text-muted">Nessuna fattura RID emessa per questo periodo</p>';
+            }
         }
 
         // Sezione RIBA
-        html += '<h4 class="mt-3 mb-2">RI.BA. (' + riba.length + ' disposizioni) - ' + periodo + '</h4>';
-        if (riba.length) {
-            var totRiba = riba.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
-            html += _renderTabella(riba, 'riba');
-            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0 1.5rem;">' +
-                '<strong>Totale RIBA: \u20AC ' + _fmtNum(totRiba) + '</strong>' +
-                '<button class="btn btn-primary" id="btn-genera-riba">Genera file RIBA (.car)</button></div>';
+        if (_logRiba) {
+            html += _renderSezioneChiusa('riba', 'RI.BA.', _logRiba, riba, periodo);
         } else {
-            html += '<p class="text-muted">Nessuna fattura RIBA emessa per questo periodo</p>';
+            html += '<h4 class="mt-3 mb-2">RI.BA. (' + riba.length + ' disposizioni) - ' + periodo + '</h4>';
+            if (riba.length) {
+                var totRiba = riba.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
+                html += _renderTabella(riba, 'riba');
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0 1.5rem;">' +
+                    '<strong>Totale RIBA: \u20AC ' + _fmtNum(totRiba) + '</strong>' +
+                    '<button class="btn btn-primary" id="btn-genera-riba">Genera file RIBA (.car)</button></div>';
+            } else {
+                html += '<p class="text-muted">Nessuna fattura RIBA emessa per questo periodo</p>';
+            }
         }
+
+        return html;
+    }
+
+    // Vista "chiusa": il mese e' gia' stato esportato per questo tipo
+    function _renderSezioneChiusa(prefix, label, log, fatture, periodo) {
+        var fmtData = function(d) {
+            if (!d) return '-';
+            var dt = new Date(d);
+            return _pad(dt.getDate(),2) + '/' + _pad(dt.getMonth()+1,2) + '/' + dt.getFullYear() +
+                ' ore ' + _pad(dt.getHours(),2) + ':' + _pad(dt.getMinutes(),2);
+        };
+
+        var html = '<h4 class="mt-3 mb-2">' + label + ' - ' + periodo +
+            ' <span class="badge badge-success" style="font-weight:normal;">\u2713 Gi\u00E0 esportato</span></h4>';
+
+        // Card riassuntiva
+        html += '<div class="card" style="background:var(--bg-success-subtle,#d1e7dd);border:1px solid var(--success,#198754);padding:1rem;margin-bottom:1rem;">' +
+            '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;">' +
+                '<div><div class="text-xs text-muted">Disposizioni</div><div style="font-size:1.3rem;font-weight:600;">' + (log.num_disposizioni || 0) + '</div></div>' +
+                '<div><div class="text-xs text-muted">Totale</div><div style="font-size:1.3rem;font-weight:600;">\u20AC ' + _fmtNum(log.totale || 0) + '</div></div>' +
+                '<div><div class="text-xs text-muted">Prima esportazione</div><div style="font-size:0.95rem;">' + fmtData(log.prima_export_at) + '</div></div>' +
+                '<div><div class="text-xs text-muted">Ultima esportazione</div><div style="font-size:0.95rem;">' + fmtData(log.ultima_export_at) + ' <span class="text-muted text-xs">(x' + (log.num_export || 1) + ')</span></div></div>' +
+            '</div>' +
+            (log.banca_iban ? '<div class="text-xs text-muted mt-2">Banca: ' + ENI.UI.escapeHtml(log.banca_iban) + '</div>' : '') +
+        '</div>';
+
+        // Tabella read-only delle disposizioni incluse
+        if (fatture.length) {
+            var rows = fatture.map(function(f) {
+                var cli = f.cliente || {};
+                var coordinate = prefix === 'rid' ? (cli.iban || '-') :
+                    (cli.abi_banca && cli.cab_banca ? cli.abi_banca + ' / ' + cli.cab_banca : '-');
+                return '<tr>' +
+                    '<td>' + ENI.UI.escapeHtml(f.numero_formattato) + '</td>' +
+                    '<td>' + ENI.UI.escapeHtml(cli.nome_ragione_sociale || '') + '</td>' +
+                    '<td class="text-right">\u20AC ' + _fmtNum(f.totale) + '</td>' +
+                    '<td class="text-xs">' + ENI.UI.escapeHtml(coordinate) + '</td>' +
+                    '<td class="text-xs">' + (f.data_scadenza ? f.data_scadenza : '-') + '</td>' +
+                '</tr>';
+            }).join('');
+            html += '<div class="table-wrapper"><table class="table table-sm">' +
+                '<thead><tr><th>N\u00B0</th><th>Cliente</th><th class="text-right">Importo</th><th>' +
+                    (prefix === 'rid' ? 'IBAN' : 'ABI/CAB') + '</th><th>Scadenza</th></tr></thead>' +
+                '<tbody>' + rows + '</tbody></table></div>';
+        }
+
+        // Bottone riscarica
+        html += '<div style="display:flex;justify-content:flex-end;margin:0.5rem 0 1.5rem;">' +
+            '<button class="btn btn-outline" id="btn-riscarica-' + prefix + '">\u{1F4E5} Riscarica file ' +
+                (prefix === 'rid' ? 'RID (.xml)' : 'RIBA (.car)') + '</button></div>';
 
         return html;
     }
@@ -159,20 +227,66 @@ ENI.Fatturazione.ExportBancari = (function() {
     function _attachHandlers(rid, riba) {
         var btnRid = document.getElementById('btn-genera-rid');
         if (btnRid) {
-            btnRid.addEventListener('click', function() {
+            btnRid.addEventListener('click', async function() {
                 var selezionati = _getSelezionati(rid, 'rid');
                 if (!selezionati.length) { ENI.UI.toast('Nessuna disposizione selezionata', 'danger'); return; }
-                _generaRID(selezionati);
+                await _generaERegistra('RID', selezionati);
             });
         }
         var btnRiba = document.getElementById('btn-genera-riba');
         if (btnRiba) {
-            btnRiba.addEventListener('click', function() {
+            btnRiba.addEventListener('click', async function() {
                 var selezionati = _getSelezionati(riba, 'riba');
                 if (!selezionati.length) { ENI.UI.toast('Nessuna disposizione selezionata', 'danger'); return; }
-                _generaRIBA(selezionati);
+                await _generaERegistra('RIBA', selezionati);
             });
         }
+        // Riscarica (vista chiusa): rigenera coi dati attuali e incrementa num_export
+        var btnRiscRid = document.getElementById('btn-riscarica-rid');
+        if (btnRiscRid) {
+            btnRiscRid.addEventListener('click', async function() {
+                if (!await ENI.UI.confirm('Riscaricare il file RID? I dati attuali del DB verranno usati (eventuali modifiche ai clienti dopo la prima esportazione si rifletteranno nel nuovo file).')) return;
+                await _generaERegistra('RID', rid);
+            });
+        }
+        var btnRiscRiba = document.getElementById('btn-riscarica-riba');
+        if (btnRiscRiba) {
+            btnRiscRiba.addEventListener('click', async function() {
+                if (!await ENI.UI.confirm('Riscaricare il file RIBA? I dati attuali del DB verranno usati (eventuali modifiche ai clienti dopo la prima esportazione si rifletteranno nel nuovo file).')) return;
+                await _generaERegistra('RIBA', riba);
+            });
+        }
+    }
+
+    // Genera file e registra/aggiorna il log nel DB
+    async function _generaERegistra(tipo, fatture) {
+        var imp = _impostazioni || {};
+        var bancaIdx = parseInt((document.getElementById('exp-banca') || {}).value, 10) || 0;
+        var bancaIban = (imp.iban_lista && imp.iban_lista[bancaIdx]) ? imp.iban_lista[bancaIdx].iban : '';
+        var totale = fatture.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
+
+        // Genera il file
+        if (tipo === 'RID') _generaRID(fatture);
+        else _generaRIBA(fatture);
+
+        // Registra il log
+        try {
+            await ENI.API.upsertExportBancariLog({
+                tipo: tipo,
+                mese: _meseSelez,
+                anno: _annoSelez,
+                num_disposizioni: fatture.length,
+                totale: Math.round(totale * 100) / 100,
+                banca_iban: bancaIban,
+                fatture_ids: fatture.map(function(f) { return f.id; })
+            });
+            ENI.UI.toast('Export ' + tipo + ' registrato nel log', 'success');
+        } catch(e) {
+            ENI.UI.toast('File generato ma impossibile registrare il log: ' + e.message, 'warning');
+        }
+
+        // Ricarica vista (mostra ora la sezione "chiusa")
+        await _caricaFatture();
     }
 
     function _getSelezionati(fatture, prefix) {
