@@ -207,7 +207,7 @@ ENI.Fatturazione.ExportBancari = (function() {
         xml += '    <NbOfTxs>' + fatture.length + '</NbOfTxs>\n';
         xml += '    <CtrlSum>' + totale.toFixed(2) + '</CtrlSum>\n';
         xml += '    <InitgPty>\n';
-        xml += '      <Nm>' + _escXml(imp.ragione_sociale_emittente || 'ENILIVE STATION') + '</Nm>\n';
+        xml += '      <Nm>' + _escXml(_max35Upper(imp.ragione_sociale_emittente, 'ENILIVE STATION')) + '</Nm>\n';
         xml += '      <Id><OrgId>\n';
         xml += '        <Othr><Id>' + _escXml(imp.codice_cbi || '') + '</Id><Issr>CBI</Issr></Othr>\n';
         xml += '        <Othr><Id>' + _escXml(imp.codice_fiscale_emittente || '') + '</Id><Issr>ADE</Issr></Othr>\n';
@@ -224,10 +224,10 @@ ENI.Fatturazione.ExportBancari = (function() {
         xml += '    <PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl><LclInstrm><Cd>CORE</Cd></LclInstrm><SeqTp>RCUR</SeqTp></PmtTpInf>\n';
         xml += '    <ReqdColltnDt>' + (scadenza || '') + '</ReqdColltnDt>\n';
         xml += '    <Cdtr>\n';
-        xml += '      <Nm>' + _escXml(imp.ragione_sociale_emittente || '') + '</Nm>\n';
+        xml += '      <Nm>' + _escXml(_max35Upper(imp.ragione_sociale_emittente, 'ENILIVE STATION')) + '</Nm>\n';
         xml += '      <PstlAdr><Ctry>SM</Ctry>\n';
-        xml += '        <AdrLine>' + _escXml((imp.indirizzo || '').toUpperCase()) + '</AdrLine>\n';
-        xml += '        <AdrLine>' + _escXml([imp.cap, imp.comune, 'RSM', 'SAN MARINO'].filter(Boolean).join(', ').toUpperCase()) + '</AdrLine>\n';
+        xml += '        <AdrLine>' + _escXml(String(imp.indirizzo || '').trim().toUpperCase()) + '</AdrLine>\n';
+        xml += '        <AdrLine>' + _escXml(_adrLine([imp.cap, imp.comune, 'RSM', 'SAN MARINO'])) + '</AdrLine>\n';
         xml += '      </PstlAdr>\n';
         xml += '      <Id><PrvtId><Othr><Id>' + _escXml(imp.codice_fiscale_emittente || '') + '</Id><Issr>ADE</Issr></Othr></PrvtId></Id>\n';
         xml += '    </Cdtr>\n';
@@ -251,10 +251,10 @@ ENI.Fatturazione.ExportBancari = (function() {
             xml += '        <DtOfSgntr>2012-01-02</DtOfSgntr>\n';
             xml += '      </MndtRltdInf></DrctDbtTx>\n';
             xml += '      <Dbtr>\n';
-            xml += '        <Nm>' + _escXml((cli.nome_ragione_sociale || '').toUpperCase()) + '</Nm>\n';
+            xml += '        <Nm>' + _escXml(_max35Upper(cli.nome_ragione_sociale, 'CLIENTE')) + '</Nm>\n';
             xml += '        <PstlAdr><Ctry>' + (cli.sede_legale_nazione || 'SM') + '</Ctry>\n';
-            xml += '          <AdrLine>' + _escXml((cli.sede_legale_indirizzo || '').toUpperCase()) + '</AdrLine>\n';
-            xml += '          <AdrLine>' + _escXml([cli.sede_legale_cap, cli.sede_legale_comune, 'RSM', 'SAN MARINO'].filter(Boolean).join(', ').toUpperCase()) + '</AdrLine>\n';
+            xml += '          <AdrLine>' + _escXml(String(cli.sede_legale_indirizzo || '-').trim().toUpperCase()) + '</AdrLine>\n';
+            xml += '          <AdrLine>' + _escXml(_adrLine([cli.sede_legale_cap, cli.sede_legale_comune, 'RSM', 'SAN MARINO'])) + '</AdrLine>\n';
             xml += '        </PstlAdr>\n';
             xml += '      </Dbtr>\n';
             xml += '      <DbtrAcct><Id><IBAN>' + (cli.iban || '') + '</IBAN></Id></DbtrAcct>\n';
@@ -345,6 +345,19 @@ ENI.Fatturazione.ExportBancari = (function() {
     function _rpad(val, len) { return String(val).substring(0, len).padEnd(len, ' '); }
     function _fmtNum(n) { return (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     function _escXml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
+    // Helper SEPA: Max35Text uppercase, trim, fallback su default per evitare violazioni minLength=1
+    function _max35Upper(s, fallback) {
+        var v = String(s == null ? '' : s).toUpperCase().trim().substring(0, 35);
+        return v || (fallback || 'N/D');
+    }
+    // Helper indirizzo: pulisce gli elementi e fa join evitando spazi spuri prima delle virgole
+    function _adrLine(parts) {
+        return parts
+            .map(function(p) { return String(p == null ? '' : p).trim(); })
+            .filter(function(p) { return p.length > 0; })
+            .join(', ')
+            .toUpperCase();
+    }
 
     function _fmtDataSlash(d) {
         if (!d) return '';
