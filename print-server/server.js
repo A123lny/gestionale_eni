@@ -580,7 +580,7 @@ async function pollPrintQueue() {
 }
 
 // ============================================================
-// EMAIL - Invio fatture/ricevute via SMTP
+// EMAIL - Invio fatture/ricevute via SMTP + APPEND in IMAP "Sent"
 // ============================================================
 var nodemailer = require('nodemailer');
 
@@ -589,6 +589,14 @@ var SMTP_PORT = parseInt(process.env.SMTP_PORT) || 587;
 var SMTP_USER = process.env.SMTP_USER || 'enilivestation@alice.sm';
 var SMTP_PASS = process.env.SMTP_PASS || '';
 var SMTP_FROM = process.env.SMTP_FROM || 'enilivestation@alice.sm';
+
+// IMAP per append nella "Posta inviata" (best-effort, fallisce silenziosamente)
+var IMAP_HOST = process.env.IMAP_HOST || '';
+var IMAP_PORT = parseInt(process.env.IMAP_PORT) || 993;
+var IMAP_USER = process.env.IMAP_USER || SMTP_USER;
+var IMAP_PASS = process.env.IMAP_PASS || SMTP_PASS;
+var IMAP_SENT_FOLDER = process.env.IMAP_SENT_FOLDER || '';
+var _imapSentFolderResolved = null;  // cache del nome cartella Sent dopo autodetect
 
 var _transporter = null;
 function getTransporter() {
@@ -605,6 +613,56 @@ function getTransporter() {
         auth: { user: SMTP_USER, pass: SMTP_PASS }
     });
     return _transporter;
+}
+
+// Costruisce il messaggio RFC822 a partire dal mailOpts gia' usato da nodemailer.
+// Ritorna una Promise<Buffer>.
+function buildRawMessage(mailOpts) {
+    var temp = nodemailer.createTransport({ jsonTransport: false, streamTransport: true, buffer: true });
+    return temp.sendMail(mailOpts).then(function(info) {
+        return info.message;  // Buffer
+    });
+}
+
+// Append best-effort nella cartella Sent via IMAP. Errori non rilanciati.
+async function appendToSent(mailOpts) {
+    if (!IMAP_HOST) return;  // IMAP non configurato
+    var ImapFlow;
+    try { ImapFlow = require('imapflow').ImapFlow; }
+    catch(e) { console.warn('[IMAP] imapflow non installato, skip append'); return; }
+
+    var client = new ImapFlow({
+        host: IMAP_HOST,
+        port: IMAP_PORT,
+        secure: IMAP_PORT === 993,
+        auth: { user: IMAP_USER, pass: IMAP_PASS },
+        tls: { rejectUnauthorized: false },
+        logger: false
+    });
+
+    try {
+        await client.connect();
+
+        // Resolve nome cartella Sent: env var, cache, o autodetect
+        var folder = IMAP_SENT_FOLDER || _imapSentFolderResolved;
+        if (!folder) {
+            var lista = await client.list();
+            // Priorita' agli specialUse Sent (RFC 6154), poi nomi noti
+            var trovata = lista.find(function(f) { return f.specialUse === '\\Sent'; }) ||
+                lista.find(function(f) { return /^(Sent|Sent Items|INBOX\.Sent|Posta inviata|Inviata|Inviati)$/i.test(f.path); });
+            folder = trovata ? trovata.path : 'Sent';
+            _imapSentFolderResolved = folder;
+            console.log('[IMAP] Cartella Sent autodetect: "' + folder + '"');
+        }
+
+        var raw = await buildRawMessage(mailOpts);
+        await client.append(folder, raw, ['\\Seen']);
+        console.log('[IMAP] Append OK in "' + folder + '" per ' + mailOpts.to);
+    } catch(e) {
+        console.warn('[IMAP] Append fallito (email gia\' partita via SMTP): ' + e.message);
+    } finally {
+        try { await client.logout(); } catch(_) {}
+    }
 }
 
 // POST /send-email
@@ -641,7 +699,12 @@ app.post('/send-email', async function(req, res) {
     try {
         var info = await transport.sendMail(mailOpts);
         console.log('[EMAIL] Inviata a ' + data.to + ' - ID: ' + info.messageId);
+        // Rispondi al client subito; l'append IMAP avviene dopo, best-effort, non blocca la response
         res.json({ success: true, message: 'Email inviata a ' + data.to, messageId: info.messageId });
+        // Async fire-and-forget: append nella cartella Sent della webmail
+        appendToSent(mailOpts).catch(function(e) {
+            console.warn('[IMAP] Append errore non gestito: ' + e.message);
+        });
     } catch(err) {
         console.error('[EMAIL] Errore invio a ' + data.to + ':', err.message);
         res.status(500).json({ success: false, message: 'Errore invio: ' + err.message });
