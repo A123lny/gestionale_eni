@@ -26,6 +26,7 @@ ENI.Router = (function() {
         'marginalita-carburante': { module: 'MarginalitaCarburante', id: 'marginalita-carburante' },
         'tesoreria':  { module: 'Tesoreria',  id: 'tesoreria' },
         'fatturazione': { module: 'Fatturazione', id: 'fatturazione' },
+        'smac':         { module: 'Smac',         id: 'smac' },
         'personale':    { module: 'Personale',    id: 'personale' },
         'manutenzioni': { module: 'Manutenzioni', id: 'manutenzioni' },
         'log':          { module: 'Log',          id: 'log' },

@@ -1889,6 +1889,148 @@ ENI.API = (function() {
         }
     }
 
+    // ===================================================================
+    // SMAC - Riepilogo mensile transato carta SMAC (San Marino)
+    // ===================================================================
+
+    async function getRiepilogoSmac(filtri) {
+        filtri = filtri || {};
+        var query = getClient()
+            .from('smac_riepilogo')
+            .select('*')
+            .order('anno', { ascending: false })
+            .order('mese', { ascending: false });
+        if (filtri.anno) query = query.eq('anno', filtri.anno);
+        if (filtri.limit) query = query.limit(filtri.limit);
+        var r = await query;
+        if (r.error) throw new Error(r.error.message);
+        return r.data || [];
+    }
+
+    async function getRiepilogoSmacByMese(mese, anno) {
+        var r = await getClient()
+            .from('smac_riepilogo')
+            .select('*')
+            .eq('mese', mese).eq('anno', anno)
+            .maybeSingle();
+        if (r.error && r.error.code !== 'PGRST116') throw new Error(r.error.message);
+        return r.data || null;
+    }
+
+    // Upsert su (mese, anno): se esiste sovrascrive, altrimenti crea
+    async function salvaRiepilogoSmac(data) {
+        var sb = getClient();
+        var existing = await sb.from('smac_riepilogo')
+            .select('id')
+            .eq('mese', data.mese).eq('anno', data.anno)
+            .maybeSingle();
+        if (existing.error && existing.error.code !== 'PGRST116') throw new Error(existing.error.message);
+        var payload = Object.assign({}, data, { updated_at: new Date().toISOString() });
+        if (existing.data) {
+            var upd = await sb.from('smac_riepilogo').update(payload).eq('id', existing.data.id).select().single();
+            if (upd.error) throw new Error(upd.error.message);
+            return { record: upd.data, updated: true };
+        } else {
+            var ins = await sb.from('smac_riepilogo').insert(payload).select().single();
+            if (ins.error) throw new Error(ins.error.message);
+            return { record: ins.data, updated: false };
+        }
+    }
+
+    async function eliminaRiepilogoSmac(id) {
+        var r = await getClient().from('smac_riepilogo').delete().eq('id', id);
+        if (r.error) throw new Error(r.error.message);
+        return true;
+    }
+
+    /**
+     * Calcola la riconciliazione SMAC per il mese indicato.
+     * Ritorna { venduto, fatturato, ricarica_smac, limite, verdetto, riepilogo }.
+     * verdetto: 'OK' | 'MARGINE' | 'SANZIONE' | 'NO_SMAC'
+     */
+    async function getRiconciliazioneSmac(mese, anno) {
+        var primoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-01';
+        var ultimaData = new Date(anno, mese, 0);
+        var ultimoGiorno = ultimaData.getFullYear() + '-' +
+            String(ultimaData.getMonth() + 1).padStart(2, '0') + '-' +
+            String(ultimaData.getDate()).padStart(2, '0');
+
+        var sb = getClient();
+
+        // 3 query in parallelo
+        var results = await Promise.all([
+            sb.from('vendite_giornaliere')
+                .select('importo_totale,litri_totali,data_inizio,data_fine')
+                .gte('data_inizio', primoGiorno)
+                .lte('data_inizio', ultimoGiorno),
+            sb.from('fatture')
+                .select('totale,numero,data_emissione,tipo_documento,stato')
+                .eq('tipo_documento', 'FATTURA')
+                .in('stato', ['EMESSA', 'PAGATA'])
+                .gte('data_emissione', primoGiorno)
+                .lte('data_emissione', ultimoGiorno),
+            sb.from('smac_riepilogo')
+                .select('*')
+                .eq('mese', mese).eq('anno', anno)
+                .maybeSingle()
+        ]);
+
+        if (results[0].error) throw new Error('Vendite: ' + results[0].error.message);
+        if (results[1].error) throw new Error('Fatture: ' + results[1].error.message);
+        if (results[2].error && results[2].error.code !== 'PGRST116') {
+            throw new Error('SMAC: ' + results[2].error.message);
+        }
+
+        var vendite = results[0].data || [];
+        var fatture = results[1].data || [];
+        var riepilogo = results[2].data || null;
+
+        var venduto = 0, litri = 0;
+        vendite.forEach(function(v) {
+            venduto += parseFloat(v.importo_totale) || 0;
+            litri += parseFloat(v.litri_totali) || 0;
+        });
+
+        var fatturato = 0;
+        fatture.forEach(function(f) { fatturato += parseFloat(f.totale) || 0; });
+
+        var ricarica_smac = 0;
+        if (riepilogo) {
+            ricarica_smac = (parseFloat(riepilogo.fis_imp_ricarica) || 0) +
+                            (parseFloat(riepilogo.dem_imp_ricarica) || 0);
+        }
+
+        var limite = venduto - fatturato;
+        var TOLL = 0.01;
+        var verdetto;
+        if (!riepilogo) {
+            verdetto = 'NO_SMAC';
+        } else if (ricarica_smac > limite + TOLL) {
+            verdetto = 'SANZIONE';
+        } else if (ricarica_smac < limite - TOLL) {
+            verdetto = 'MARGINE';
+        } else {
+            verdetto = 'OK';
+        }
+
+        return {
+            mese: mese,
+            anno: anno,
+            data_inizio: primoGiorno,
+            data_fine: ultimoGiorno,
+            venduto: venduto,
+            litri_venduti: litri,
+            num_giorni_vendite: vendite.length,
+            fatturato: fatturato,
+            num_fatture: fatture.length,
+            ricarica_smac: ricarica_smac,
+            limite: limite,
+            differenza: limite - ricarica_smac,  // positivo = margine, negativo = sanzione
+            verdetto: verdetto,
+            riepilogo: riepilogo
+        };
+    }
+
     // API pubblica
     return {
         init: init,
@@ -2024,6 +2166,12 @@ ENI.API = (function() {
         registraImportEni: registraImportEni,
         aggiungiAliasCliente: aggiungiAliasCliente,
         getExportBancariLog: getExportBancariLog,
-        upsertExportBancariLog: upsertExportBancariLog
+        upsertExportBancariLog: upsertExportBancariLog,
+        // SMAC
+        getRiepilogoSmac: getRiepilogoSmac,
+        getRiepilogoSmacByMese: getRiepilogoSmacByMese,
+        salvaRiepilogoSmac: salvaRiepilogoSmac,
+        eliminaRiepilogoSmac: eliminaRiepilogoSmac,
+        getRiconciliazioneSmac: getRiconciliazioneSmac
     };
 })();
