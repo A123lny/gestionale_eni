@@ -122,23 +122,36 @@ ENI.Fatturazione.ExportBancari = (function() {
         var rows = fatture.map(function(f, i) {
             var cli = f.cliente || {};
             var problemi = [];
-            if (!cli.iban) problemi.push('IBAN mancante');
-            if (prefix === 'rid' && !cli.mandate_id) problemi.push('Mandato SDD mancante');
+            // RID/SDD: serve IBAN completo + mandato (SEPA SDD)
+            // RIBA: bastano ABI + CAB (il tracciato CBI .car non usa l'IBAN)
+            if (prefix === 'rid') {
+                if (!cli.iban) problemi.push('IBAN mancante');
+                if (!cli.mandate_id) problemi.push('Mandato SDD mancante');
+            } else {
+                if (!cli.abi_banca || !cli.cab_banca) problemi.push('ABI/CAB mancante');
+            }
             var cls = problemi.length ? 'style="background:var(--bg-danger-subtle);"' : '';
+
+            // Colonna "Coordinate": IBAN per RID, ABI/CAB per RIBA
+            var coordinate = prefix === 'rid' ?
+                ENI.UI.escapeHtml(cli.iban || '-') :
+                (cli.abi_banca && cli.cab_banca ?
+                    ENI.UI.escapeHtml(cli.abi_banca + ' / ' + cli.cab_banca) : '-');
 
             return '<tr ' + cls + '>' +
                 '<td><input type="checkbox" class="exp-check" data-prefix="' + prefix + '" data-idx="' + i + '" ' + (problemi.length ? 'disabled' : 'checked') + '></td>' +
                 '<td>' + ENI.UI.escapeHtml(f.numero_formattato) + '</td>' +
                 '<td>' + ENI.UI.escapeHtml(cli.nome_ragione_sociale || '') + '</td>' +
                 '<td class="text-right">\u20AC ' + _fmtNum(f.totale) + '</td>' +
-                '<td class="text-xs">' + ENI.UI.escapeHtml(cli.iban || '-') + '</td>' +
+                '<td class="text-xs">' + coordinate + '</td>' +
                 '<td class="text-xs">' + (prefix === 'rid' ? ENI.UI.escapeHtml(cli.mandate_id || '-') : ENI.UI.escapeHtml(cli.banca_appoggio || '-')) + '</td>' +
                 '<td>' + (problemi.length ? '<span class="text-danger text-xs">' + problemi.join(', ') + '</span>' : '<span class="text-success text-xs">OK</span>') + '</td>' +
             '</tr>';
         }).join('');
 
+        var coordinateLabel = prefix === 'rid' ? 'IBAN' : 'ABI / CAB';
         return '<div class="table-wrapper"><table class="table table-sm">' +
-            '<thead><tr><th style="width:30px;"></th><th>N\u00b0</th><th>Cliente</th><th class="text-right">Importo</th><th>IBAN</th><th>' + (prefix === 'rid' ? 'Mandato' : 'Banca app.') + '</th><th>Stato</th></tr></thead>' +
+            '<thead><tr><th style="width:30px;"></th><th>N\u00b0</th><th>Cliente</th><th class="text-right">Importo</th><th>' + coordinateLabel + '</th><th>' + (prefix === 'rid' ? 'Mandato' : 'Banca app.') + '</th><th>Stato</th></tr></thead>' +
             '<tbody>' + rows + '</tbody></table></div>';
     }
 
