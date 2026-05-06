@@ -126,6 +126,7 @@ ENI.Fatturazione.ExportBancari = (function() {
             // RIBA: bastano ABI + CAB (il tracciato CBI .car non usa l'IBAN)
             if (prefix === 'rid') {
                 if (!cli.iban) problemi.push('IBAN mancante');
+                else if (!_validaIban(cli.iban)) problemi.push('IBAN malformato (' + cli.iban.length + ' char)');
                 if (!cli.mandate_id) problemi.push('Mandato SDD mancante');
             } else {
                 if (!cli.abi_banca || !cli.cab_banca) problemi.push('ABI/CAB mancante');
@@ -345,6 +346,18 @@ ENI.Fatturazione.ExportBancari = (function() {
     function _rpad(val, len) { return String(val).substring(0, len).padEnd(len, ' '); }
     function _fmtNum(n) { return (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     function _escXml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
+    // Validazione IBAN secondo pattern SEPA IBAN2007Identifier: 2 lettere + 2 cifre + 1-30 alfanumerici.
+    // Inoltre IBAN italiani/sammarinesi/SEPA hanno length fissa per Paese (IT=27, SM=27, ecc).
+    function _validaIban(iban) {
+        if (!iban) return false;
+        var s = String(iban).replace(/\s/g, '').toUpperCase();
+        if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}$/.test(s)) return false;
+        // Check sulla lunghezza per Paese (per ora SM e IT a 27)
+        var paese = s.substring(0, 2);
+        var lunghezzeAttese = { 'IT': 27, 'SM': 27, 'VA': 22, 'FR': 27, 'DE': 22 };
+        if (lunghezzeAttese[paese] && s.length !== lunghezzeAttese[paese]) return false;
+        return true;
+    }
     // Helper SEPA: Max35Text uppercase, trim, fallback su default per evitare violazioni minLength=1
     function _max35Upper(s, fallback) {
         var v = String(s == null ? '' : s).toUpperCase().trim().substring(0, 35);
