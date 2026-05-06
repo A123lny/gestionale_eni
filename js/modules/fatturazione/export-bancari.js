@@ -425,22 +425,22 @@ ENI.Fatturazione.ExportBancari = (function() {
         });
 
         // ============================================
-        // FOOTER (120 byte)
-        // Layout: ' EF' + codSia(5) + abi(5) + DDMMYY(6) + 'CAR' + DDMMYYYY(8) + HHMM(4)
+        // FOOTER (119 byte — NO leading space, inizia con 'EF')
+        // Layout: 'EF' + codSia(5) + abi(5) + DDMMYY(6) + 'CAR' + DDMMYYYY(8) + HHMM(4)
         //         + filler(11) + nDispo(7) + totaleNeg(15) + totalePos(15) + nRecTot(7)
-        //         + filler(24) + 'E      ' (7)
+        //         + filler(24) + 'E      ' (7) = 119 byte totali
         // ============================================
         // Mexal usa totale × 10 nel campo da 15 char (formato millesimi convenzionale)
         var totaleField = _pad(totaleImporti * 10, 15);
         var nRecordsTot = 1 + (fatture.length * 7) + 1;  // header + 7 per dispo + footer
-        var footer = ' EF' + codSia + abiEmittente + dataDDMMYY + 'CAR' + dataDDMMYYYY + oraHHMM
+        var footer = 'EF' + codSia + abiEmittente + dataDDMMYY + 'CAR' + dataDDMMYYYY + oraHHMM
             + ' '.repeat(11)
             + _pad(fatture.length, 7)
             + totaleField
             + _pad(0, 15)
             + _pad(nRecordsTot, 7);
-        // 3+5+5+6+3+8+4+11+7+15+15+7 = 89 char
-        footer = (footer + ' '.repeat(24)).substring(0, 113) + 'E      ';  // 113 + 7 = 120
+        // 2+5+5+6+3+8+4+11+7+15+15+7 = 88 char
+        footer = (footer + ' '.repeat(24)).substring(0, 112) + 'E      ';  // 112 + 7 = 119
         content += footer;
 
         _downloadFile(content, 'RIBA_' + nomi[_meseSelez] + '_' + _annoSelez + '.car', 'text/plain');
