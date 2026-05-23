@@ -13,6 +13,7 @@ ENI.Modules.Cassa = (function() {
     var _spese = [];
     var _posTotals = null;
     var _dataSelezionata = '';
+    var _modalitaModifica = false;
 
     // ============================================================
     // RENDER PRINCIPALE
@@ -57,6 +58,7 @@ ENI.Modules.Cassa = (function() {
     // ============================================================
 
     async function _loadAndRenderCassa() {
+        _modalitaModifica = false;
         var contentEl = document.getElementById('cassa-tab-content');
         if (contentEl) {
             contentEl.innerHTML = '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>';
@@ -91,10 +93,45 @@ ENI.Modules.Cassa = (function() {
         if (!contentEl) return;
 
         var c = _cassa || {};
-        var isChiusa = c.stato === 'chiusa';
+        var isChiusaReale = c.stato === 'chiusa';
+        var isChiusa = isChiusaReale && !_modalitaModifica;
         var totSpese = _spese.reduce(function(s, sp) {
             return s + Number(sp.importo || 0);
         }, 0);
+
+        // Memorizza l'eventuale tab POS attivo prima del re-render (preserva la posizione utente)
+        var posTabAttivoEl = contentEl.querySelector('.pos-tab-btn.active');
+        var posTabAttivo = posTabAttivoEl ? posTabAttivoEl.dataset.posTab : null;
+
+        var badgeHtml;
+        if (isChiusaReale && _modalitaModifica) {
+            badgeHtml = '<span class="badge badge-warning">\u{1F513} In modifica</span>';
+        } else if (isChiusa) {
+            badgeHtml = '<span class="badge badge-danger">\uD83D\uDD12 Chiusa</span>';
+        } else {
+            badgeHtml = '<span class="badge badge-success">\u2705 Aperta</span>';
+        }
+
+        var bannerHtml = '';
+        if (isChiusaReale && _modalitaModifica) {
+            bannerHtml = '<div class="stock-alert mb-4" style="background:#DBEAFE; border-left-color:#3B82F6;">' +
+                '\u270F\uFE0F Modalit\u00E0 modifica attiva. Le modifiche verranno registrate nel log.' +
+            '</div>';
+        } else if (isChiusa) {
+            bannerHtml = '<div class="stock-alert mb-4" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
+                '<span>\u{1F512} Cassa chiusa per questa data. Dati in sola lettura.</span>' +
+                '<div style="display:flex; gap:8px;">' +
+                    '<button type="button" class="btn btn-sm" id="btn-sblocca-cassa" ' +
+                        'style="background:none; border:1px solid var(--color-primary); color:var(--color-primary);">' +
+                        '\u270F\uFE0F Modifica' +
+                    '</button>' +
+                    '<button type="button" class="btn btn-sm" id="btn-sposta-data" ' +
+                        'style="background:none; border:1px solid #D97706; color:#D97706;">' +
+                        '\u{1F4C5} Sposta data' +
+                    '</button>' +
+                '</div>' +
+              '</div>';
+        }
 
         contentEl.innerHTML =
             // Header: data selezionata + stato
@@ -105,27 +142,11 @@ ENI.Modules.Cassa = (function() {
                         '<input type="date" class="form-input" id="cassa-data" ' +
                             'value="' + _dataSelezionata + '" max="' + ENI.UI.oggiISO() + '">' +
                     '</div>' +
-                    (isChiusa
-                        ? '<div><span class="badge badge-danger">\uD83D\uDD12 Chiusa</span></div>'
-                        : '<div><span class="badge badge-success">\u2705 Aperta</span></div>') +
+                    '<div>' + badgeHtml + '</div>' +
                 '</div>' +
             '</div>' +
 
-            (isChiusa
-                ? '<div class="stock-alert mb-4" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
-                    '<span>\u{1F512} Cassa chiusa per questa data. Dati in sola lettura.</span>' +
-                    '<div style="display:flex; gap:8px;">' +
-                        '<button type="button" class="btn btn-sm" id="btn-sblocca-cassa" ' +
-                            'style="background:none; border:1px solid var(--color-primary); color:var(--color-primary);">' +
-                            '\u270F\uFE0F Modifica' +
-                        '</button>' +
-                        '<button type="button" class="btn btn-sm" id="btn-sposta-data" ' +
-                            'style="background:none; border:1px solid #D97706; color:#D97706;">' +
-                            '\u{1F4C5} Sposta data' +
-                        '</button>' +
-                    '</div>' +
-                  '</div>'
-                : '') +
+            bannerHtml +
 
             '<form id="form-cassa" class="cassa-compact">' +
 
@@ -342,39 +363,24 @@ ENI.Modules.Cassa = (function() {
         // Setup POS tabs
         _setupPosTabs(contentEl);
 
+        // Ripristina il tab POS attivo dopo un eventuale re-render
+        if (posTabAttivo) {
+            var tabBtn = contentEl.querySelector('.pos-tab-btn[data-pos-tab="' + posTabAttivo + '"]');
+            if (tabBtn) tabBtn.click();
+        }
+
         // Setup salvataggio
         if (!isChiusa) {
             var btnSalva = contentEl.querySelector('#btn-salva-cassa');
             if (btnSalva) btnSalva.addEventListener('click', _salvaCassa);
         }
 
-        // Sblocca cassa chiusa per modifica
+        // Sblocca cassa chiusa per modifica (re-render con isChiusa=false)
         var btnSblocca = contentEl.querySelector('#btn-sblocca-cassa');
         if (btnSblocca) {
             btnSblocca.addEventListener('click', function() {
-                // Sblocca tutti i campi
-                contentEl.querySelectorAll(
-                    '.cassa-field, .pos-importo, .banconota-qty, #cassa-note'
-                ).forEach(function(el) {
-                    el.removeAttribute('disabled');
-                });
-                // Attiva POS dinamici
-                _setupPosDinamico(contentEl);
-                // Mostra pulsante salva
-                var formEl = document.getElementById('form-cassa');
-                if (formEl && !formEl.querySelector('#btn-salva-cassa')) {
-                    formEl.insertAdjacentHTML('beforeend',
-                        '<button type="button" class="btn btn-primary btn-block btn-lg mt-4" id="btn-salva-cassa">' +
-                            '\u{1F4BE} Salva Modifiche' +
-                        '</button>'
-                    );
-                    formEl.querySelector('#btn-salva-cassa').addEventListener('click', _salvaCassa);
-                }
-                // Aggiorna messaggio
-                btnSblocca.parentNode.parentNode.innerHTML =
-                    '<div class="stock-alert mb-4" style="background:#DBEAFE; border-left-color:#3B82F6;">' +
-                        '\u270F\uFE0F Modalit\u00E0 modifica attiva. Le modifiche verranno registrate nel log.' +
-                    '</div>';
+                _modalitaModifica = true;
+                _renderForm();
             });
         }
 
