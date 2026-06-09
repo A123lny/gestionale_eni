@@ -141,7 +141,7 @@ ENI.Config = {
 
     // Stampante termica ESC/POS
     PRINT_SERVER_URL: 'http://localhost:3333',
-    PRINTER_IP: '192.168.1.130',   // Epson EPSON367B6A
+    PRINTER_IP: '192.168.1.250',   // Epson EPSON367B6A
     PRINTER_PORT: 9100,
 
     // Coefficiente Monofase - parametri

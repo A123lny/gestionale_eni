@@ -15,7 +15,7 @@ var app = express();
 var PORT = 3333;
 
 // Configurazione stampante (modificare con IP reale)
-var PRINTER_IP = process.env.PRINTER_IP || '192.168.1.130';
+var PRINTER_IP = process.env.PRINTER_IP || '192.168.1.250';
 var PRINTER_PORT = parseInt(process.env.PRINTER_PORT) || 9100;
 
 // File configurazione layout

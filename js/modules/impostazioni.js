@@ -41,7 +41,7 @@ ENI.Modules.Impostazioni = (function() {
         mostra_subtotale: true,
         tipo_taglio: 'parziale',
         righe_prima_taglio: 3,
-        printer_ip: '192.168.1.130',
+        printer_ip: '192.168.1.250',
         printer_port: 9100,
         logo_base64: ''
     };
@@ -104,7 +104,7 @@ ENI.Modules.Impostazioni = (function() {
                     '<div style="display:grid; grid-template-columns:1fr 1fr auto; gap:var(--space-3); align-items:end;">' +
                         '<div class="form-group">' +
                             '<label class="form-label">IP Stampante</label>' +
-                            '<input type="text" class="form-input" id="cfg-printer-ip" placeholder="192.168.1.130">' +
+                            '<input type="text" class="form-input" id="cfg-printer-ip" placeholder="192.168.1.250">' +
                         '</div>' +
                         '<div class="form-group">' +
                             '<label class="form-label">Porta</label>' +
@@ -438,7 +438,7 @@ ENI.Modules.Impostazioni = (function() {
 
     function _readForm() {
         return {
-            printer_ip: _getVal('cfg-printer-ip') || '192.168.1.130',
+            printer_ip: _getVal('cfg-printer-ip') || '192.168.1.250',
             printer_port: parseInt(_getVal('cfg-printer-port')) || 9100,
             nome_negozio: _getVal('cfg-nome-negozio') || 'TITANWASH',
             sottotitolo: _getVal('cfg-sottotitolo'),
