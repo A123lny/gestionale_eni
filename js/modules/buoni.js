@@ -17,9 +17,8 @@ ENI.Modules.Buoni = (function() {
     var _selectedCliente = null;     // Tab Genera
     var _gestioneCliente = null;     // Tab Gestione
 
-    // Logo cache per PDF
-    var _logoTitanB64 = null;
-    var _logoEniliveB64 = null;
+    // Cache sfondi PNG per PDF (uno per ogni taglio)
+    var _sfondiB64 = { 5: null, 10: null, 20: null, 50: null };
 
     // ============================================================
     // RENDER PRINCIPALE
@@ -352,48 +351,35 @@ ENI.Modules.Buoni = (function() {
     }
 
     // ============================================================
-    // LOGO LOADING PER PDF
+    // CARICAMENTO SFONDI PNG PER PDF
     // ============================================================
 
     function _loadLogos() {
         return new Promise(function(resolve) {
-            if (_logoTitanB64 && _logoEniliveB64) { resolve(); return; }
+            var tagli = [5, 10, 20, 50];
+            var allLoaded = tagli.every(function(t) { return _sfondiB64[t]; });
+            if (allLoaded) { resolve(); return; }
 
             var loaded = 0;
-            var total = 2;
-            function check() { if (++loaded >= total) resolve(); }
+            function check() { if (++loaded >= tagli.length) resolve(); }
 
-            // Logo Titanwash
-            var img1 = new Image();
-            img1.crossOrigin = 'anonymous';
-            img1.onload = function() {
-                try {
-                    var c = document.createElement('canvas');
-                    c.width = img1.naturalWidth;
-                    c.height = img1.naturalHeight;
-                    c.getContext('2d').drawImage(img1, 0, 0);
-                    _logoTitanB64 = c.toDataURL('image/png');
-                } catch(e) { /* fallback a testo */ }
-                check();
-            };
-            img1.onerror = check;
-            img1.src = 'assets/logo_ritagliato.png';
-
-            // Logo Enilive
-            var img2 = new Image();
-            img2.crossOrigin = 'anonymous';
-            img2.onload = function() {
-                try {
-                    var c = document.createElement('canvas');
-                    c.width = img2.naturalWidth;
-                    c.height = img2.naturalHeight;
-                    c.getContext('2d').drawImage(img2, 0, 0);
-                    _logoEniliveB64 = c.toDataURL('image/png');
-                } catch(e) { /* fallback a testo */ }
-                check();
-            };
-            img2.onerror = check;
-            img2.src = 'assets/enilive.png';
+            tagli.forEach(function(taglio) {
+                if (_sfondiB64[taglio]) { check(); return; }
+                var img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = function() {
+                    try {
+                        var c = document.createElement('canvas');
+                        c.width = img.naturalWidth;
+                        c.height = img.naturalHeight;
+                        c.getContext('2d').drawImage(img, 0, 0);
+                        _sfondiB64[taglio] = c.toDataURL('image/png');
+                    } catch(e) { /* fallback senza sfondo */ }
+                    check();
+                };
+                img.onerror = check;
+                img.src = 'assets/buono_' + taglio + '.png';
+            });
         });
     }
 
@@ -402,26 +388,27 @@ ENI.Modules.Buoni = (function() {
     // ============================================================
 
     async function _generaPDF(buoni, lotto, clienteNome) {
-        // Carica loghi
+        // Carica sfondi PNG
         await _loadLogos();
 
         var doc = new window.jspdf.jsPDF({
-            orientation: 'portrait',
+            orientation: 'landscape',
             unit: 'mm',
             format: 'a4'
         });
 
-        var marginX = 10;
-        var marginY = 10;
-        var voucherW = 90;
-        var voucherH = 60;
-        var gapX = 10;
-        var gapY = 8;
+        // A4 landscape: 297 x 210 mm
+        // Card formato banconota 5€: 120 x 62 mm
+        // Griglia: 2 colonne x 3 righe = 6 buoni per pagina
+        var voucherW = 120;
+        var voucherH = 62;
         var cols = 2;
-        var rows = 4;
+        var rows = 3;
+        var gapX = 7;
+        var gapY = 6;
+        var marginX = (297 - (cols * voucherW + (cols - 1) * gapX)) / 2; // = 25
+        var marginY = (210 - (rows * voucherH + (rows - 1) * gapY)) / 2; // = 6
         var perPage = cols * rows;
-
-        var colori = ENI.Config.COLORI_BUONI;
 
         for (var idx = 0; idx < buoni.length; idx++) {
             var b = buoni[idx];
@@ -436,7 +423,7 @@ ENI.Modules.Buoni = (function() {
             var x = marginX + col * (voucherW + gapX);
             var y = marginY + row * (voucherH + gapY);
 
-            _drawVoucher(doc, b, x, y, voucherW, voucherH, colori[b.taglio], clienteNome);
+            _drawVoucher(doc, b, x, y, voucherW, voucherH, clienteNome);
         }
 
         // Apri PDF
@@ -445,111 +432,60 @@ ENI.Modules.Buoni = (function() {
         window.open(url, '_blank');
     }
 
-    function _drawVoucher(doc, buono, x, y, w, h, colore, clienteNome) {
-        // Bordo esterno
-        doc.setDrawColor(colore.accent);
-        doc.setLineWidth(0.8);
-        doc.roundedRect(x, y, w, h, 3, 3, 'S');
-
-        // Bordo interno decorativo
-        doc.setLineWidth(0.3);
-        doc.roundedRect(x + 2, y + 2, w - 4, h - 4, 2, 2, 'S');
-
-        // Banda colore in alto
-        doc.setFillColor(colore.primary);
-        doc.rect(x + 2, y + 2, w - 4, 12, 'F');
-
-        // Logo Titanwash (in alto a sx)
-        if (_logoTitanB64) {
+    function _drawVoucher(doc, buono, x, y, w, h, clienteNome) {
+        // Sfondo PNG (grafica completa: cornice, loghi, taglio, decori)
+        var sfondoB64 = _sfondiB64[Number(buono.taglio)];
+        if (sfondoB64) {
             try {
-                doc.addImage(_logoTitanB64, 'PNG', x + 4, y + 3, 18, 10);
+                doc.addImage(sfondoB64, 'PNG', x, y, w, h);
             } catch(e) {
-                doc.setTextColor(255, 255, 255);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(8);
-                doc.text('TITAN WASH', x + 5, y + 7);
+                doc.setDrawColor(0); doc.rect(x, y, w, h, 'S');
             }
         } else {
-            doc.setTextColor(255, 255, 255);
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(8);
-            doc.text('TITAN WASH', x + 5, y + 7);
+            doc.setDrawColor(0); doc.rect(x, y, w, h, 'S');
         }
 
-        // Logo Enilive (in alto a dx)
-        if (_logoEniliveB64) {
-            try {
-                doc.addImage(_logoEniliveB64, 'PNG', x + w - 22, y + 3, 18, 10);
-            } catch(e) {
-                doc.setTextColor(255, 255, 255);
-                doc.setFontSize(7);
-                doc.text('Enilive', x + w - 5, y + 7, { align: 'right' });
-            }
-        } else {
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(7);
-            doc.text('Enilive', x + w - 5, y + 7, { align: 'right' });
-        }
+        // Centro dell'area gialla (parte sx della card, occupa ~70% larghezza)
+        var areaGiallaCx = x + w * 0.35; // = x + 42 mm
 
-        // Sottotitolo
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(5.5);
-        doc.setFont('helvetica', 'normal');
-        doc.text('Borgo Maggiore - San Marino', x + w / 2, y + 12.5, { align: 'center' });
-
-        // Nome cliente
+        // Nome cliente (sopra il barcode)
         if (clienteNome) {
-            doc.setTextColor(colore.accent);
+            doc.setTextColor(0, 0, 0);
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(6);
-            doc.text('Cliente: ' + clienteNome, x + w / 2, y + 18, { align: 'center' });
+            doc.setFontSize(9);
+            doc.text('Intestato a: ' + clienteNome, areaGiallaCx, y + 22, { align: 'center', maxWidth: 70 });
         }
 
-        // BUONO VALORE
-        doc.setTextColor(colore.accent);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7);
-        doc.text('BUONO VALORE', x + w / 2, y + 22.5, { align: 'center' });
-
-        // Taglio grande
-        doc.setFontSize(20);
-        doc.setTextColor(colore.primary);
-        var taglioStr = 'EUR ' + Number(buono.taglio).toFixed(0) + ',00';
-        doc.text(taglioStr, x + w / 2, y + 31, { align: 'center' });
-
-        // Linea decorativa
-        doc.setDrawColor(colore.primary);
-        doc.setLineWidth(0.2);
-        doc.line(x + 10, y + 33, x + w - 10, y + 33);
-
-        // Barcode EAN-13
+        // Barcode EAN-13 (centrato nell'area gialla)
+        var barcodeW = 50;
+        var barcodeH = 14;
         try {
             var canvas = document.createElement('canvas');
             JsBarcode(canvas, buono.codice_ean, {
                 format: 'EAN13',
-                width: 1.5,
-                height: 28,
+                width: 1.8,
+                height: 40,
                 displayValue: true,
-                fontSize: 10,
-                margin: 0
+                fontSize: 14,
+                margin: 2,
+                background: '#ffffff'
             });
             var barcodeImg = canvas.toDataURL('image/png');
-            doc.addImage(barcodeImg, 'PNG', x + w / 2 - 22, y + 35, 44, 13);
+            doc.addImage(barcodeImg, 'PNG', areaGiallaCx - barcodeW / 2, y + 25, barcodeW, barcodeH);
         } catch(e) {
-            doc.setFontSize(8);
+            doc.setFontSize(9);
             doc.setTextColor(0, 0, 0);
-            doc.text(buono.codice_ean, x + w / 2, y + 44, { align: 'center' });
+            doc.text(buono.codice_ean, areaGiallaCx, y + 33, { align: 'center' });
         }
 
-        // Seriale e note in basso
-        doc.setFontSize(5);
-        doc.setTextColor(100, 100, 100);
+        // Seriale (sotto il barcode)
+        doc.setFontSize(6);
+        doc.setTextColor(60, 60, 60);
         doc.setFont('helvetica', 'normal');
-        doc.text('TWB-' + buono.codice_ean, x + 5, y + h - 4);
-        doc.text('Buono monouso - Non ha scadenza', x + w - 5, y + h - 4, { align: 'right' });
+        doc.text('TWB-' + buono.codice_ean, areaGiallaCx, y + 43, { align: 'center' });
 
-        // Guide taglio
-        doc.setDrawColor(200, 200, 200);
+        // Guide taglio (angoli)
+        doc.setDrawColor(150, 150, 150);
         doc.setLineWidth(0.1);
         doc.setLineDashPattern([1, 1], 0);
         doc.line(x - 3, y, x, y);
