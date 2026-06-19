@@ -369,11 +369,18 @@ ENI.Modules.Buoni = (function() {
                 img.crossOrigin = 'anonymous';
                 img.onload = function() {
                     try {
+                        // Ridimensiono a ~250dpi per stampa (1200x620 px per card 120x62mm)
+                        var targetW = 1200;
+                        var targetH = Math.round(targetW * img.naturalHeight / img.naturalWidth);
                         var c = document.createElement('canvas');
-                        c.width = img.naturalWidth;
-                        c.height = img.naturalHeight;
-                        c.getContext('2d').drawImage(img, 0, 0);
-                        _sfondiB64[taglio] = c.toDataURL('image/png');
+                        c.width = targetW;
+                        c.height = targetH;
+                        var ctx = c.getContext('2d');
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = 'high';
+                        ctx.drawImage(img, 0, 0, targetW, targetH);
+                        // JPEG con qualità alta: file molto piu' piccolo del PNG
+                        _sfondiB64[taglio] = c.toDataURL('image/jpeg', 0.85);
                     } catch(e) { /* fallback senza sfondo */ }
                     check();
                 };
@@ -426,18 +433,27 @@ ENI.Modules.Buoni = (function() {
             _drawVoucher(doc, b, x, y, voucherW, voucherH, clienteNome);
         }
 
-        // Apri PDF
+        // Scarica PDF (piu' affidabile di window.open, evita blocchi popup)
         var pdfBlob = doc.output('blob');
         var url = URL.createObjectURL(pdfBlob);
-        window.open(url, '_blank');
+        var filename = 'buoni_' + (lotto || 'lotto') + '.pdf';
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Apre anche in nuova tab per anteprima immediata
+        try { window.open(url, '_blank'); } catch(e) { /* popup bloccato, ok download */ }
+        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
     }
 
     function _drawVoucher(doc, buono, x, y, w, h, clienteNome) {
-        // Sfondo PNG (grafica completa: cornice, loghi, taglio, decori)
+        // Sfondo (grafica completa: cornice, loghi, taglio, decori) - JPEG ridimensionato
         var sfondoB64 = _sfondiB64[Number(buono.taglio)];
         if (sfondoB64) {
             try {
-                doc.addImage(sfondoB64, 'PNG', x, y, w, h);
+                doc.addImage(sfondoB64, 'JPEG', x, y, w, h, undefined, 'FAST');
             } catch(e) {
                 doc.setDrawColor(0); doc.rect(x, y, w, h, 'S');
             }
