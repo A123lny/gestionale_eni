@@ -185,7 +185,16 @@ ENI.Fatturazione.ImportEni = (function() {
                 var mesiDisp = {};
                 tuttiSaldi.forEach(function(s) { mesiDisp[s.meseCompetenza + '/' + s.annoCompetenza] = (mesiDisp[s.meseCompetenza + '/' + s.annoCompetenza] || 0) + 1; });
                 console.log('Mesi disponibili nel file:', mesiDisp);
-                ENI.UI.toast('Nessun consuntivo per ' + _meseSelez + '/' + _annoSelez + '. Mesi nel file: ' + Object.keys(mesiDisp).join(', '), 'danger');
+                if (!tuttiSaldi.length) {
+                    // Il file saldi non contiene alcuna riga leggibile: colonna "Cliente" assente
+                    // (formato ENI cambiato) oppure file errato/vuoto nel campo saldi.
+                    ENI.UI.toast('Il file saldi riepilogativi non contiene righe leggibili: ' +
+                        'verifica di aver caricato il file corretto (non i consuntivi) e che la colonna "Cliente" sia presente. ' +
+                        'Controlla la console (F12) per i nomi delle colonne.', 'danger');
+                } else {
+                    ENI.UI.toast('Nessun saldo riepilogativo per ' + _meseSelez + '/' + _annoSelez +
+                        '. Mesi presenti nel file saldi: ' + Object.keys(mesiDisp).join(', '), 'danger');
+                }
                 _renderStep(); return;
             }
 
