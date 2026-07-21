@@ -76,23 +76,20 @@ ENI.API = (function() {
 
     // --- Generazione Codice Sequenziale ---
 
+    // Delega alla RPC atomica (migration 018).
+    // La vecchia versione leggeva il max lato client ordinando per TESTO:
+    // superata quota 999 'LAV999' > 'LAV1000', quindi rigenerava all'infinito
+    // un codice gia' esistente. Inoltre SELECT e INSERT separati permettevano
+    // a due salvataggi simultanei di ottenere lo stesso codice.
     async function generaCodice(tabella, prefisso, colonnaCode) {
         colonnaCode = colonnaCode || 'codice';
-        var result = await getClient()
-            .from(tabella)
-            .select(colonnaCode)
-            .order(colonnaCode, { ascending: false })
-            .limit(1);
-
+        var result = await getClient().rpc('get_prossimo_codice', {
+            p_prefisso: prefisso,
+            p_tabella: tabella,
+            p_colonna: colonnaCode
+        });
         if (result.error) throw new Error(result.error.message);
-
-        if (!result.data || result.data.length === 0) {
-            return prefisso + '001';
-        }
-
-        var ultimo = result.data[0][colonnaCode];
-        var numero = parseInt(ultimo.replace(prefisso, ''), 10) + 1;
-        return prefisso + String(numero).padStart(3, '0');
+        return result.data;
     }
 
     // --- Log Attivita ---

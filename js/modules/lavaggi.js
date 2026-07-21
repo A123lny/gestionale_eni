@@ -672,7 +672,7 @@ ENI.Modules.Lavaggi = (function() {
                 ENI.UI.success(isWalkin ? 'Walk-in registrato' : 'Lavaggio prenotato');
                 await _loadLavaggi();
             } catch(e) {
-                ENI.UI.error('Errore: ' + e.message);
+                ENI.UI.handleError(e, 'salvataggio lavaggio');
             }
         });
     }
