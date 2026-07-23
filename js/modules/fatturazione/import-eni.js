@@ -132,12 +132,77 @@ ENI.Fatturazione.ImportEni = (function() {
         box.innerHTML = '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div> <span style="margin-left:1rem;">Parsing file in corso...</span></div>';
 
         try {
-            _saldi = ENI.Fatturazione.Parser.parseSaldi(bufSaldi);
-            _consuntivi = ENI.Fatturazione.Parser.parseConsuntivi(bufCons);
+            var saldiTutti = ENI.Fatturazione.Parser.parseSaldi(bufSaldi);
+            var consTutti  = ENI.Fatturazione.Parser.parseConsuntivi(bufCons);
 
-            // Filtra solo per il mese di competenza selezionato
-            _saldi = _saldi.filter(function(s) { return s.meseCompetenza === _meseSelez && s.annoCompetenza === _annoSelez; });
-            _consuntivi = _consuntivi.filter(function(c) {
+            // --- Riconciliazione periodo -----------------------------------------
+            // ENI genera il riepilogativo saldi il 1° del mese successivo:
+            //   saldi di MAGGIO  -> Data contabile 01/06
+            //   saldi di GIUGNO  -> Data contabile 01/07
+            // È facilissimo scaricare per sbaglio il file "vecchio di un mese".
+            // Qui capiamo quale competenza contengono DAVVERO i due file e, se non
+            // coincide con quella selezionata, guidiamo l'utente invece di fallire.
+            function _mk(m, a) { return a + '-' + String(m).padStart(2, '0'); }
+            function _lblMese(key) {
+                var nomi = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+                var p = key.split('-'); return nomi[parseInt(p[1],10)-1] + ' ' + p[0];
+            }
+            function _dominante(dist) {
+                var best = null, n = -1;
+                Object.keys(dist).forEach(function(k) { if (dist[k] > n) { n = dist[k]; best = k; } });
+                return best;
+            }
+            // Competenza consuntivi: transazione del 1° del mese => competenza mese precedente
+            function _compCons(d) {
+                var m = d.getMonth() + 1, a = d.getFullYear();
+                if (d.getDate() === 1) { m--; if (m === 0) { m = 12; a--; } }
+                return _mk(m, a);
+            }
+
+            var saldiPerMese = {};
+            saldiTutti.forEach(function(s) {
+                if (s.meseCompetenza) { var k = _mk(s.meseCompetenza, s.annoCompetenza); saldiPerMese[k] = (saldiPerMese[k] || 0) + 1; }
+            });
+            var consPerMese = {};
+            consTutti.forEach(function(c) {
+                if (c.dataMovimento) { var k = _compCons(c.dataMovimento); consPerMese[k] = (consPerMese[k] || 0) + 1; }
+            });
+            console.log('Competenze SALDI:', saldiPerMese, '| Competenze CONSUNTIVI:', consPerMese);
+
+            var selKey = _mk(_meseSelez, _annoSelez);
+
+            if (!saldiPerMese[selKey]) {
+                if (!saldiTutti.length) {
+                    ENI.UI.toast('Il file saldi riepilogativi non contiene righe leggibili: ' +
+                        'verifica di aver caricato il file corretto (non i consuntivi) e che la colonna "Cliente" sia presente. ' +
+                        'Controlla la console (F12) per i nomi delle colonne.', 'danger');
+                    _step = 1; _renderStep(); return;
+                }
+                var saldiMax = _dominante(saldiPerMese);
+                var consMax  = _dominante(consPerMese);
+                if (saldiMax && saldiMax === consMax) {
+                    // Entrambi i file concordano su un mese diverso da quello scelto: proponi lo switch
+                    if (!await ENI.UI.confirm('I file caricati contengono la competenza ' + _lblMese(saldiMax) +
+                        ', ma hai selezionato ' + _lblMese(selKey) + '.\n\nVuoi procedere con ' + _lblMese(saldiMax) + '?')) {
+                        _step = 1; _renderStep(); return;
+                    }
+                    var pp = saldiMax.split('-'); _annoSelez = parseInt(pp[0], 10); _meseSelez = parseInt(pp[1], 10);
+                    selKey = saldiMax;
+                } else {
+                    // SALDI e CONSUNTIVI di periodi diversi: quasi sempre file saldi sbagliato (di un mese indietro)
+                    var nextM = _meseSelez === 12 ? 1 : _meseSelez + 1;
+                    var nextA = _meseSelez === 12 ? _annoSelez + 1 : _annoSelez;
+                    ENI.UI.toast('Periodi non allineati. File SALDI: ' + (Object.keys(saldiPerMese).map(_lblMese).join(', ') || '—') +
+                        ' · File CONSUNTIVI: ' + (Object.keys(consPerMese).map(_lblMese).join(', ') || '—') + '. ' +
+                        'Per fatturare ' + _lblMese(selKey) + ' serve il file saldi con "Data contabile" ' +
+                        '01/' + String(nextM).padStart(2,'0') + '/' + nextA + ' (ENI lo genera il 1° del mese successivo).', 'danger');
+                    _step = 1; _renderStep(); return;
+                }
+            }
+
+            // Filtra per il mese di competenza (eventualmente aggiornato dallo switch)
+            _saldi = saldiTutti.filter(function(s) { return s.meseCompetenza === _meseSelez && s.annoCompetenza === _annoSelez; });
+            _consuntivi = consTutti.filter(function(c) {
                 if (!c.dataMovimento) return false;
                 var m = c.dataMovimento.getMonth() + 1;
                 var a = c.dataMovimento.getFullYear();
@@ -175,28 +240,12 @@ ENI.Fatturazione.ImportEni = (function() {
                 ENI.UI.toast(consSenzaSaldo.length + ' client(i) hanno movimenti nei consuntivi ma nessun saldo riepilogativo. Verranno ignorati.', 'warning');
             }
 
-            console.log('Saldi parsed totali:', ENI.Fatturazione.Parser.parseSaldi(bufSaldi).length,
-                'Filtrati per', _meseSelez + '/' + _annoSelez + ':', _saldi.length);
-            if (_saldi.length) {
-                console.log('Primo saldo:', JSON.stringify(_saldi[0]));
-            } else {
-                // Mostra i mesi disponibili per debug
-                var tuttiSaldi = ENI.Fatturazione.Parser.parseSaldi(bufSaldi);
-                var mesiDisp = {};
-                tuttiSaldi.forEach(function(s) { mesiDisp[s.meseCompetenza + '/' + s.annoCompetenza] = (mesiDisp[s.meseCompetenza + '/' + s.annoCompetenza] || 0) + 1; });
-                console.log('Mesi disponibili nel file:', mesiDisp);
-                if (!tuttiSaldi.length) {
-                    // Il file saldi non contiene alcuna riga leggibile: colonna "Cliente" assente
-                    // (formato ENI cambiato) oppure file errato/vuoto nel campo saldi.
-                    ENI.UI.toast('Il file saldi riepilogativi non contiene righe leggibili: ' +
-                        'verifica di aver caricato il file corretto (non i consuntivi) e che la colonna "Cliente" sia presente. ' +
-                        'Controlla la console (F12) per i nomi delle colonne.', 'danger');
-                } else {
-                    ENI.UI.toast('Nessun saldo riepilogativo per ' + _meseSelez + '/' + _annoSelez +
-                        '. Mesi presenti nel file saldi: ' + Object.keys(mesiDisp).join(', '), 'danger');
-                }
-                _renderStep(); return;
+            if (!_saldi.length) {
+                // Non dovrebbe accadere: la riconciliazione periodo sopra intercetta i casi noti.
+                ENI.UI.toast('Nessun saldo riepilogativo utilizzabile per ' + _meseSelez + '/' + _annoSelez + '.', 'danger');
+                _step = 1; _renderStep(); return;
             }
+            console.log('Saldi filtrati per', _meseSelez + '/' + _annoSelez + ':', _saldi.length, '| primo:', JSON.stringify(_saldi[0]));
 
             // Carica clienti da DB per matching
             _clientiDb = await ENI.API.getClienti();
