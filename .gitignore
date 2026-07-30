@@ -12,5 +12,7 @@ print-server/.env
 
 # Segreti e backup locali - MAI in repo pubblica
 .db_url.local
+.staff_pins.local
+*.local
 backups/
 _scripts_local/

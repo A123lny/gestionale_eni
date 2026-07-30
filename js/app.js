@@ -11,9 +11,24 @@ ENI.App = (function() {
 
     // --- Init ---
 
-    function init() {
+    async function init() {
         // Init Supabase
         ENI.API.init();
+
+        // Ripristina la sessione Auth se presente (es. dopo ricarica pagina)
+        if (!ENI.State.isLoggedIn()) {
+            try {
+                var u = await ENI.API.getUtenteCorrente();
+                if (u) {
+                    ENI.State.setUser({
+                        id: u.id,
+                        username: u.username,
+                        nome_completo: u.nome_completo,
+                        ruolo: u.ruolo
+                    });
+                }
+            } catch (e) { /* nessuna sessione valida */ }
+        }
 
         // Check se gia' loggato
         if (ENI.State.isLoggedIn()) {
