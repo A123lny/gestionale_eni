@@ -1,6 +1,7 @@
 // ============================================================
-// FATTURAZIONE - Tab Nuova Fattura Manuale
-// Form completo con ricerca cliente, righe dinamiche, emissione PDF
+// FATTURAZIONE - Tab Nuovo Documento Manuale (Fattura o Ricevuta)
+// Form completo con ricerca cliente (o intestatario occasionale),
+// righe dinamiche, emissione PDF
 // ============================================================
 
 var ENI = ENI || {};
@@ -28,23 +29,47 @@ ENI.Fatturazione.Manuale = (function() {
         container.innerHTML =
             '<div class="card"><div class="card-body">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">' +
-                '<h3>Nuova fattura manuale</h3>' +
+                '<h3 id="fatt-m-titolo">Nuova fattura manuale</h3>' +
                 '<button class="btn btn-secondary btn-sm" id="fatt-m-back">Torna all\'elenco</button>' +
             '</div>' +
             '<form id="fatt-m-form">' +
                 // --- Sezione Cliente ---
                 '<fieldset class="mb-3">' +
                     '<legend>Cliente</legend>' +
-                    '<div class="form-group" style="position:relative;">' +
-                        '<input type="text" class="form-input" id="fatt-m-cerca" placeholder="Cerca cliente per nome, P.IVA/COE o targa...">' +
-                        '<div id="fatt-m-cerca-results" class="pos-search-results" style="display:none;position:absolute;z-index:10;width:100%;"></div>' +
+                    '<div class="form-group" style="display:flex;gap:1.5rem;align-items:center;">' +
+                        '<label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;margin:0;">' +
+                            '<input type="radio" name="fatt-m-modo" value="anagrafica" checked> Cliente in anagrafica</label>' +
+                        '<label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;margin:0;">' +
+                            '<input type="radio" name="fatt-m-modo" value="occasionale"> Cliente occasionale</label>' +
                     '</div>' +
-                    '<div id="fatt-m-cliente-info" style="display:none;"></div>' +
+                    '<div id="fatt-m-box-anagrafica">' +
+                        '<div class="form-group" style="position:relative;">' +
+                            '<input type="text" class="form-input" id="fatt-m-cerca" placeholder="Cerca cliente per nome, P.IVA/COE o targa...">' +
+                            '<div id="fatt-m-cerca-results" class="pos-search-results" style="display:none;position:absolute;z-index:10;width:100%;"></div>' +
+                        '</div>' +
+                        '<div id="fatt-m-cliente-info" style="display:none;"></div>' +
+                    '</div>' +
+                    '<div id="fatt-m-box-occasionale" style="display:none;">' +
+                        '<div class="form-row">' +
+                            '<div class="form-group" style="flex:2;"><label class="form-label">Nominativo / Ragione sociale</label>' +
+                                '<input type="text" class="form-input" id="fatt-m-occ-nome" placeholder="Es: Mario Rossi"></div>' +
+                            '<div class="form-group" style="flex:2;"><label class="form-label">Indirizzo</label>' +
+                                '<input type="text" class="form-input" id="fatt-m-occ-indirizzo" placeholder="Via, CAP, Comune"></div>' +
+                            '<div class="form-group" style="flex:1;"><label class="form-label">C.F. / COE</label>' +
+                                '<input type="text" class="form-input" id="fatt-m-occ-cf" placeholder="Facoltativo"></div>' +
+                        '</div>' +
+                        '<p class="text-xs text-muted">Il nominativo viene stampato sul documento ma non viene salvato in anagrafica.</p>' +
+                    '</div>' +
                 '</fieldset>' +
                 // --- Sezione Documento ---
                 '<fieldset class="mb-3">' +
                     '<legend>Documento</legend>' +
                     '<div class="form-row">' +
+                        '<div class="form-group"><label class="form-label">Tipo documento</label>' +
+                            '<select class="form-select" id="fatt-m-tipodoc">' +
+                                '<option value="FATTURA">Fattura</option>' +
+                                '<option value="RICEVUTA">Ricevuta</option>' +
+                            '</select></div>' +
                         '<div class="form-group"><label class="form-label">Data emissione</label>' +
                             '<input type="date" class="form-input" id="fatt-m-data" value="' + _oggi() + '" required></div>' +
                         '<div class="form-group"><label class="form-label">Modalit\u00e0 pagamento</label>' +
@@ -86,7 +111,7 @@ ENI.Fatturazione.Manuale = (function() {
                 '</div>' +
                 // --- Righe ---
                 '<fieldset class="mb-3">' +
-                    '<legend>Righe fattura</legend>' +
+                    '<legend>Righe documento</legend>' +
                     '<div id="fatt-m-righe"></div>' +
                     '<button type="button" class="btn btn-outline btn-sm mt-2" id="fatt-m-add-riga">+ Aggiungi riga</button>' +
                 '</fieldset>' +
@@ -95,7 +120,7 @@ ENI.Fatturazione.Manuale = (function() {
                 // --- Azioni ---
                 '<div style="display:flex;gap:0.5rem;justify-content:flex-end;">' +
                     '<button type="button" class="btn btn-secondary" id="fatt-m-bozza">Salva bozza</button>' +
-                    '<button type="submit" class="btn btn-primary">Emetti fattura</button>' +
+                    '<button type="submit" class="btn btn-primary" id="fatt-m-emetti">Emetti fattura</button>' +
                 '</div>' +
             '</form>' +
             '</div></div>';
@@ -121,6 +146,14 @@ ENI.Fatturazione.Manuale = (function() {
             document.getElementById('fatt-m-cerca-results'),
             { clearOnSelect: false, onSelect: _onClienteSelezionato }
         );
+
+        // Modo intestatario: anagrafica / occasionale
+        document.querySelectorAll('input[name="fatt-m-modo"]').forEach(function(radio) {
+            radio.addEventListener('change', _onCambioModo);
+        });
+
+        // Tipo documento
+        document.getElementById('fatt-m-tipodoc').addEventListener('change', _aggiornaLabelDoc);
 
         // Popola dropdown IBAN e mostra/nascondi in base a modalità pagamento
         _popolaDropdownIban();
@@ -169,13 +202,62 @@ ENI.Fatturazione.Manuale = (function() {
         });
     }
 
+    // --- Tipo documento ---
+
+    function _tipoDoc() {
+        var sel = document.getElementById('fatt-m-tipodoc');
+        return sel ? sel.value : 'FATTURA';
+    }
+
+    function _labelDoc() {
+        return _tipoDoc() === 'RICEVUTA' ? 'ricevuta' : 'fattura';
+    }
+
+    function _aggiornaLabelDoc() {
+        var label = _labelDoc();
+        document.getElementById('fatt-m-titolo').textContent = 'Nuova ' + label + ' manuale';
+        document.getElementById('fatt-m-emetti').textContent = 'Emetti ' + label;
+    }
+
+    // --- Modo intestatario ---
+
+    function _isOccasionale() {
+        var r = document.querySelector('input[name="fatt-m-modo"]:checked');
+        return !!r && r.value === 'occasionale';
+    }
+
+    function _onCambioModo() {
+        var occ = _isOccasionale();
+        document.getElementById('fatt-m-box-anagrafica').style.display = occ ? 'none' : '';
+        document.getElementById('fatt-m-box-occasionale').style.display = occ ? '' : 'none';
+
+        if (occ) {
+            // Nessuna anagrafica: niente monofase, niente rif. amministrazione
+            _clienteSelezionato = null;
+            document.getElementById('fatt-m-cerca').value = '';
+            document.getElementById('fatt-m-cliente-info').style.display = 'none';
+            var monoDiv = document.getElementById('fatt-m-monofase');
+            if (monoDiv) monoDiv.style.display = 'none';
+            // Proposte tipiche per un cliente di passaggio (restano modificabili)
+            document.getElementById('fatt-m-tipodoc').value = 'RICEVUTA';
+            document.getElementById('fatt-m-modpag').value = 'CONTANTI';
+            document.getElementById('fatt-m-modpag').dispatchEvent(new Event('change'));
+            _aggiornaLabelDoc();
+        }
+    }
+
     function _onClienteSelezionato(cliente) {
         _clienteSelezionato = cliente;
         document.getElementById('fatt-m-cerca').value = cliente.nome_ragione_sociale;
 
+        // Proposta tipo documento in base all'anagrafica (sovrascrivibile)
+        document.getElementById('fatt-m-tipodoc').value = cliente.tipo === 'Privato' ? 'RICEVUTA' : 'FATTURA';
+        _aggiornaLabelDoc();
+
         // Precompila da anagrafica
         if (cliente.modalita_pagamento_fattura) {
             document.getElementById('fatt-m-modpag').value = cliente.modalita_pagamento_fattura;
+            document.getElementById('fatt-m-modpag').dispatchEvent(new Event('change'));
         }
         _aggiornaScadenzaAuto();
 
@@ -291,10 +373,19 @@ ENI.Fatturazione.Manuale = (function() {
     }
 
     async function _salva(stato) {
-        if (!_clienteSelezionato) {
+        var occasionale = _isOccasionale();
+        var occNome = occasionale ? document.getElementById('fatt-m-occ-nome').value.trim() : '';
+
+        if (occasionale) {
+            if (!occNome) {
+                ENI.UI.toast('Inserisci il nominativo dell\'intestatario', 'danger');
+                return;
+            }
+        } else if (!_clienteSelezionato) {
             ENI.UI.toast('Seleziona un cliente', 'danger');
             return;
         }
+
         var righe = _raccogliRighe();
         if (!righe.length) {
             ENI.UI.toast('Inserisci almeno una riga', 'danger');
@@ -315,23 +406,30 @@ ENI.Fatturazione.Manuale = (function() {
             dataScadStr = scad.getFullYear() + '-' + String(scad.getMonth()+1).padStart(2,'0') + '-' + String(scad.getDate()).padStart(2,'0');
         }
 
-        var tipoDocumento = _clienteSelezionato.tipo === 'Privato' ? 'RICEVUTA' : 'FATTURA';
+        var modPagSel = document.getElementById('fatt-m-modpag').value;
         var fattura = {
             data_emissione: dataEm,
             data_scadenza: dataScadStr,
-            cliente_id: _clienteSelezionato.id,
+            cliente_id: occasionale ? null : _clienteSelezionato.id,
             tipo: 'MANUALE',
-            tipo_documento: tipoDocumento,
+            tipo_documento: _tipoDoc(),
             totale: totale,
-            modalita_pagamento: document.getElementById('fatt-m-modpag').value || null,
+            modalita_pagamento: modPagSel || null,
             iban_beneficiario: null,
             stato: stato,
             note: document.getElementById('fatt-m-note').value.trim() || null,
-            rif_amministrazione: _clienteSelezionato.rif_amministrazione || null
+            rif_amministrazione: occasionale ? null : (_clienteSelezionato.rif_amministrazione || null)
         };
 
-        // Monofase
-        if (_clienteSelezionato.applica_monofase) {
+        // Intestatario libero: valorizzato solo per i documenti senza anagrafica
+        if (occasionale) {
+            fattura.intestatario_nome = occNome;
+            fattura.intestatario_indirizzo = document.getElementById('fatt-m-occ-indirizzo').value.trim() || null;
+            fattura.intestatario_cf = document.getElementById('fatt-m-occ-cf').value.trim() || null;
+        }
+
+        // Monofase (solo per clienti in anagrafica)
+        if (!occasionale && _clienteSelezionato.applica_monofase) {
             var coeff = parseFloat(document.getElementById('fatt-m-mono-coeff').value);
             if (coeff) {
                 fattura.monofase_coefficiente = coeff;
@@ -340,13 +438,17 @@ ENI.Fatturazione.Manuale = (function() {
             }
         }
 
-        // IBAN dal dropdown
-        var ibanSel = document.getElementById('fatt-m-iban').value;
-        if (ibanSel) fattura.iban_beneficiario = ibanSel;
+        // IBAN dal dropdown: solo per le modalità che lo prevedono
+        // (altrimenti finirebbe stampato anche su una ricevuta in contanti)
+        if (modPagSel === 'BONIFICO' || modPagSel === 'RIBA' || modPagSel === 'RID_SDD') {
+            var ibanSel = document.getElementById('fatt-m-iban').value;
+            if (ibanSel) fattura.iban_beneficiario = ibanSel;
+        }
 
         try {
+            var etichetta = _labelDoc() === 'ricevuta' ? 'Ricevuta' : 'Fattura';
             var f = await ENI.API.salvaFattura(fattura, righe, null);
-            ENI.UI.toast('Fattura ' + f.numero_formattato + ' ' + (stato === 'BOZZA' ? 'salvata come bozza' : 'emessa'), 'success');
+            ENI.UI.toast(etichetta + ' ' + f.numero_formattato + ' ' + (stato === 'BOZZA' ? 'salvata come bozza' : 'emessa'), 'success');
 
             // Se emessa, genera PDF
             if (stato === 'EMESSA') {
@@ -355,7 +457,7 @@ ENI.Fatturazione.Manuale = (function() {
                     var imp2 = await ENI.API.getImpostazioniFatturazione();
                     await ENI.Fatturazione.Pdf.generaPdf(full, imp2);
                 } catch(e) {
-                    ENI.UI.toast('Fattura emessa ma errore PDF: ' + e.message, 'warning');
+                    ENI.UI.toast(etichetta + ' emessa ma errore PDF: ' + e.message, 'warning');
                 }
             }
 

@@ -114,18 +114,39 @@ ENI.API = (function() {
 
     // --- Personale (Auth) ---
 
-    async function loginByPin(pin) {
+    // Elenco nomi per la schermata di login (vista senza segreti: solo nome + email tecnica)
+    async function getStaffLoginList() {
+        var result = await getClient()
+            .from('personale_login')
+            .select('nome_completo, email_tecnica')
+            .order('nome_completo', { ascending: true });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // Login staff via Supabase Auth: email tecnica + PIN (password). Ritorna l'utente app o null.
+    async function loginConPin(emailTecnica, pin) {
+        var auth = await getClient().auth.signInWithPassword({ email: emailTecnica, password: pin });
+        if (auth.error) return null; // credenziali errate o utente inesistente
+        return await getUtenteCorrente();
+    }
+
+    // Ricostruisce l'utente applicativo dalla sessione Auth corrente (o null se non loggato)
+    async function getUtenteCorrente() {
+        var sess = await getClient().auth.getUser();
+        if (!sess.data || !sess.data.user) return null;
         var result = await getClient()
             .from('personale')
-            .select('*')
-            .eq('pin', pin)
+            .select('id, username, nome_completo, ruolo')
+            .eq('auth_user_id', sess.data.user.id)
             .eq('attivo', true)
-            .limit(1);
+            .maybeSingle();
+        if (result.error || !result.data) return null;
+        return result.data;
+    }
 
-        if (result.error) {
-            throw new Error(result.error.message);
-        }
-        return (result.data && result.data.length > 0) ? result.data[0] : null;
+    async function logoutAuth() {
+        await getClient().auth.signOut();
     }
 
     // --- Clienti ---
@@ -1804,6 +1825,13 @@ ENI.API = (function() {
             import_eni_log_id: f.import_eni_log_id
         };
 
+        // Documenti senza anagrafica: riporta l'intestatario libero
+        if (f.intestatario_nome) {
+            nuova.intestatario_nome = f.intestatario_nome;
+            nuova.intestatario_indirizzo = f.intestatario_indirizzo;
+            nuova.intestatario_cf = f.intestatario_cf;
+        }
+
         var righe = full.righe.map(function(r) {
             return { descrizione: r.descrizione, quantita: r.quantita, unita_misura: r.unita_misura, prezzo_unitario: r.prezzo_unitario, importo: r.importo, categoria: r.categoria, ordine: r.ordine };
         });
@@ -2086,7 +2114,10 @@ ENI.API = (function() {
         remove: remove,
         generaCodice: generaCodice,
         scriviLog: scriviLog,
-        loginByPin: loginByPin,
+        getStaffLoginList: getStaffLoginList,
+        loginConPin: loginConPin,
+        getUtenteCorrente: getUtenteCorrente,
+        logoutAuth: logoutAuth,
         getClienti: getClienti,
         salvaCliente: salvaCliente,
         aggiornaCliente: aggiornaCliente,

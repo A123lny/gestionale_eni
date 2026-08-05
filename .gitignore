@@ -9,3 +9,10 @@ print-server/.env
 # Dati aziendali - il repository e' PUBBLICO, non devono mai finirci
 *.xlsx
 *.xls
+
+# Segreti e backup locali - MAI in repo pubblica
+.db_url.local
+.staff_pins.local
+*.local
+backups/
+_scripts_local/

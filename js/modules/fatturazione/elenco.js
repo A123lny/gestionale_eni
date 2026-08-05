@@ -138,7 +138,7 @@ ENI.Fatturazione.Elenco = (function() {
         if (_filtri.cerca) {
             var term = _filtri.cerca;
             lista = lista.filter(function(f) {
-                var cli = f.cliente ? f.cliente.nome_ragione_sociale.toLowerCase() : '';
+                var cli = ENI.Utils.intestatario(f).nome.toLowerCase();
                 var num = (f.numero_formattato || '').toLowerCase();
                 return cli.indexOf(term) >= 0 || num.indexOf(term) >= 0;
             });
@@ -164,7 +164,9 @@ ENI.Fatturazione.Elenco = (function() {
         var mostraGruppi = !_filtri.tipo_documento && fatture.length > 0 && ricevute.length > 0;
 
         function _rigaHtml(f) {
-            var cli = f.cliente ? f.cliente.nome_ragione_sociale : '';
+            var dest = ENI.Utils.intestatario(f);
+            var cli = dest.nome;
+            var cliBadge = dest.occasionale ? ' <span class="text-xs text-muted">(occasionale)</span>' : '';
             var checkboxCell = f.stato === 'BOZZA' ?
                 '<td style="text-align:center;width:32px;"><input type="checkbox" class="fatt-sel" data-id="' + f.id + '" data-totale="' + (parseFloat(f.totale) || 0) + '"></td>' :
                 '<td style="width:32px;"></td>';
@@ -174,7 +176,7 @@ ENI.Fatturazione.Elenco = (function() {
                 checkboxCell +
                 '<td><strong>' + ENI.UI.escapeHtml(f.numero_formattato) + '</strong>' + emailBadge + '</td>' +
                 '<td>' + _fmtData(f.data_emissione) + '</td>' +
-                '<td>' + ENI.UI.escapeHtml(cli) + '</td>' +
+                '<td>' + ENI.UI.escapeHtml(cli) + cliBadge + '</td>' +
                 '<td>' + (f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura') + ' <span class="text-xs text-muted">(' + (f.tipo === 'MANUALE' ? 'Man.' : 'ENI') + ')</span></td>' +
                 '<td>' + _fmtPagamento(f.modalita_pagamento) + '</td>' +
                 '<td class="text-right">€ ' + _fmtNum(f.totale) + '</td>' +
@@ -183,13 +185,13 @@ ENI.Fatturazione.Elenco = (function() {
                 '<td style="white-space:nowrap;">' +
                     '<button class="btn btn-sm btn-secondary btn-pdf" data-id="' + f.id + '">PDF</button> ' +
                     (f.stato === 'BOZZA' ? '<button class="btn btn-sm btn-primary btn-emetti" data-id="' + f.id + '">Emetti</button> ' : '') +
-                    (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-info btn-email" data-id="' + f.id + '" data-email="' + ENI.UI.escapeHtml((f.cliente && f.cliente.email) || '') + '" data-cli="' + ENI.UI.escapeHtml(cli) + '" data-num="' + ENI.UI.escapeHtml(f.numero_formattato) + '" data-tipodoc="' + f.tipo_documento + '" style="background:#17a2b8;border-color:#17a2b8;">Email</button> ' : '') +
+                    (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-info btn-email" data-id="' + f.id + '" data-email="' + ENI.UI.escapeHtml(dest.email || '') + '" data-cli="' + ENI.UI.escapeHtml(cli) + '" data-num="' + ENI.UI.escapeHtml(f.numero_formattato) + '" data-tipodoc="' + f.tipo_documento + '" style="background:#17a2b8;border-color:#17a2b8;">Email</button> ' : '') +
                     (f.stato === 'EMESSA' ? '<button class="btn btn-sm btn-success btn-paga" data-id="' + f.id + '">Pagata</button> ' : '') +
                     '<div class="fatt-dropdown" style="display:inline-block;position:relative;">' +
                         '<button class="btn btn-sm btn-outline fatt-dropdown-toggle" style="padding:0.2rem 0.5rem;">&#8943;</button>' +
                         '<div class="fatt-dropdown-menu" style="display:none;position:absolute;right:0;top:100%;background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:20;min-width:150px;">' +
                             (f.stato !== 'ANNULLATA' ? '<a class="fatt-dd-item btn-modifica" data-id="' + f.id + '">Modifica</a>' : '') +
-                            (f.stato === 'EMESSA' ? '<a class="fatt-dd-item btn-riemetti" data-id="' + f.id + '" data-tipo="' + f.tipo_documento + '" data-cliente-id="' + f.cliente_id + '" data-cliente-nome="' + ENI.UI.escapeHtml(cli) + '">' + (f.tipo_documento === 'FATTURA' ? '\u{2192} Cambia in Ricevuta' : '\u{2192} Cambia in Fattura') + '</a>' : '') +
+                            (f.stato === 'EMESSA' ? '<a class="fatt-dd-item btn-riemetti" data-id="' + f.id + '" data-tipo="' + f.tipo_documento + '" data-cliente-id="' + (f.cliente_id || '') + '" data-cliente-nome="' + ENI.UI.escapeHtml(cli) + '">' + (f.tipo_documento === 'FATTURA' ? '\u{2192} Cambia in Ricevuta' : '\u{2192} Cambia in Fattura') + '</a>' : '') +
                             (f.stato !== 'ANNULLATA' ? '<a class="fatt-dd-item btn-annulla" data-id="' + f.id + '" style="color:var(--color-danger);">Annulla</a>' : '') +
                         '</div>' +
                     '</div>' +
@@ -466,7 +468,7 @@ ENI.Fatturazione.Elenco = (function() {
             }
             if (senzaEmail.length) {
                 var nomiSenza = senzaEmail.map(function(f) {
-                    return f.numero_formattato + ' (' + (f.cliente ? f.cliente.nome_ragione_sociale : 'cliente sconosciuto') + ')';
+                    return f.numero_formattato + ' (' + (ENI.Utils.intestatario(f).nome || 'cliente sconosciuto') + ')';
                 });
                 msg += '\n\n⚠️ ' + senzaEmail.length + ' fatture senza email cliente saranno SALTATE — sistema l\'anagrafica prima:\n' +
                     nomiSenza.slice(0, 6).join('\n') +
@@ -506,11 +508,13 @@ ENI.Fatturazione.Elenco = (function() {
                 var tipoDoc = b.dataset.tipodoc === 'RICEVUTA' ? 'Ricevuta' : 'Fattura';
                 try {
                     var full = await ENI.API.getFatturaCompleta(fatturaId);
-                    var cliente = full.fattura.cliente;
-                    var email = cliente ? cliente.email : null;
-                    var cli = cliente ? cliente.nome_ragione_sociale : '';
+                    var dest = ENI.Utils.intestatario(full.fattura);
+                    var email = dest.email;
+                    var cli = dest.nome;
                     if (!email) {
-                        ENI.UI.toast('Il cliente "' + cli + '" non ha un indirizzo email in anagrafica. Impostalo prima.', 'danger');
+                        ENI.UI.toast(dest.occasionale
+                            ? 'Documento intestato a un cliente occasionale: nessuna email disponibile.'
+                            : 'Il cliente "' + cli + '" non ha un indirizzo email in anagrafica. Impostalo prima.', 'danger');
                         return;
                     }
                     if (!await ENI.UI.confirm('Inviare ' + tipoDoc + ' ' + num + ' a ' + email + '?')) return;
@@ -630,10 +634,28 @@ ENI.Fatturazione.Elenco = (function() {
                 '<input type="number" class="form-input" id="mod-fatt-numero" value="' + (f.numero || '') + '" min="1"></div>';
         }
 
+        // Intestatario libero (documenti senza anagrafica): editabile solo se bozza
+        var dest = ENI.Utils.intestatario(f);
+        var clienteHtml;
+        if (!dest.occasionale) {
+            clienteHtml = '<p>Cliente: <strong>' + ENI.UI.escapeHtml(dest.nome) + '</strong></p>';
+        } else if (isBozza) {
+            clienteHtml = '<div class="form-row">' +
+                '<div class="form-group" style="flex:2;"><label class="form-label">Intestatario (occasionale)</label>' +
+                    '<input type="text" class="form-input" id="mod-fatt-occ-nome" value="' + ENI.UI.escapeHtml(f.intestatario_nome || '') + '"></div>' +
+                '<div class="form-group" style="flex:2;"><label class="form-label">Indirizzo</label>' +
+                    '<input type="text" class="form-input" id="mod-fatt-occ-indirizzo" value="' + ENI.UI.escapeHtml(f.intestatario_indirizzo || '') + '"></div>' +
+                '<div class="form-group" style="flex:1;"><label class="form-label">C.F. / COE</label>' +
+                    '<input type="text" class="form-input" id="mod-fatt-occ-cf" value="' + ENI.UI.escapeHtml(f.intestatario_cf || '') + '"></div>' +
+            '</div>';
+        } else {
+            clienteHtml = '<p>Intestatario: <strong>' + ENI.UI.escapeHtml(dest.nome) + '</strong> <span class="text-xs text-muted">(occasionale)</span></p>';
+        }
+
         var body =
             '<form id="form-mod-fatt">' +
                 '<p><strong>' + (f.tipo_documento === 'RICEVUTA' ? 'Ricevuta' : 'Fattura') + ' ' + f.numero_formattato + '</strong> &mdash; Stato: ' + f.stato + '</p>' +
-                '<p>Cliente: <strong>' + ENI.UI.escapeHtml(f.cliente ? f.cliente.nome_ragione_sociale : '') + '</strong></p>' +
+                clienteHtml +
                 '<div class="form-row">' +
                     numField +
                     tipoDocOpts +
@@ -688,6 +710,19 @@ ENI.Fatturazione.Elenco = (function() {
                 modalita_pagamento: modal.querySelector('#mod-fatt-modpag').value || null,
                 note: modal.querySelector('#mod-fatt-note').value.trim() || null
             };
+
+            // Intestatario occasionale (solo bozze senza anagrafica)
+            var occNomeInput = modal.querySelector('#mod-fatt-occ-nome');
+            if (occNomeInput) {
+                var occNome = occNomeInput.value.trim();
+                if (!occNome) {
+                    ENI.UI.toast('L\'intestatario non può essere vuoto', 'danger');
+                    return;
+                }
+                dati.intestatario_nome = occNome;
+                dati.intestatario_indirizzo = modal.querySelector('#mod-fatt-occ-indirizzo').value.trim() || null;
+                dati.intestatario_cf = modal.querySelector('#mod-fatt-occ-cf').value.trim() || null;
+            }
 
             var nuovoTipoDoc = null;
             if (isBozza) {
