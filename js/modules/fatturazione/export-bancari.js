@@ -23,6 +23,7 @@ ENI.Fatturazione.ExportBancari = (function() {
             '<div class="card"><div class="card-body">' +
             '<h3 class="mb-3">Export bancari (RIBA / RID)</h3>' +
             '<div id="exp-non-partite"></div>' +
+            '<div id="exp-clienti-rischio"></div>' +
             '<div class="form-row" style="align-items:flex-end;gap:0.5rem;margin-bottom:1rem;">' +
                 '<div class="form-group"><label class="form-label">Mese</label>' +
                     '<select class="form-select" id="exp-mese">' + _meseOptions() + '</select></div>' +
@@ -44,6 +45,153 @@ ENI.Fatturazione.ExportBancari = (function() {
         document.getElementById('exp-carica').addEventListener('click', _caricaFatture);
         await _caricaFatture();
         _caricaNonPartite();
+        _caricaClientiRischio();
+    }
+
+    // ============================================================
+    // CLIENTI A RISCHIO (problema a monte, prima che diventi una fattura)
+    // ============================================================
+    // Un cliente con anagrafica RID/RIBA ma senza i dati per incassare non da' fastidio
+    // finche' non gli emetti la prima fattura: da quel momento viene scartato ogni mese.
+    // Qui si chiude alla radice, sull'anagrafica, invece che fattura per fattura.
+    var _clientiRischio = [];
+
+    async function _caricaClientiRischio() {
+        var box = document.getElementById('exp-clienti-rischio');
+        if (!box) return;
+        try {
+            var tutti = await ENI.API.getClienti();
+            _clientiRischio = (tutti || []).filter(function(c) {
+                var m = c.modalita_pagamento_fattura;
+                if (m !== 'RID_SDD' && m !== 'RIBA') return false;
+                return _problemiCliente(c, m === 'RID_SDD' ? 'rid' : 'riba').length > 0;
+            });
+        } catch(e) {
+            box.innerHTML = '<p class="text-danger text-xs">Impossibile controllare i clienti a rischio: ' +
+                ENI.UI.escapeHtml(e.message) + '</p>';
+            return;
+        }
+        box.innerHTML = _renderClientiRischio();
+        _attachClientiRischioHandlers();
+    }
+
+    function _renderClientiRischio() {
+        if (!_clientiRischio.length) return '';
+
+        var rows = _clientiRischio.map(function(c, i) {
+            var isRid = c.modalita_pagamento_fattura === 'RID_SDD';
+            var problemi = _problemiCliente(c, isRid ? 'rid' : 'riba');
+            // Campi per completare i dati mancanti senza uscire da qui
+            var campi = isRid ?
+                '<input type="text" class="form-input cr-mandato" data-idx="' + i + '" maxlength="50" ' +
+                    'placeholder="codice mandato" style="min-width:180px;">' :
+                '<input type="text" class="form-input cr-abi" data-idx="' + i + '" maxlength="5" ' +
+                    'placeholder="ABI" style="max-width:80px;"> ' +
+                '<input type="text" class="form-input cr-cab" data-idx="' + i + '" maxlength="5" ' +
+                    'placeholder="CAB" style="max-width:80px;">';
+            return '<tr>' +
+                '<td><input type="checkbox" class="cr-check" data-idx="' + i + '"></td>' +
+                '<td>' + ENI.UI.escapeHtml(c.nome_ragione_sociale || '') + '</td>' +
+                '<td class="text-xs">' + (isRid ? 'RID / SDD' : 'RI.BA.') + '</td>' +
+                '<td class="text-xs text-danger">' + ENI.UI.escapeHtml(problemi.join(', ')) + '</td>' +
+                '<td>' + campi + '</td>' +
+            '</tr>';
+        }).join('');
+
+        return '<details style="background:var(--color-warning-bg,#fff3cd);border-left:3px solid var(--color-warning,#ffc107);' +
+            'padding:0.75rem;margin-bottom:1rem;border-radius:4px;">' +
+            '<summary style="cursor:pointer;font-weight:600;">⚠ ' + _clientiRischio.length +
+                ' clienti a rischio: anagrafica RID/RIBA ma dati per incassare incompleti</summary>' +
+            '<div class="text-xs mt-2">Non stanno causando danni adesso, ma ognuno verrà scartato alla sua prima fattura. ' +
+                'Se il mandato esiste in banca, scrivilo qui e resta in RID; altrimenti spostalo a un\'altra modalità.</div>' +
+            '<div class="table-wrapper mt-2"><table class="table table-sm">' +
+            '<thead><tr><th style="width:30px;"><input type="checkbox" id="cr-check-all"></th>' +
+            '<th>Cliente</th><th>Modalità</th><th>Manca</th><th>Completa qui</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div>' +
+            '<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;">' +
+                '<button class="btn btn-primary btn-sm" id="cr-salva-dati">Salva i dati compilati</button>' +
+                '<span class="text-xs" style="margin-left:1rem;">oppure sposta le selezionate a:</span>' +
+                '<select class="form-select" id="cr-modalita" style="max-width:170px;">' +
+                    ['BONIFICO','CONTANTI','FINE_MESE','RIBA','RID_SDD'].map(function(v) {
+                        return '<option value="' + v + '">' + v + '</option>';
+                    }).join('') +
+                '</select>' +
+                '<button class="btn btn-outline btn-sm" id="cr-cambia-modalita">Cambia modalità</button>' +
+            '</div></details>';
+    }
+
+    function _attachClientiRischioHandlers() {
+        var all = document.getElementById('cr-check-all');
+        if (all) {
+            all.addEventListener('change', function() {
+                document.querySelectorAll('.cr-check').forEach(function(cb) { cb.checked = all.checked; });
+            });
+        }
+        var btnSalva = document.getElementById('cr-salva-dati');
+        if (btnSalva) btnSalva.addEventListener('click', _salvaDatiClientiRischio);
+        var btnMod = document.getElementById('cr-cambia-modalita');
+        if (btnMod) btnMod.addEventListener('click', _cambiaModalitaClientiRischio);
+    }
+
+    async function _salvaDatiClientiRischio() {
+        var daSalvare = [];
+        document.querySelectorAll('.cr-mandato').forEach(function(inp) {
+            var v = inp.value.trim();
+            if (v) daSalvare.push({ cliente: _clientiRischio[parseInt(inp.dataset.idx, 10)], dati: { mandate_id: v } });
+        });
+        document.querySelectorAll('.cr-abi').forEach(function(inp) {
+            var idx = parseInt(inp.dataset.idx, 10);
+            var cab = document.querySelector('.cr-cab[data-idx="' + idx + '"]');
+            var abi = inp.value.trim(), cabV = cab ? cab.value.trim() : '';
+            if (abi && cabV) daSalvare.push({ cliente: _clientiRischio[idx], dati: { abi_banca: abi, cab_banca: cabV } });
+        });
+
+        if (!daSalvare.length) { ENI.UI.toast('Nessun dato compilato', 'danger'); return; }
+
+        var falliti = [];
+        for (var i = 0; i < daSalvare.length; i++) {
+            try {
+                await ENI.API.aggiornaCliente(daSalvare[i].cliente.id, daSalvare[i].dati);
+            } catch(e) {
+                falliti.push(daSalvare[i].cliente.nome_ragione_sociale + ': ' + e.message);
+            }
+        }
+        ENI.State.cacheClear();
+        if (falliti.length) ENI.UI.toast('Salvato con errori: ' + falliti.join(' | '), 'danger');
+        else ENI.UI.toast('Aggiornati ' + daSalvare.length + (daSalvare.length === 1 ? ' cliente' : ' clienti'), 'success');
+
+        await _caricaFatture();
+        await _caricaNonPartite();
+        await _caricaClientiRischio();
+    }
+
+    async function _cambiaModalitaClientiRischio() {
+        var selez = [];
+        document.querySelectorAll('.cr-check').forEach(function(cb) {
+            if (cb.checked) selez.push(_clientiRischio[parseInt(cb.dataset.idx, 10)]);
+        });
+        if (!selez.length) { ENI.UI.toast('Nessun cliente selezionato', 'danger'); return; }
+
+        var nuova = document.getElementById('cr-modalita').value;
+        var msg = 'Spostare ' + selez.length + (selez.length === 1 ? ' cliente' : ' clienti') +
+            ' alla modalità "' + nuova + '"?\n\n' +
+            selez.map(function(c) { return '• ' + c.nome_ragione_sociale; }).join('\n') +
+            '\n\nCambia solo l\'anagrafica: vale dalle prossime fatture, quelle già emesse restano come sono.';
+        if (!await ENI.UI.confirm(msg)) return;
+
+        var falliti = [];
+        for (var i = 0; i < selez.length; i++) {
+            try {
+                await ENI.API.aggiornaCliente(selez[i].id, { modalita_pagamento_fattura: nuova });
+            } catch(e) {
+                falliti.push(selez[i].nome_ragione_sociale + ': ' + e.message);
+            }
+        }
+        ENI.State.cacheClear();
+        if (falliti.length) ENI.UI.toast('Completato con errori: ' + falliti.join(' | '), 'danger');
+        else ENI.UI.toast('Spostati ' + selez.length + (selez.length === 1 ? ' cliente' : ' clienti'), 'success');
+
+        await _caricaClientiRischio();
     }
 
     // ============================================================
@@ -79,7 +227,7 @@ ENI.Fatturazione.ExportBancari = (function() {
             '</div>';
 
         if (!_nonPartite.length) {
-            return '<div style="background:var(--bg-success-subtle,#d1e7dd);border-left:3px solid var(--success,#198754);' +
+            return '<div style="background:var(--color-success-bg,#d1e7dd);border-left:3px solid var(--color-success,#198754);' +
                 'padding:0.75rem;margin-bottom:1rem;border-radius:4px;">' +
                 '<strong>✓ Nessuna disposizione a rischio: tutte le fatture RID/RIBA sono incassabili</strong>' + nota + '</div>';
         }
@@ -115,7 +263,7 @@ ENI.Fatturazione.ExportBancari = (function() {
                     'Verranno escluse al prossimo export se non sistemi i dati. ') +
             'Puoi convertirle a un\'altra modalità di pagamento qui sotto.';
 
-        return '<div style="background:var(--bg-danger-subtle,#f8d7da);border-left:3px solid var(--danger,#dc3545);' +
+        return '<div style="background:var(--color-danger-bg,#f8d7da);border-left:3px solid var(--color-danger,#dc3545);' +
             'padding:0.75rem;margin-bottom:1rem;border-radius:4px;">' +
             '<strong>⚠ ' + _nonPartite.length +
             (_nonPartite.length === 1 ? ' disposizione non verrà incassata' : ' disposizioni non verranno incassate') +
@@ -307,7 +455,7 @@ ENI.Fatturazione.ExportBancari = (function() {
         var ko = _partiziona(fatture, prefix).ko;
         if (!ko.length) return '';
         var tot = ko.reduce(function(s, x) { return s + (parseFloat(x.fattura.totale) || 0); }, 0);
-        return '<div style="background:var(--bg-danger-subtle,#f8d7da);border-left:3px solid var(--danger,#dc3545);' +
+        return '<div style="background:var(--color-danger-bg,#f8d7da);border-left:3px solid var(--color-danger,#dc3545);' +
             'padding:0.5rem 0.75rem;margin:0 0 1.5rem;border-radius:4px;">' +
             '<strong>⚠ ' + ko.length + (ko.length === 1 ? ' disposizione esclusa' : ' disposizioni escluse') +
             ' per € ' + _fmtNum(tot) + '</strong>' +
@@ -328,7 +476,7 @@ ENI.Fatturazione.ExportBancari = (function() {
             ' <span class="badge badge-success" style="font-weight:normal;">\u2713 Gi\u00E0 esportato</span></h4>';
 
         // Card riassuntiva
-        html += '<div class="card" style="background:var(--bg-success-subtle,#d1e7dd);border:1px solid var(--success,#198754);padding:1rem;margin-bottom:1rem;">' +
+        html += '<div class="card" style="background:var(--color-success-bg,#d1e7dd);border:1px solid var(--color-success,#198754);padding:1rem;margin-bottom:1rem;">' +
             '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;">' +
                 '<div><div class="text-xs text-muted">Disposizioni</div><div style="font-size:1.3rem;font-weight:600;">' + (log.num_disposizioni || 0) + '</div></div>' +
                 '<div><div class="text-xs text-muted">Totale</div><div style="font-size:1.3rem;font-weight:600;">\u20AC ' + _fmtNum(log.totale || 0) + '</div></div>' +
@@ -367,7 +515,7 @@ ENI.Fatturazione.ExportBancari = (function() {
         // Disposizioni del mese rimaste fuori dal file gia' inviato in banca
         if (escluse.length) {
             var totEsc = escluse.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
-            html += '<div style="background:var(--bg-danger-subtle,#f8d7da);border-left:3px solid var(--danger,#dc3545);' +
+            html += '<div style="background:var(--color-danger-bg,#f8d7da);border-left:3px solid var(--color-danger,#dc3545);' +
                 'padding:0.75rem;margin:0.5rem 0 1rem;border-radius:4px;">' +
                 '<strong>⚠ ' + escluse.length + (escluse.length === 1 ? ' fattura non è finita' : ' fatture non sono finite') +
                 ' in questo file — € ' + _fmtNum(totEsc) + ' mai addebitati</strong>' +
@@ -397,7 +545,7 @@ ENI.Fatturazione.ExportBancari = (function() {
         var rows = fatture.map(function(f, i) {
             var cli = f.cliente || {};
             var problemi = _problemiCliente(cli, prefix);
-            var cls = problemi.length ? 'style="background:var(--bg-danger-subtle);"' : '';
+            var cls = problemi.length ? 'style="background:var(--color-danger-bg);"' : '';
 
             // Colonna "Coordinate": IBAN per RID, ABI/CAB per RIBA
             var coordinate = prefix === 'rid' ?
