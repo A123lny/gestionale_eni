@@ -79,6 +79,16 @@ WHERE tipo = 'RIBA' AND mese = 4 AND anno = 2026;
 
 Alla prossima apertura del mese, vedrai di nuovo la vista aperta.
 
+### Disposizioni non partite
+
+In cima a **Export bancari** c'è un riepilogo trasversale delle fatture RID/RIBA emesse che **non** sono finite nel file caricato in banca. Il confronto è fra `export_bancari_log.fatture_ids` (gli ID realmente scritti nel tracciato) e le fatture del mese: non è una deduzione dai dati anagrafici, è il contenuto del file.
+
+Da lì puoi convertire le fatture ad altra modalità (bonifico, contanti…) in blocco, e ti viene chiesto se aggiornare anche l'anagrafica cliente — se rispondi No, il mese dopo il cliente si ripresenta nella stessa sezione.
+
+Due limiti da tenere a mente:
+- **Copre solo i mesi presenti in `export_bancari_log`** (la tabella nasce con la migration 016, quindi da aprile 2026). Per i mesi precedenti il dato non esiste e non è ricostruibile.
+- **Mancato invio ≠ mancato incasso.** Gli esiti e gli insoluti restituiti dalla banca non vengono importati: una disposizione partita e poi tornata insoluta qui risulta "andata".
+
 ---
 
 ## 3. Pre-requisiti per generare i file
@@ -293,6 +303,16 @@ Mexal mette il `0` di chiusura disposizione a pos 100 del record 70 (9 prefisso 
 
 ### Footer 119 byte (NO leading space)
 **La fix più subtle**. Total file = multiplo di 120. Header = 121 (con leading space), data records = 120 ognuno, footer = 119 (senza leading space). Originario codice generava footer da 120 byte con leading space, rendendo il file 4441 byte (1 byte extra) → "errore formale" della banca.
+
+### Disposizioni escluse in silenzio → mancato incasso invisibile
+Giugno 2026: il file RID è partito con 12 disposizioni su 14 fatture RID emesse. Gattei Ing. Marco (€ 182,26) e Idraulica Mazza (€ 273,31) erano privi di `mandate_id`, quindi la checkbox era disabilitata — ma **nulla lo segnalava a colpo d'occhio** e il file è stato caricato in banca convinto fosse completo. € 455,57 mai addebitati, scoperti solo ad agosto.
+
+Causa a monte: i `mandate_id` sono stati importati una sola volta (`012b_import_mandati_rid.sql`, 19 clienti). Ogni cliente nuovo impostato su `RID_SDD` nasce senza mandato — ad agosto 2026 sono 57.
+
+Fix: avviso "N disposizioni escluse per € X" sotto il totale di ogni sezione, più la vista "Disposizioni non partite" (§2).
+
+### La riscarica ignorava i controlli
+`_generaERegistra('RID', rid)` riceveva **tutte** le fatture RID del mese, senza validazione e ignorando le spunte. Sistemare il mandato di un cliente e premere "Riscarica" avrebbe reintrodotto nel file gli altri clienti incompleti con `<MndtId></MndtId>` vuoto → rifiuto dell'**intero flusso**, non della singola riga. Fix: `_problemiCliente()` come regola unica condivisa fra anteprima e riscarica, più conferma che elenca gli esclusi.
 
 ### Email SMTP via Alice non scrive in "Posta inviata"
 Diversamente da Mexal, l'invio via SMTP `nodemailer` non popola la cartella Sent del webmail. Risolto con IMAP append best-effort dopo SMTP send (vedi `print-server/server.js`).

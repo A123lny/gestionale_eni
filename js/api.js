@@ -1873,6 +1873,44 @@ ENI.API = (function() {
         return r.data || [];
     }
 
+    // Disposizioni "non partite": fatture RID/RIBA emesse che NON compaiono in fatture_ids
+    // del file effettivamente generato per quel mese. Il log conserva gli ID finiti nel
+    // tracciato, quindi la differenza e' il contenuto reale del file, non una deduzione.
+    // LIMITI: copre solo i mesi presenti in export_bancari_log (la tabella nasce con la
+    // migration 016); dice cosa non e' stato inviato, non cosa non e' stato incassato
+    // (gli esiti/insoluti della banca non vengono importati).
+    async function getDisposizioniNonPartite() {
+        var r = await getClient()
+            .from('export_bancari_log')
+            .select('*')
+            .order('anno', { ascending: false })
+            .order('mese', { ascending: false });
+        if (r.error) throw new Error(r.error.message);
+        var logs = r.data || [];
+
+        var cache = {};   // un fetch per periodo: RID e RIBA condividono lo stesso mese
+        var out = [];
+        for (var i = 0; i < logs.length; i++) {
+            var log = logs[i];
+            var ids = log.fatture_ids || [];
+            // Log senza dettaglio (versioni precedenti): non possiamo dedurre nulla, meglio
+            // saltarlo che segnalare come "non partite" fatture che in realta' sono passate.
+            if (!ids.length) continue;
+
+            var chiave = log.anno + '-' + log.mese;
+            if (!cache[chiave]) {
+                cache[chiave] = await getFatture({ anno: log.anno, mese_riferimento: log.mese, stato: 'EMESSA' });
+            }
+            var modalita = log.tipo === 'RID' ? 'RID_SDD' : 'RIBA';
+            cache[chiave].forEach(function(f) {
+                if (f.modalita_pagamento !== modalita) return;
+                if (ids.indexOf(f.id) !== -1) return;
+                out.push({ tipo: log.tipo, mese: log.mese, anno: log.anno, esportato_at: log.prima_export_at, fattura: f });
+            });
+        }
+        return out;
+    }
+
     // Upsert: incrementa num_export se gia' esiste, altrimenti crea con num_export=1
     async function upsertExportBancariLog(data) {
         // data: { tipo, mese, anno, num_disposizioni, totale, banca_iban, fatture_ids }
@@ -2187,6 +2225,7 @@ ENI.API = (function() {
         registraImportEni: registraImportEni,
         aggiungiAliasCliente: aggiungiAliasCliente,
         getExportBancariLog: getExportBancariLog,
+        getDisposizioniNonPartite: getDisposizioniNonPartite,
         upsertExportBancariLog: upsertExportBancariLog,
         // SMAC
         getRiepilogoSmac: getRiepilogoSmac,

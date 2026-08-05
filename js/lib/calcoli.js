@@ -194,3 +194,8 @@ ENI.Calcoli = (function() {
         calcolaStatoProdotto: calcolaStatoProdotto
     };
 })();
+
+// Export per Node (test con `node --test`). Il browser ignora questo blocco.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = ENI.Calcoli;
+}
