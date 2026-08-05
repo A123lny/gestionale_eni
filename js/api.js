@@ -1606,6 +1606,7 @@ ENI.API = (function() {
         if (filtri.mese_riferimento) query = query.eq('mese_riferimento', filtri.mese_riferimento);
         if (filtri.cliente_id) query = query.eq('cliente_id', filtri.cliente_id);
         if (filtri.stato) query = query.eq('stato', filtri.stato);
+        if (filtri.modalita_in) query = query.in('modalita_pagamento', filtri.modalita_in);
         if (filtri.tipo) query = query.eq('tipo', filtri.tipo);
         if (filtri.tipo_documento) query = query.eq('tipo_documento', filtri.tipo_documento);
         if (filtri.import_eni_log_id) query = query.eq('import_eni_log_id', filtri.import_eni_log_id);
@@ -1852,41 +1853,49 @@ ENI.API = (function() {
         return r.data || [];
     }
 
-    // Disposizioni "non partite": fatture RID/RIBA emesse che NON compaiono in fatture_ids
-    // del file effettivamente generato per quel mese. Il log conserva gli ID finiti nel
-    // tracciato, quindi la differenza e' il contenuto reale del file, non una deduzione.
-    // LIMITI: copre solo i mesi presenti in export_bancari_log (la tabella nasce con la
-    // migration 016); dice cosa non e' stato inviato, non cosa non e' stato incassato
-    // (gli esiti/insoluti della banca non vengono importati).
+    // Tutte le fatture RID/RIBA emesse che rischiano di non essere incassate, su ogni mese.
+    // Due situazioni distinte, restituite insieme:
+    //  - 'non_partita'  : il file per quel mese e' gia' stato generato e la fattura NON e'
+    //                     fra i fatture_ids del log, quindi in banca non e' mai arrivata.
+    //                     E' il contenuto reale del tracciato, non una deduzione.
+    //  - 'da_esportare' : il mese non e' ancora stato esportato. Qui la fattura e' solo
+    //                     "candidata": sta al chiamante scartare quelle con dati a posto,
+    //                     perche' la regola di esportabilita' vive nel modulo export.
+    // LIMITE: dice cosa non e' (o non sara') inviato, non cosa non e' stato incassato —
+    // gli esiti/insoluti restituiti dalla banca non vengono importati.
     async function getDisposizioniNonPartite() {
-        var r = await getClient()
-            .from('export_bancari_log')
-            .select('*')
-            .order('anno', { ascending: false })
-            .order('mese', { ascending: false });
+        var r = await getClient().from('export_bancari_log').select('*');
         if (r.error) throw new Error(r.error.message);
-        var logs = r.data || [];
 
-        var cache = {};   // un fetch per periodo: RID e RIBA condividono lo stesso mese
+        // Indicizza i log per periodo+tipo: un solo passaggio sulle fatture, nessuna query per mese.
+        var perChiave = {};
+        (r.data || []).forEach(function(log) { perChiave[log.anno + '-' + log.mese + '-' + log.tipo] = log; });
+
+        var fatture = await getFatture({
+            stato: 'EMESSA',
+            modalita_in: ['RID_SDD', 'RIBA']
+        });
+
         var out = [];
-        for (var i = 0; i < logs.length; i++) {
-            var log = logs[i];
-            var ids = log.fatture_ids || [];
-            // Log senza dettaglio (versioni precedenti): non possiamo dedurre nulla, meglio
-            // saltarlo che segnalare come "non partite" fatture che in realta' sono passate.
-            if (!ids.length) continue;
+        fatture.forEach(function(f) {
+            var tipo = f.modalita_pagamento === 'RID_SDD' ? 'RID' : 'RIBA';
+            var log = perChiave[f.anno + '-' + f.mese_riferimento + '-' + tipo];
 
-            var chiave = log.anno + '-' + log.mese;
-            if (!cache[chiave]) {
-                cache[chiave] = await getFatture({ anno: log.anno, mese_riferimento: log.mese, stato: 'EMESSA' });
+            if (!log) {
+                out.push({ situazione: 'da_esportare', tipo: tipo, mese: f.mese_riferimento, anno: f.anno, fattura: f });
+                return;
             }
-            var modalita = log.tipo === 'RID' ? 'RID_SDD' : 'RIBA';
-            cache[chiave].forEach(function(f) {
-                if (f.modalita_pagamento !== modalita) return;
-                if (ids.indexOf(f.id) !== -1) return;
-                out.push({ tipo: log.tipo, mese: log.mese, anno: log.anno, esportato_at: log.prima_export_at, fattura: f });
-            });
-        }
+            // Log senza dettaglio (versioni precedenti): non deducibile, meglio tacere che
+            // segnalare come "non partite" fatture che in realta' sono passate.
+            var ids = log.fatture_ids || [];
+            if (!ids.length) return;
+            if (ids.indexOf(f.id) !== -1) return;
+
+            out.push({ situazione: 'non_partita', tipo: tipo, mese: f.mese_riferimento, anno: f.anno,
+                       esportato_at: log.prima_export_at, fattura: f });
+        });
+
+        out.sort(function(a, b) { return (b.anno - a.anno) || (b.mese - a.mese); });
         return out;
     }
 

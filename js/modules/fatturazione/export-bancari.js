@@ -55,7 +55,12 @@ ENI.Fatturazione.ExportBancari = (function() {
         var box = document.getElementById('exp-non-partite');
         if (!box) return;
         try {
-            _nonPartite = await ENI.API.getDisposizioniNonPartite();
+            // Per i mesi gia' esportati l'API e' certa (confronto col file). Per quelli ancora
+            // da esportare restituisce candidate: la regola di esportabilita' e' qui, quindi
+            // scartiamo noi quelle coi dati a posto, che partiranno regolarmente.
+            _nonPartite = (await ENI.API.getDisposizioniNonPartite()).filter(function(x) {
+                return x.situazione === 'non_partita' || _problemiCliente(x.fattura.cliente, x.tipo).length > 0;
+            });
         } catch(e) {
             box.innerHTML = '<p class="text-danger text-xs">Impossibile verificare le disposizioni non partite: ' +
                 ENI.UI.escapeHtml(e.message) + '</p>';
@@ -67,28 +72,34 @@ ENI.Fatturazione.ExportBancari = (function() {
 
     function _renderNonPartite() {
         var nota = '<div class="text-xs text-muted mt-2">' +
-            'Il controllo confronta gli ID salvati nel log di ogni export con le fatture del mese, ' +
-            'quindi riflette il contenuto reale dei file inviati. Copre solo i mesi già esportati ' +
-            'e riguarda i mancati <em>invii</em>: gli insoluti restituiti dalla banca non sono tracciati.' +
+            'Per i mesi già esportati il confronto è con gli ID salvati nel log, quindi riflette ' +
+            'il contenuto reale del file inviato; per i mesi ancora da esportare sono le fatture ' +
+            'che verranno scartate. In entrambi i casi si parla di mancati <em>invii</em>: gli ' +
+            'insoluti restituiti dalla banca non sono tracciati.' +
             '</div>';
 
         if (!_nonPartite.length) {
             return '<div style="background:var(--bg-success-subtle,#d1e7dd);border-left:3px solid var(--success,#198754);' +
                 'padding:0.75rem;margin-bottom:1rem;border-radius:4px;">' +
-                '<strong>✓ Nessuna disposizione rimasta fuori dai file esportati</strong>' + nota + '</div>';
+                '<strong>✓ Nessuna disposizione a rischio: tutte le fatture RID/RIBA sono incassabili</strong>' + nota + '</div>';
         }
 
         var tot = _nonPartite.reduce(function(s, x) { return s + (parseFloat(x.fattura.totale) || 0); }, 0);
+        var nMai = _nonPartite.filter(function(x) { return x.situazione === 'non_partita'; }).length;
         var nomi = ['','Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 
         var rows = _nonPartite.map(function(x, i) {
             var f = x.fattura;
             var cli = f.cliente || {};
             var problemi = _problemiCliente(cli, x.tipo);
+            var stato = x.situazione === 'non_partita' ?
+                '<span class="badge badge-danger">mai partita</span>' :
+                '<span class="badge badge-warning">verrà esclusa</span>';
             return '<tr>' +
                 '<td><input type="checkbox" class="np-check" data-idx="' + i + '"></td>' +
                 '<td class="text-xs">' + nomi[x.mese] + ' ' + x.anno + '</td>' +
                 '<td class="text-xs">' + x.tipo + '</td>' +
+                '<td class="text-xs">' + stato + '</td>' +
                 '<td>' + ENI.UI.escapeHtml(f.numero_formattato) + '</td>' +
                 '<td>' + ENI.UI.escapeHtml(cli.nome_ragione_sociale || '') + '</td>' +
                 '<td class="text-right">€ ' + _fmtNum(f.totale) + '</td>' +
@@ -98,15 +109,21 @@ ENI.Fatturazione.ExportBancari = (function() {
             '</tr>';
         }).join('');
 
+        var dettaglio = nMai === _nonPartite.length ?
+            'Non sono finite nel file caricato in banca: vanno incassate in altro modo.' :
+            (nMai ? nMai + ' non sono mai partite (file già inviato), le altre verranno escluse al prossimo export. ' :
+                    'Verranno escluse al prossimo export se non sistemi i dati. ') +
+            'Puoi convertirle a un\'altra modalità di pagamento qui sotto.';
+
         return '<div style="background:var(--bg-danger-subtle,#f8d7da);border-left:3px solid var(--danger,#dc3545);' +
             'padding:0.75rem;margin-bottom:1rem;border-radius:4px;">' +
             '<strong>⚠ ' + _nonPartite.length +
-            (_nonPartite.length === 1 ? ' disposizione non è mai partita' : ' disposizioni non sono mai partite') +
+            (_nonPartite.length === 1 ? ' disposizione non verrà incassata' : ' disposizioni non verranno incassate') +
             ' — € ' + _fmtNum(tot) + '</strong>' +
-            '<div class="text-xs">Erano fatture RID/RIBA emesse, ma non sono finite nel file caricato in banca. Vanno incassate in altro modo.</div>' +
+            '<div class="text-xs">' + dettaglio + '</div>' +
             '<div class="table-wrapper mt-2"><table class="table table-sm">' +
             '<thead><tr><th style="width:30px;"><input type="checkbox" id="np-check-all"></th>' +
-            '<th>Periodo</th><th>Tipo</th><th>N°</th><th>Cliente</th>' +
+            '<th>Periodo</th><th>Tipo</th><th>Stato</th><th>N°</th><th>Cliente</th>' +
             '<th class="text-right">Importo</th><th>Motivo</th></tr></thead>' +
             '<tbody>' + rows + '</tbody></table></div>' +
             '<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;">' +
