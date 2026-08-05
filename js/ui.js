@@ -129,7 +129,8 @@ ENI.UI = (function() {
 
             var backdrop = showModal({
                 title: title,
-                body: '<p>' + _escapeHtml(message) + '</p>',
+                // pre-line: i messaggi passano gli a capo come \n (elenchi di righe escluse, ecc.)
+                body: '<p style="white-space:pre-line;">' + _escapeHtml(message) + '</p>',
                 footer:
                     '<button class="btn btn-outline" data-action="cancel">' + _escapeHtml(cancelText) + '</button>' +
                     '<button class="btn ' + (danger ? 'btn-danger' : 'btn-primary') + '" data-action="confirm">' + _escapeHtml(confirmText) + '</button>'

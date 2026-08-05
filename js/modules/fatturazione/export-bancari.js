@@ -22,6 +22,7 @@ ENI.Fatturazione.ExportBancari = (function() {
         container.innerHTML =
             '<div class="card"><div class="card-body">' +
             '<h3 class="mb-3">Export bancari (RIBA / RID)</h3>' +
+            '<div id="exp-non-partite"></div>' +
             '<div class="form-row" style="align-items:flex-end;gap:0.5rem;margin-bottom:1rem;">' +
                 '<div class="form-group"><label class="form-label">Mese</label>' +
                     '<select class="form-select" id="exp-mese">' + _meseOptions() + '</select></div>' +
@@ -42,6 +43,152 @@ ENI.Fatturazione.ExportBancari = (function() {
 
         document.getElementById('exp-carica').addEventListener('click', _caricaFatture);
         await _caricaFatture();
+        _caricaNonPartite();
+    }
+
+    // ============================================================
+    // DISPOSIZIONI NON PARTITE (riepilogo trasversale ai mesi)
+    // ============================================================
+    var _nonPartite = [];
+
+    async function _caricaNonPartite() {
+        var box = document.getElementById('exp-non-partite');
+        if (!box) return;
+        try {
+            _nonPartite = await ENI.API.getDisposizioniNonPartite();
+        } catch(e) {
+            box.innerHTML = '<p class="text-danger text-xs">Impossibile verificare le disposizioni non partite: ' +
+                ENI.UI.escapeHtml(e.message) + '</p>';
+            return;
+        }
+        box.innerHTML = _renderNonPartite();
+        _attachNonPartiteHandlers();
+    }
+
+    function _renderNonPartite() {
+        var nota = '<div class="text-xs text-muted mt-2">' +
+            'Il controllo confronta gli ID salvati nel log di ogni export con le fatture del mese, ' +
+            'quindi riflette il contenuto reale dei file inviati. Copre solo i mesi già esportati ' +
+            'e riguarda i mancati <em>invii</em>: gli insoluti restituiti dalla banca non sono tracciati.' +
+            '</div>';
+
+        if (!_nonPartite.length) {
+            return '<div style="background:var(--bg-success-subtle,#d1e7dd);border-left:3px solid var(--success,#198754);' +
+                'padding:0.75rem;margin-bottom:1rem;border-radius:4px;">' +
+                '<strong>✓ Nessuna disposizione rimasta fuori dai file esportati</strong>' + nota + '</div>';
+        }
+
+        var tot = _nonPartite.reduce(function(s, x) { return s + (parseFloat(x.fattura.totale) || 0); }, 0);
+        var nomi = ['','Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+
+        var rows = _nonPartite.map(function(x, i) {
+            var f = x.fattura;
+            var cli = f.cliente || {};
+            var problemi = _problemiCliente(cli, x.tipo);
+            return '<tr>' +
+                '<td><input type="checkbox" class="np-check" data-idx="' + i + '"></td>' +
+                '<td class="text-xs">' + nomi[x.mese] + ' ' + x.anno + '</td>' +
+                '<td class="text-xs">' + x.tipo + '</td>' +
+                '<td>' + ENI.UI.escapeHtml(f.numero_formattato) + '</td>' +
+                '<td>' + ENI.UI.escapeHtml(cli.nome_ragione_sociale || '') + '</td>' +
+                '<td class="text-right">€ ' + _fmtNum(f.totale) + '</td>' +
+                '<td class="text-xs">' + (problemi.length ?
+                    '<span class="text-danger">' + ENI.UI.escapeHtml(problemi.join(', ')) + '</span>' :
+                    '<span class="text-success">dati ora completi</span>') + '</td>' +
+            '</tr>';
+        }).join('');
+
+        return '<div style="background:var(--bg-danger-subtle,#f8d7da);border-left:3px solid var(--danger,#dc3545);' +
+            'padding:0.75rem;margin-bottom:1rem;border-radius:4px;">' +
+            '<strong>⚠ ' + _nonPartite.length +
+            (_nonPartite.length === 1 ? ' disposizione non è mai partita' : ' disposizioni non sono mai partite') +
+            ' — € ' + _fmtNum(tot) + '</strong>' +
+            '<div class="text-xs">Erano fatture RID/RIBA emesse, ma non sono finite nel file caricato in banca. Vanno incassate in altro modo.</div>' +
+            '<div class="table-wrapper mt-2"><table class="table table-sm">' +
+            '<thead><tr><th style="width:30px;"><input type="checkbox" id="np-check-all"></th>' +
+            '<th>Periodo</th><th>Tipo</th><th>N°</th><th>Cliente</th>' +
+            '<th class="text-right">Importo</th><th>Motivo</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div>' +
+            '<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;">' +
+                '<span class="text-xs">Converti le selezionate a:</span>' +
+                '<select class="form-select" id="np-modalita" style="max-width:170px;">' +
+                    ['BONIFICO','CONTANTI','FINE_MESE','RIBA','RID_SDD'].map(function(v) {
+                        return '<option value="' + v + '">' + v + '</option>';
+                    }).join('') +
+                '</select>' +
+                '<button class="btn btn-primary btn-sm" id="np-converti">Converti pagamento</button>' +
+            '</div>' + nota + '</div>';
+    }
+
+    function _attachNonPartiteHandlers() {
+        var all = document.getElementById('np-check-all');
+        if (all) {
+            all.addEventListener('change', function() {
+                document.querySelectorAll('.np-check').forEach(function(cb) { cb.checked = all.checked; });
+            });
+        }
+        var btn = document.getElementById('np-converti');
+        if (btn) btn.addEventListener('click', _convertiNonPartite);
+    }
+
+    async function _convertiNonPartite() {
+        var selez = [];
+        document.querySelectorAll('.np-check').forEach(function(cb) {
+            if (cb.checked) selez.push(_nonPartite[parseInt(cb.dataset.idx, 10)]);
+        });
+        if (!selez.length) { ENI.UI.toast('Nessuna disposizione selezionata', 'danger'); return; }
+
+        var nuova = document.getElementById('np-modalita').value;
+        var tot = selez.reduce(function(s, x) { return s + (parseFloat(x.fattura.totale) || 0); }, 0);
+
+        var msg = 'Convertire ' + selez.length + (selez.length === 1 ? ' fattura' : ' fatture') +
+            ' (€ ' + _fmtNum(tot) + ') alla modalità "' + nuova + '"?\n\n' +
+            selez.map(function(x) {
+                return '• ' + x.fattura.numero_formattato + ' — ' + ((x.fattura.cliente || {}).nome_ragione_sociale || '?');
+            }).join('\n');
+        if (!await ENI.UI.confirm(msg)) return;
+
+        var falliti = [];
+        for (var i = 0; i < selez.length; i++) {
+            try {
+                await ENI.API.aggiornaFattura(selez[i].fattura.id, { modalita_pagamento: nuova });
+            } catch(e) {
+                falliti.push(selez[i].fattura.numero_formattato + ': ' + e.message);
+            }
+        }
+
+        // Senza questo passaggio l'anagrafica resta invariata e il mese successivo
+        // il cliente si ripresenta con la stessa modalita' (e lo stesso problema).
+        var clienti = {};
+        selez.forEach(function(x) {
+            var cli = x.fattura.cliente;
+            if (cli && cli.id && cli.modalita_pagamento_fattura !== nuova) clienti[cli.id] = cli.nome_ragione_sociale;
+        });
+        var ids = Object.keys(clienti);
+        if (ids.length) {
+            var aggiorna = await ENI.UI.confirm(
+                'Aggiornare a "' + nuova + '" anche l\'anagrafica di ' + ids.length +
+                (ids.length === 1 ? ' cliente' : ' clienti') + '?\n\n' +
+                ids.map(function(id) { return '• ' + clienti[id]; }).join('\n') +
+                '\n\nSe rispondi No, dal mese prossimo torneranno nella stessa sezione di prima.'
+            );
+            if (aggiorna) {
+                for (var j = 0; j < ids.length; j++) {
+                    try {
+                        await ENI.API.aggiornaCliente(ids[j], { modalita_pagamento_fattura: nuova });
+                    } catch(e) {
+                        falliti.push(clienti[ids[j]] + ' (anagrafica): ' + e.message);
+                    }
+                }
+                ENI.State.cacheClear();
+            }
+        }
+
+        if (falliti.length) ENI.UI.toast('Completato con errori: ' + falliti.join(' | '), 'danger');
+        else ENI.UI.toast('Convertite ' + selez.length + (selez.length === 1 ? ' fattura' : ' fatture'), 'success');
+
+        await _caricaFatture();
+        await _caricaNonPartite();
     }
 
     function _meseOptions() {
@@ -108,9 +255,10 @@ ENI.Fatturazione.ExportBancari = (function() {
             if (rid.length) {
                 var totRid = rid.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
                 html += _renderTabella(rid, 'rid');
-                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0 1.5rem;">' +
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0 0.25rem;">' +
                     '<strong>Totale RID: \u20AC ' + _fmtNum(totRid) + '</strong>' +
-                    '<button class="btn btn-primary" id="btn-genera-rid">Genera file RID (.xml)</button></div>';
+                    '<button class="btn btn-primary" id="btn-genera-rid">Genera file RID (.xml)</button></div>' +
+                    _avvisoEsclusi(rid, 'rid');
             } else {
                 html += '<p class="text-muted">Nessuna fattura RID emessa per questo periodo</p>';
             }
@@ -124,15 +272,30 @@ ENI.Fatturazione.ExportBancari = (function() {
             if (riba.length) {
                 var totRiba = riba.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
                 html += _renderTabella(riba, 'riba');
-                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0 1.5rem;">' +
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0 0.25rem;">' +
                     '<strong>Totale RIBA: \u20AC ' + _fmtNum(totRiba) + '</strong>' +
-                    '<button class="btn btn-primary" id="btn-genera-riba">Genera file RIBA (.car)</button></div>';
+                    '<button class="btn btn-primary" id="btn-genera-riba">Genera file RIBA (.car)</button></div>' +
+                    _avvisoEsclusi(riba, 'riba');
             } else {
                 html += '<p class="text-muted">Nessuna fattura RIBA emessa per questo periodo</p>';
             }
         }
 
         return html;
+    }
+
+    // Avviso sul mancato incasso: quante disposizioni restano fuori dal file e per quanto.
+    // Senza questo l'utente scarica il file convinto sia completo (e' successo a giugno 2026).
+    function _avvisoEsclusi(fatture, prefix) {
+        var ko = _partiziona(fatture, prefix).ko;
+        if (!ko.length) return '';
+        var tot = ko.reduce(function(s, x) { return s + (parseFloat(x.fattura.totale) || 0); }, 0);
+        return '<div style="background:var(--bg-danger-subtle,#f8d7da);border-left:3px solid var(--danger,#dc3545);' +
+            'padding:0.5rem 0.75rem;margin:0 0 1.5rem;border-radius:4px;">' +
+            '<strong>⚠ ' + ko.length + (ko.length === 1 ? ' disposizione esclusa' : ' disposizioni escluse') +
+            ' per € ' + _fmtNum(tot) + '</strong>' +
+            '<div class="text-xs">Non verranno incassate. Completa i dati del cliente oppure cambia modalità di pagamento.</div>' +
+        '</div>';
     }
 
     // Vista "chiusa": il mese e' gia' stato esportato per questo tipo
@@ -158,9 +321,15 @@ ENI.Fatturazione.ExportBancari = (function() {
             (log.banca_iban ? '<div class="text-xs text-muted mt-2">Banca: ' + ENI.UI.escapeHtml(log.banca_iban) + '</div>' : '') +
         '</div>';
 
+        // Il log conserva gli ID finiti davvero nel file: separiamo incluse da mai partite.
+        // Se l'array manca (log vecchio) non possiamo dedurlo: mostriamo tutto come incluso.
+        var ids = log.fatture_ids || [];
+        var incluse = ids.length ? fatture.filter(function(f) { return ids.indexOf(f.id) !== -1; }) : fatture;
+        var escluse = ids.length ? fatture.filter(function(f) { return ids.indexOf(f.id) === -1; }) : [];
+
         // Tabella read-only delle disposizioni incluse
-        if (fatture.length) {
-            var rows = fatture.map(function(f) {
+        if (incluse.length) {
+            var rows = incluse.map(function(f) {
                 var cli = f.cliente || {};
                 var coordinate = prefix === 'rid' ? (cli.iban || '-') :
                     (cli.abi_banca && cli.cab_banca ? cli.abi_banca + ' / ' + cli.cab_banca : '-');
@@ -178,6 +347,27 @@ ENI.Fatturazione.ExportBancari = (function() {
                 '<tbody>' + rows + '</tbody></table></div>';
         }
 
+        // Disposizioni del mese rimaste fuori dal file gia' inviato in banca
+        if (escluse.length) {
+            var totEsc = escluse.reduce(function(s, f) { return s + (parseFloat(f.totale) || 0); }, 0);
+            html += '<div style="background:var(--bg-danger-subtle,#f8d7da);border-left:3px solid var(--danger,#dc3545);' +
+                'padding:0.75rem;margin:0.5rem 0 1rem;border-radius:4px;">' +
+                '<strong>⚠ ' + escluse.length + (escluse.length === 1 ? ' fattura non è finita' : ' fatture non sono finite') +
+                ' in questo file — € ' + _fmtNum(totEsc) + ' mai addebitati</strong>' +
+                '<div class="table-wrapper mt-2"><table class="table table-sm">' +
+                '<thead><tr><th>N°</th><th>Cliente</th><th class="text-right">Importo</th><th>Motivo attuale</th></tr></thead><tbody>' +
+                escluse.map(function(f) {
+                    var problemi = _problemiCliente(f.cliente, prefix);
+                    return '<tr>' +
+                        '<td>' + ENI.UI.escapeHtml(f.numero_formattato) + '</td>' +
+                        '<td>' + ENI.UI.escapeHtml((f.cliente || {}).nome_ragione_sociale || '') + '</td>' +
+                        '<td class="text-right">€ ' + _fmtNum(f.totale) + '</td>' +
+                        '<td class="text-xs">' + (problemi.length ? ENI.UI.escapeHtml(problemi.join(', ')) :
+                            '<span class="text-success">dati ora completi — inclusa alla prossima riscarica</span>') + '</td>' +
+                    '</tr>';
+                }).join('') + '</tbody></table></div></div>';
+        }
+
         // Bottone riscarica
         html += '<div style="display:flex;justify-content:flex-end;margin:0.5rem 0 1.5rem;">' +
             '<button class="btn btn-outline" id="btn-riscarica-' + prefix + '">\u{1F4E5} Riscarica file ' +
@@ -189,16 +379,7 @@ ENI.Fatturazione.ExportBancari = (function() {
     function _renderTabella(fatture, prefix) {
         var rows = fatture.map(function(f, i) {
             var cli = f.cliente || {};
-            var problemi = [];
-            // RID/SDD: serve IBAN completo + mandato (SEPA SDD)
-            // RIBA: bastano ABI + CAB (il tracciato CBI .car non usa l'IBAN)
-            if (prefix === 'rid') {
-                if (!cli.iban) problemi.push('IBAN mancante');
-                else if (!_validaIban(cli.iban)) problemi.push('IBAN malformato (' + cli.iban.length + ' char)');
-                if (!cli.mandate_id) problemi.push('Mandato SDD mancante');
-            } else {
-                if (!cli.abi_banca || !cli.cab_banca) problemi.push('ABI/CAB mancante');
-            }
+            var problemi = _problemiCliente(cli, prefix);
             var cls = problemi.length ? 'style="background:var(--bg-danger-subtle);"' : '';
 
             // Colonna "Coordinate": IBAN per RID, ABI/CAB per RIBA
@@ -241,21 +422,44 @@ ENI.Fatturazione.ExportBancari = (function() {
                 await _generaERegistra('RIBA', selezionati);
             });
         }
-        // Riscarica (vista chiusa): rigenera coi dati attuali e incrementa num_export
+        // Riscarica (vista chiusa): rigenera coi dati attuali e incrementa num_export.
+        // Applica le stesse verifiche dell'anteprima: senza filtro un cliente con dati
+        // incompleti finisce nel file (es. <MndtId> vuoto) e la banca rifiuta TUTTO il flusso.
         var btnRiscRid = document.getElementById('btn-riscarica-rid');
         if (btnRiscRid) {
-            btnRiscRid.addEventListener('click', async function() {
-                if (!await ENI.UI.confirm('Riscaricare il file RID? I dati attuali del DB verranno usati (eventuali modifiche ai clienti dopo la prima esportazione si rifletteranno nel nuovo file).')) return;
-                await _generaERegistra('RID', rid);
-            });
+            btnRiscRid.addEventListener('click', function() { _riscarica('RID', rid); });
         }
         var btnRiscRiba = document.getElementById('btn-riscarica-riba');
         if (btnRiscRiba) {
-            btnRiscRiba.addEventListener('click', async function() {
-                if (!await ENI.UI.confirm('Riscaricare il file RIBA? I dati attuali del DB verranno usati (eventuali modifiche ai clienti dopo la prima esportazione si rifletteranno nel nuovo file).')) return;
-                await _generaERegistra('RIBA', riba);
-            });
+            btnRiscRiba.addEventListener('click', function() { _riscarica('RIBA', riba); });
         }
+    }
+
+    async function _riscarica(tipo, fatture) {
+        var etichetta = tipo === 'RID' ? 'RID' : 'RIBA';
+        var p = _partiziona(fatture, tipo);
+
+        if (!p.ok.length) {
+            ENI.UI.toast('Nessuna disposizione ' + etichetta + ' esportabile: tutte hanno dati mancanti', 'danger');
+            return;
+        }
+
+        var msg = 'Riscaricare il file ' + etichetta + ' con ' + p.ok.length +
+            (p.ok.length === 1 ? ' disposizione' : ' disposizioni') + '?\n\n' +
+            'I dati attuali del DB verranno usati (eventuali modifiche ai clienti dopo la prima esportazione si rifletteranno nel nuovo file).';
+
+        if (p.ko.length) {
+            var totKo = p.ko.reduce(function(s, x) { return s + (parseFloat(x.fattura.totale) || 0); }, 0);
+            msg += '\n\nESCLUSE ' + p.ko.length + ' per € ' + _fmtNum(totKo) + ' (dati incompleti):\n' +
+                p.ko.map(function(x) {
+                    return '• ' + ((x.fattura.cliente || {}).nome_ragione_sociale || '?') +
+                        ' — ' + x.fattura.numero_formattato + ' — ' + x.problemi.join(', ');
+                }).join('\n') +
+                '\n\nSe le includessimo la banca rifiuterebbe l\'intero file.';
+        }
+
+        if (!await ENI.UI.confirm(msg)) return;
+        await _generaERegistra(tipo, p.ok);
     }
 
     // Genera file e registra/aggiorna il log nel DB
@@ -580,6 +784,34 @@ ENI.Fatturazione.ExportBancari = (function() {
         if (lunghezzeAttese[paese] && s.length !== lunghezzeAttese[paese]) return false;
         return true;
     }
+    // Regola unica di esportabilita', usata sia dall'anteprima che dalla riscarica.
+    // Ritorna [] se il cliente e' esportabile per quel tipo, altrimenti l'elenco dei problemi.
+    // RID/SDD: serve IBAN completo + mandato (SEPA SDD)
+    // RIBA: bastano ABI + CAB (il tracciato CBI .car non usa l'IBAN)
+    function _problemiCliente(cli, tipo) {
+        var problemi = [];
+        cli = cli || {};
+        if (String(tipo).toLowerCase() === 'rid') {
+            if (!cli.iban) problemi.push('IBAN mancante');
+            else if (!_validaIban(cli.iban)) problemi.push('IBAN malformato (' + cli.iban.length + ' char)');
+            if (!cli.mandate_id) problemi.push('Mandato SDD mancante');
+        } else {
+            if (!cli.abi_banca || !cli.cab_banca) problemi.push('ABI/CAB mancante');
+        }
+        return problemi;
+    }
+
+    // Divide le fatture in esportabili / scartate secondo _problemiCliente
+    function _partiziona(fatture, tipo) {
+        var ok = [], ko = [];
+        (fatture || []).forEach(function(f) {
+            var problemi = _problemiCliente(f.cliente, tipo);
+            if (problemi.length) ko.push({ fattura: f, problemi: problemi });
+            else ok.push(f);
+        });
+        return { ok: ok, ko: ko };
+    }
+
     // Helper SEPA: Max35Text uppercase, trim, fallback su default per evitare violazioni minLength=1
     function _max35Upper(s, fallback) {
         var v = String(s == null ? '' : s).toUpperCase().trim().substring(0, 35);
