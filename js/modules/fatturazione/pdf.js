@@ -24,7 +24,7 @@ ENI.Fatturazione.Pdf = (function() {
     // Genera il PDF di una fattura (manuale o riepilogativa) e apre il blob in nuova tab
     async function generaPdf(fatturaCompleta, impostazioni) {
         var fattura = fatturaCompleta.fattura;
-        var cliente = fattura.cliente;
+        var dest = ENI.Utils.intestatario(fattura);
         var righe = fatturaCompleta.righe || [];
         var movimenti = fatturaCompleta.movimenti || [];
 
@@ -66,14 +66,10 @@ ENI.Fatturazione.Pdf = (function() {
         doc.setDrawColor(180); doc.rect(margin, y, W - 2*margin, 28);
         doc.setFont('helvetica','bold'); doc.text('Spettabile', margin + 2, y + 5);
         doc.setFont('helvetica','normal');
-        doc.text(cliente ? cliente.nome_ragione_sociale : '', margin + 2, y + 10);
-        if (cliente) {
-            var ind = [cliente.sede_legale_indirizzo, cliente.sede_legale_cap, cliente.sede_legale_comune, cliente.sede_legale_provincia].filter(Boolean).join(' ');
-            doc.text(ind, margin + 2, y + 15);
-            var fisc = cliente.p_iva_coe ? 'COE/P.IVA: ' + cliente.p_iva_coe : '';
-            if (fisc.trim()) doc.text(fisc, margin + 2, y + 20);
-            if (fattura.rif_amministrazione) doc.text('Rif. Amministrazione: ' + fattura.rif_amministrazione, margin + 2, y + 25);
-        }
+        doc.text(dest.nome, margin + 2, y + 10);
+        if (dest.indirizzo) doc.text(dest.indirizzo, margin + 2, y + 15);
+        if (dest.fiscale) doc.text(dest.fiscale, margin + 2, y + 20);
+        if (fattura.rif_amministrazione) doc.text('Rif. Amministrazione: ' + fattura.rif_amministrazione, margin + 2, y + 25);
         y += 34;
 
         // --- Righe ---
@@ -207,7 +203,7 @@ ENI.Fatturazione.Pdf = (function() {
 
     async function generaPdfBlob(fatturaCompleta, impostazioni) {
         var fattura = fatturaCompleta.fattura;
-        var cliente = fattura.cliente;
+        var dest = ENI.Utils.intestatario(fattura);
         var righe = fatturaCompleta.righe || [];
         var movimenti = fatturaCompleta.movimenti || [];
 
@@ -236,14 +232,10 @@ ENI.Fatturazione.Pdf = (function() {
         doc.setDrawColor(180); doc.rect(margin, y, W - 2*margin, 28);
         doc.setFont('helvetica','bold'); doc.text('Spettabile', margin + 2, y + 5);
         doc.setFont('helvetica','normal');
-        doc.text(cliente ? cliente.nome_ragione_sociale : '', margin + 2, y + 10);
-        if (cliente) {
-            var ind = [cliente.sede_legale_indirizzo, cliente.sede_legale_cap, cliente.sede_legale_comune, cliente.sede_legale_provincia].filter(Boolean).join(' ');
-            doc.text(ind, margin + 2, y + 15);
-            var fisc = cliente.p_iva_coe ? 'COE/P.IVA: ' + cliente.p_iva_coe : '';
-            if (fisc.trim()) doc.text(fisc, margin + 2, y + 20);
-            if (fattura.rif_amministrazione) doc.text('Rif. Amministrazione: ' + fattura.rif_amministrazione, margin + 2, y + 25);
-        }
+        doc.text(dest.nome, margin + 2, y + 10);
+        if (dest.indirizzo) doc.text(dest.indirizzo, margin + 2, y + 15);
+        if (dest.fiscale) doc.text(dest.fiscale, margin + 2, y + 20);
+        if (fattura.rif_amministrazione) doc.text('Rif. Amministrazione: ' + fattura.rif_amministrazione, margin + 2, y + 25);
         y += 34;
         doc.setFont('helvetica','bold'); doc.setFontSize(9);
         doc.setFillColor(235,235,235); doc.rect(margin, y, W - 2*margin, 7, 'F');

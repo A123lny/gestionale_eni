@@ -1825,6 +1825,13 @@ ENI.API = (function() {
             import_eni_log_id: f.import_eni_log_id
         };
 
+        // Documenti senza anagrafica: riporta l'intestatario libero
+        if (f.intestatario_nome) {
+            nuova.intestatario_nome = f.intestatario_nome;
+            nuova.intestatario_indirizzo = f.intestatario_indirizzo;
+            nuova.intestatario_cf = f.intestatario_cf;
+        }
+
         var righe = full.righe.map(function(r) {
             return { descrizione: r.descrizione, quantita: r.quantita, unita_misura: r.unita_misura, prezzo_unitario: r.prezzo_unitario, importo: r.importo, categoria: r.categoria, ordine: r.ordine };
         });

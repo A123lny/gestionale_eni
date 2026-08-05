@@ -91,6 +91,33 @@ ENI.Utils = (function() {
     }
 
     // ============================================================
+    // INTESTATARIO DOCUMENTO
+    // Restituisce i dati di intestazione di una fattura/ricevuta,
+    // sia dall'anagrafica cliente sia dall'intestatario libero
+    // (ricevute a clienti occasionali, cliente_id = null)
+    // ============================================================
+
+    function intestatario(f) {
+        var c = f && f.cliente;
+        if (c) {
+            return {
+                nome: c.nome_ragione_sociale || '',
+                indirizzo: [c.sede_legale_indirizzo, c.sede_legale_cap, c.sede_legale_comune, c.sede_legale_provincia].filter(Boolean).join(' '),
+                fiscale: c.p_iva_coe ? 'COE/P.IVA: ' + c.p_iva_coe : '',
+                email: c.email || null,
+                occasionale: false
+            };
+        }
+        return {
+            nome: (f && f.intestatario_nome) || '',
+            indirizzo: (f && f.intestatario_indirizzo) || '',
+            fiscale: (f && f.intestatario_cf) ? 'C.F.: ' + f.intestatario_cf : '',
+            email: null,
+            occasionale: true
+        };
+    }
+
+    // ============================================================
     // VALIDAZIONI
     // ============================================================
 
@@ -118,6 +145,7 @@ ENI.Utils = (function() {
 
     return {
         setupClienteSearch: setupClienteSearch,
+        intestatario: intestatario,
         validaPrezzo: validaPrezzo,
         validaQuantita: validaQuantita,
         validaPercentuale: validaPercentuale
