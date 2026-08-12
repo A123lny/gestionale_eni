@@ -772,18 +772,12 @@ ENI.API = (function() {
         });
         await insertBulk('vendite_dettaglio', dettagli);
 
-        // Scalare giacenza
+        // Scalare giacenza (atomico lato DB: niente lost-update multi-postazione)
         for (var i = 0; i < dettagli.length; i++) {
             var d = dettagli[i];
             if (d.prodotto_id) {
                 try {
-                    var prodotto = await getById('magazzino', d.prodotto_id);
-                    if (prodotto) {
-                        await update('magazzino', d.prodotto_id, {
-                            giacenza: Math.max(0, prodotto.giacenza - d.quantita),
-                            ultima_movimentazione: new Date().toISOString()
-                        });
-                    }
+                    await movimentaGiacenza(d.prodotto_id, -d.quantita);
                 } catch(e) {
                     console.error('Errore aggiornamento giacenza prodotto:', d.prodotto_id, e);
                 }
@@ -836,19 +830,13 @@ ENI.API = (function() {
     async function annullaVendita(id, vendita) {
         var record = await update('vendite', id, { stato: 'annullata' });
 
-        // Ripristinare giacenza
+        // Ripristinare giacenza (atomico lato DB)
         var dettagli = await getVenditaDettaglio(id);
         for (var i = 0; i < dettagli.length; i++) {
             var d = dettagli[i];
             if (d.prodotto_id) {
                 try {
-                    var prodotto = await getById('magazzino', d.prodotto_id);
-                    if (prodotto) {
-                        await update('magazzino', d.prodotto_id, {
-                            giacenza: prodotto.giacenza + d.quantita,
-                            ultima_movimentazione: new Date().toISOString()
-                        });
-                    }
+                    await movimentaGiacenza(d.prodotto_id, d.quantita);
                 } catch(e) {
                     console.error('Errore ripristino giacenza:', d.prodotto_id, e);
                 }
@@ -918,13 +906,7 @@ ENI.API = (function() {
             var d = dettagli[i];
             if (d.prodotto_id && d.riassortito) {
                 try {
-                    var prodotto = await getById('magazzino', d.prodotto_id);
-                    if (prodotto) {
-                        await update('magazzino', d.prodotto_id, {
-                            giacenza: prodotto.giacenza + d.quantita_resa,
-                            ultima_movimentazione: new Date().toISOString()
-                        });
-                    }
+                    await movimentaGiacenza(d.prodotto_id, d.quantita_resa);
                 } catch(e) {
                     console.error('Errore riassortimento:', d.prodotto_id, e);
                 }
@@ -1019,6 +1001,19 @@ ENI.API = (function() {
         await scriviLog('Annullato_Buono', 'Buoni', 'EAN: ' + buono.codice_ean + ' - ' + ENI.UI.formatValuta(buono.taglio));
         ENI.State.cacheClear('buoni');
         return record;
+    }
+
+    // Movimenta la giacenza di un prodotto magazzino in modo ATOMICO lato DB
+    // (giacenza = greatest(0, giacenza + delta)): niente lost-update multi-postazione.
+    // delta negativo = scarico (vendita), positivo = carico (reso/annullo/rettifica).
+    // Ritorna la nuova giacenza, o null se il prodotto non esiste.
+    async function movimentaGiacenza(prodottoId, delta) {
+        var result = await getClient().rpc('movimenta_giacenza', {
+            p_prodotto_id: prodottoId,
+            p_delta: delta
+        });
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
     }
 
     async function getBuoni(filtri) {
@@ -2185,6 +2180,7 @@ ENI.API = (function() {
         cercaBuonoByEAN: cercaBuonoByEAN,
         generaBuoniCartacei: generaBuoniCartacei,
         utilizzaBuono: utilizzaBuono,
+        movimentaGiacenza: movimentaGiacenza,
         annullaBuono: annullaBuono,
         getBuoni: getBuoni,
         getMaxSequenzialeBuono: getMaxSequenzialeBuono,

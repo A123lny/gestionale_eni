@@ -320,18 +320,15 @@ ENI.Modules.Magazzino = (function() {
         var prodotto = _prodotti.find(function(p) { return p.id === id; });
         if (!prodotto) return;
 
-        var nuovaGiacenza = prodotto.giacenza + delta;
-        if (nuovaGiacenza < 0) {
+        // Guardia UX (il valore vero lo ricalcola il DB in modo atomico)
+        if (prodotto.giacenza + delta < 0) {
             ENI.UI.warning('Giacenza non pu\u00F2 essere negativa');
             return;
         }
 
         try {
-            await ENI.API.aggiornaProdotto(id, {
-                giacenza: nuovaGiacenza,
-                ultima_movimentazione: new Date().toISOString()
-            });
-            prodotto.giacenza = nuovaGiacenza;
+            var nuova = await ENI.API.movimentaGiacenza(id, delta);
+            prodotto.giacenza = (nuova != null) ? Number(nuova) : prodotto.giacenza;
             _renderAlerts();
             _renderList();
         } catch(e) {
