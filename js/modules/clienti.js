@@ -12,6 +12,8 @@ ENI.Modules.Clienti = (function() {
     var _clienti = [];
     var _filtroTipo = 'Tutti';
     var _searchTerm = '';
+    var _paginaCorrente = 1;   // solo visualizzazione
+    var _perPagina = 25;       // 10 / 25 / 50 / 100
 
     // ============================================================
     // Helper: voci ricorrenti in fattura ENI (per cliente)
@@ -99,6 +101,7 @@ ENI.Modules.Clienti = (function() {
         container.innerHTML =
             '<div class="page-header">' +
                 '<h1 class="page-title">\u{1F465} Clienti</h1>' +
+                '<button class="btn btn-outline btn-sm" id="btn-export-rubrica" style="margin-right:0.5rem;">\u{1F4E4} Esporta rubrica</button>' +
                 (canWrite ? '<button class="btn btn-outline btn-sm" id="btn-import-rubrica" style="margin-right:0.5rem;">\u{1F4E5} Importa rubrica</button>' : '') +
                 (canWrite ? '<button class="btn btn-primary" id="btn-nuovo-cliente">\u2795 Nuovo Cliente</button>' : '') +
             '</div>' +
@@ -130,6 +133,7 @@ ENI.Modules.Clienti = (function() {
                 clearTimeout(debounceTimer);
                 debounceTimer = setTimeout(function() {
                     _searchTerm = e.target.value.toLowerCase();
+                    _paginaCorrente = 1;
                     _renderList();
                 }, 300);
             });
@@ -141,6 +145,7 @@ ENI.Modules.Clienti = (function() {
             container.querySelectorAll('.chip[data-filtro]').forEach(function(c) {
                 c.classList.toggle('active', c.dataset.filtro === _filtroTipo);
             });
+            _paginaCorrente = 1;
             _renderList();
         });
 
@@ -154,6 +159,12 @@ ENI.Modules.Clienti = (function() {
         var btnImport = container.querySelector('#btn-import-rubrica');
         if (btnImport) {
             btnImport.addEventListener('click', _showImportRubrica);
+        }
+
+        // Export rubrica
+        var btnExport = container.querySelector('#btn-export-rubrica');
+        if (btnExport) {
+            btnExport.addEventListener('click', _esportaRubrica);
         }
 
         // Click su riga -> dettaglio
@@ -199,6 +210,14 @@ ENI.Modules.Clienti = (function() {
             return;
         }
 
+        // --- Paginazione (SOLO visualizzazione: affetta la lista gia' filtrata) ---
+        var totale = filtered.length;
+        var totalePagine = Math.max(1, Math.ceil(totale / _perPagina));
+        if (_paginaCorrente > totalePagine) _paginaCorrente = totalePagine;
+        if (_paginaCorrente < 1) _paginaCorrente = 1;
+        var startIdx = (_paginaCorrente - 1) * _perPagina;
+        var pageItems = filtered.slice(startIdx, startIdx + _perPagina);
+
         var html = '<div class="table-wrapper"><table class="table">' +
             '<thead><tr>' +
                 '<th>Nome / Ragione Sociale</th>' +
@@ -207,7 +226,7 @@ ENI.Modules.Clienti = (function() {
                 '<th>Contatto</th>' +
             '</tr></thead><tbody>';
 
-        filtered.forEach(function(c) {
+        pageItems.forEach(function(c) {
             var pagFattLabel = c.modalita_pagamento_fattura
                 ? '<span style="color:var(--color-primary);">' + ENI.UI.escapeHtml(c.modalita_pagamento_fattura) + '</span>'
                 : '<span style="color:var(--color-danger);font-style:italic;">Non impostato</span>';
@@ -227,7 +246,76 @@ ENI.Modules.Clienti = (function() {
         });
 
         html += '</tbody></table></div>';
+        html += _renderPaginazione(totale, totalePagine, startIdx, pageItems.length);
         listEl.innerHTML = html;
+        _setupPaginazioneEvents(listEl, totalePagine);
+    }
+
+    // Controlli di paginazione (selettore per-pagina + numeri + indietro/avanti)
+    function _renderPaginazione(totale, totalePagine, startIdx, nInPagina) {
+        var da = totale === 0 ? 0 : startIdx + 1;
+        var a = startIdx + nInPagina;
+        var opts = [10, 25, 50, 100].map(function(n) {
+            return '<option value="' + n + '"' + (n === _perPagina ? ' selected' : '') + '>' + n + '</option>';
+        }).join('');
+
+        var numeri = _numeriPagina(_paginaCorrente, totalePagine).map(function(p) {
+            if (p === '...') return '<span class="text-muted" style="padding:0 0.25rem;">…</span>';
+            var attivo = p === _paginaCorrente;
+            return '<button class="btn btn-sm ' + (attivo ? 'btn-primary' : 'btn-outline') + '" data-pag="' + p + '">' + p + '</button>';
+        }).join('');
+
+        return '<div class="pagination-bar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;margin-top:0.75rem;">' +
+            '<div class="text-sm text-muted" style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">' +
+                '<span>Mostra</span>' +
+                '<select id="clienti-per-pagina" class="form-select" style="width:auto;display:inline-block;min-height:36px;padding:0.25rem 2rem 0.25rem 0.6rem;">' + opts + '</select>' +
+                '<span>per pagina</span>' +
+                '<span style="margin-left:0.4rem;">' + da + '–' + a + ' di ' + totale + '</span>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:0.25rem;flex-wrap:wrap;">' +
+                '<button class="btn btn-sm btn-outline" data-pag="prev"' + (_paginaCorrente <= 1 ? ' disabled' : '') + '>‹ Indietro</button>' +
+                numeri +
+                '<button class="btn btn-sm btn-outline" data-pag="next"' + (_paginaCorrente >= totalePagine ? ' disabled' : '') + '>Avanti ›</button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    // Elenco compatto di numeri di pagina: 1 ... 4 5 6 ... 11
+    function _numeriPagina(cur, total) {
+        var pages = [];
+        if (total <= 7) {
+            for (var i = 1; i <= total; i++) pages.push(i);
+            return pages;
+        }
+        pages.push(1);
+        var start = Math.max(2, cur - 1);
+        var end = Math.min(total - 1, cur + 1);
+        if (start > 2) pages.push('...');
+        for (var j = start; j <= end; j++) pages.push(j);
+        if (end < total - 1) pages.push('...');
+        pages.push(total);
+        return pages;
+    }
+
+    function _setupPaginazioneEvents(listEl, totalePagine) {
+        var sel = listEl.querySelector('#clienti-per-pagina');
+        if (sel) {
+            sel.addEventListener('change', function() {
+                _perPagina = parseInt(this.value, 10) || 25;
+                _paginaCorrente = 1;
+                _renderList();
+            });
+        }
+        listEl.querySelectorAll('[data-pag]').forEach(function(b) {
+            if (b.disabled) return;
+            b.addEventListener('click', function() {
+                var v = b.getAttribute('data-pag');
+                if (v === 'prev') _paginaCorrente = Math.max(1, _paginaCorrente - 1);
+                else if (v === 'next') _paginaCorrente = Math.min(totalePagine, _paginaCorrente + 1);
+                else _paginaCorrente = parseInt(v, 10) || 1;
+                _renderList();
+            });
+        });
     }
 
     // --- Form Nuovo Cliente ---
@@ -757,6 +845,38 @@ ENI.Modules.Clienti = (function() {
     // IMPORT RUBRICA DA CSV (vecchio gestionale contabilità)
     // CSV ; separato, encoding latin-1, colonne fisse
     // ============================================================
+    // Esporta tutta la rubrica clienti in un file Excel (.xlsx). SOLO lettura.
+    function _esportaRubrica() {
+        if (!_clienti || _clienti.length === 0) {
+            ENI.UI.warning('Nessun cliente da esportare');
+            return;
+        }
+        var righe = _clienti.map(function(c) {
+            return {
+                'Nome / Ragione sociale': c.nome_ragione_sociale || '',
+                'Tipo': c.tipo || '',
+                'P.IVA / COE': c.p_iva_coe || '',
+                'Telefono': c.telefono || '',
+                'Email': c.email || '',
+                'PEC': c.pec || '',
+                'Targa': c.targa || '',
+                'Pagamento fattura': c.modalita_pagamento_fattura || '',
+                'Rif. amministrazione': c.rif_amministrazione || ''
+            };
+        });
+        try {
+            var ws = XLSX.utils.json_to_sheet(righe);
+            var wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Clienti');
+            var oggi = (ENI.UI.oggiISO ? ENI.UI.oggiISO() : new Date().toISOString().slice(0, 10));
+            XLSX.writeFile(wb, 'rubrica_clienti_' + oggi + '.xlsx');
+            ENI.UI.success(righe.length + ' clienti esportati');
+        } catch (e) {
+            console.error('Errore export rubrica:', e);
+            ENI.UI.error('Errore durante l\'esportazione');
+        }
+    }
+
     function _showImportRubrica() {
         var body =
             '<div class="form-group"><label class="form-label">File rubrica clienti (.csv)</label>' +

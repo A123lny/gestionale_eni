@@ -13,6 +13,8 @@ ENI.Modules.Magazzino = (function() {
     var _prodotti = [];
     var _categoriaFiltro = 'Tutti';
     var _searchTerm = '';
+    var _paginaCorrente = 1;   // solo visualizzazione
+    var _perPagina = 25;       // 10 / 25 / 50 / 100
 
     async function render(container) {
         var canWrite = ENI.State.canWrite('magazzino');
@@ -21,6 +23,7 @@ ENI.Modules.Magazzino = (function() {
             '<div class="page-header">' +
                 '<h1 class="page-title">\u{1F4E6} Magazzino</h1>' +
                 '<div class="page-header-actions">' +
+                    '<button class="btn btn-outline" id="btn-export-magazzino">\u{1F4E4} Esporta</button>' +
                     (canWrite && ENI.State.getUserRole() === 'Admin' ? '<button class="btn btn-outline" id="btn-import-csv">\u{1F4C2} Importa CSV</button>' : '') +
                     (canWrite ? '<button class="btn btn-primary" id="btn-nuovo-prodotto">\u2795 Nuovo Prodotto</button>' : '') +
                 '</div>' +
@@ -55,6 +58,7 @@ ENI.Modules.Magazzino = (function() {
                 clearTimeout(debounceTimer);
                 debounceTimer = setTimeout(function() {
                     _searchTerm = e.target.value.toLowerCase();
+                    _paginaCorrente = 1;
                     _renderList();
                 }, 300);
             });
@@ -66,6 +70,7 @@ ENI.Modules.Magazzino = (function() {
             container.querySelectorAll('.chip[data-cat]').forEach(function(c) {
                 c.classList.toggle('active', c.dataset.cat === _categoriaFiltro);
             });
+            _paginaCorrente = 1;
             _renderList();
         });
 
@@ -83,6 +88,12 @@ ENI.Modules.Magazzino = (function() {
                     ENI.Modules.MagazzinoImport.show(function() { _loadProdotti(); });
                 }
             });
+        }
+
+        // Export magazzino
+        var btnExport = container.querySelector('#btn-export-magazzino');
+        if (btnExport) {
+            btnExport.addEventListener('click', _esportaMagazzino);
         }
 
         // Modifica giacenza +/-
@@ -189,6 +200,14 @@ ENI.Modules.Magazzino = (function() {
             return;
         }
 
+        // --- Paginazione (SOLO visualizzazione: affetta la lista gia' filtrata) ---
+        var totale = filtered.length;
+        var totalePagine = Math.max(1, Math.ceil(totale / _perPagina));
+        if (_paginaCorrente > totalePagine) _paginaCorrente = totalePagine;
+        if (_paginaCorrente < 1) _paginaCorrente = 1;
+        var startIdx = (_paginaCorrente - 1) * _perPagina;
+        var pageItems = filtered.slice(startIdx, startIdx + _perPagina);
+
         var canWrite = ENI.State.canWrite('magazzino');
         var isLavaggiView = _categoriaFiltro === 'Lavaggi';
 
@@ -202,7 +221,7 @@ ENI.Modules.Magazzino = (function() {
                 (canWrite ? '<th>Azioni</th>' : '') +
             '</tr></thead><tbody>';
 
-        filtered.forEach(function(p) {
+        pageItems.forEach(function(p) {
             var servizio = _isServizio(p);
             var isSottoScorta = !servizio && p.giacenza_minima > 0 && p.giacenza < p.giacenza_minima;
 
@@ -246,7 +265,105 @@ ENI.Modules.Magazzino = (function() {
         });
 
         html += '</tbody></table></div>';
+        html += _renderPaginazione(totale, totalePagine, startIdx, pageItems.length);
         listEl.innerHTML = html;
+        _setupPaginazioneEvents(listEl, totalePagine);
+    }
+
+    // Controlli di paginazione (selettore per-pagina + numeri + indietro/avanti)
+    function _renderPaginazione(totale, totalePagine, startIdx, nInPagina) {
+        var da = totale === 0 ? 0 : startIdx + 1;
+        var a = startIdx + nInPagina;
+        var opts = [10, 25, 50, 100].map(function(n) {
+            return '<option value="' + n + '"' + (n === _perPagina ? ' selected' : '') + '>' + n + '</option>';
+        }).join('');
+
+        var numeri = _numeriPagina(_paginaCorrente, totalePagine).map(function(p) {
+            if (p === '...') return '<span class="text-muted" style="padding:0 0.25rem;">…</span>';
+            var attivo = p === _paginaCorrente;
+            return '<button class="btn btn-sm ' + (attivo ? 'btn-primary' : 'btn-outline') + '" data-pag="' + p + '">' + p + '</button>';
+        }).join('');
+
+        return '<div class="pagination-bar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;margin-top:0.75rem;">' +
+            '<div class="text-sm text-muted" style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">' +
+                '<span>Mostra</span>' +
+                '<select id="magazzino-per-pagina" class="form-select" style="width:auto;display:inline-block;min-height:36px;padding:0.25rem 2rem 0.25rem 0.6rem;">' + opts + '</select>' +
+                '<span>per pagina</span>' +
+                '<span style="margin-left:0.4rem;">' + da + '–' + a + ' di ' + totale + '</span>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:0.25rem;flex-wrap:wrap;">' +
+                '<button class="btn btn-sm btn-outline" data-pag="prev"' + (_paginaCorrente <= 1 ? ' disabled' : '') + '>‹ Indietro</button>' +
+                numeri +
+                '<button class="btn btn-sm btn-outline" data-pag="next"' + (_paginaCorrente >= totalePagine ? ' disabled' : '') + '>Avanti ›</button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    function _numeriPagina(cur, total) {
+        var pages = [];
+        if (total <= 7) {
+            for (var i = 1; i <= total; i++) pages.push(i);
+            return pages;
+        }
+        pages.push(1);
+        var start = Math.max(2, cur - 1);
+        var end = Math.min(total - 1, cur + 1);
+        if (start > 2) pages.push('...');
+        for (var j = start; j <= end; j++) pages.push(j);
+        if (end < total - 1) pages.push('...');
+        pages.push(total);
+        return pages;
+    }
+
+    function _setupPaginazioneEvents(listEl, totalePagine) {
+        var sel = listEl.querySelector('#magazzino-per-pagina');
+        if (sel) {
+            sel.addEventListener('change', function() {
+                _perPagina = parseInt(this.value, 10) || 25;
+                _paginaCorrente = 1;
+                _renderList();
+            });
+        }
+        listEl.querySelectorAll('[data-pag]').forEach(function(b) {
+            if (b.disabled) return;
+            b.addEventListener('click', function() {
+                var v = b.getAttribute('data-pag');
+                if (v === 'prev') _paginaCorrente = Math.max(1, _paginaCorrente - 1);
+                else if (v === 'next') _paginaCorrente = Math.min(totalePagine, _paginaCorrente + 1);
+                else _paginaCorrente = parseInt(v, 10) || 1;
+                _renderList();
+            });
+        });
+    }
+
+    // Esporta tutto il magazzino in un file Excel (.xlsx). SOLO lettura.
+    function _esportaMagazzino() {
+        if (!_prodotti || _prodotti.length === 0) {
+            ENI.UI.warning('Nessun prodotto da esportare');
+            return;
+        }
+        var righe = _prodotti.map(function(p) {
+            return {
+                'Codice': p.codice || '',
+                'Nome': p.nome_prodotto || '',
+                'Categoria': p.categoria || '',
+                'Barcode': p.barcode || '',
+                'Giacenza': (p.giacenza != null ? p.giacenza : ''),
+                'Giacenza minima': (p.giacenza_minima != null ? p.giacenza_minima : ''),
+                'Prezzo vendita': (p.prezzo_vendita != null ? p.prezzo_vendita : '')
+            };
+        });
+        try {
+            var ws = XLSX.utils.json_to_sheet(righe);
+            var wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Magazzino');
+            var oggi = (ENI.UI.oggiISO ? ENI.UI.oggiISO() : new Date().toISOString().slice(0, 10));
+            XLSX.writeFile(wb, 'magazzino_' + oggi + '.xlsx');
+            ENI.UI.success(righe.length + ' prodotti esportati');
+        } catch (e) {
+            console.error('Errore export magazzino:', e);
+            ENI.UI.error('Errore durante l\'esportazione');
+        }
     }
 
     // --- Importa da Listino Lavaggi ---

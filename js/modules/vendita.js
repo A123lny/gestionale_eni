@@ -1428,6 +1428,14 @@ ENI.Modules.Vendita = (function() {
     // TAB: STORICO VENDITE
     // ============================================================
 
+    // Stato paginazione (solo visualizzazione) per Storico e Resi
+    var _storicoVendite = [];
+    var _storicoPagina = 1;
+    var _storicoPerPagina = 25;
+    var _resiList = [];
+    var _resiPagina = 1;
+    var _resiPerPagina = 25;
+
     async function _renderStorico(container) {
         var oggi = ENI.UI.oggiISO();
 
@@ -1444,6 +1452,7 @@ ENI.Modules.Vendita = (function() {
                     '</div>' +
                     '<div class="form-group">' +
                         '<button class="btn btn-primary" id="btn-storico-cerca">\u{1F50D} Cerca</button>' +
+                        '<button class="btn btn-outline" id="btn-storico-export" style="margin-left:0.5rem;">\u{1F4E4} Esporta</button>' +
                     '</div>' +
                 '</div>' +
             '</div>' +
@@ -1453,6 +1462,7 @@ ENI.Modules.Vendita = (function() {
         document.getElementById('btn-storico-cerca').addEventListener('click', function() {
             _loadStorico();
         });
+        document.getElementById('btn-storico-export').addEventListener('click', _esportaStorico);
 
         await _loadStorico();
     }
@@ -1465,6 +1475,8 @@ ENI.Modules.Vendita = (function() {
 
         try {
             var vendite = await ENI.API.getVendite({ da: da, a: a });
+            _storicoVendite = vendite || [];
+            _storicoPagina = 1;
 
             // Totali riassuntivi
             var totVendite = 0, totContanti = 0, totPOS = 0;
@@ -1486,53 +1498,7 @@ ENI.Modules.Vendita = (function() {
                     '</div>';
             }
 
-            if (vendite.length === 0) {
-                listEl.innerHTML =
-                    '<div class="empty-state">' +
-                        '<div class="empty-state-icon">\u{1F4CB}</div>' +
-                        '<p class="empty-state-text">Nessuna vendita nel periodo</p>' +
-                    '</div>';
-                return;
-            }
-
-            var html = '<div class="table-wrapper"><table class="table">' +
-                '<thead><tr><th>Data/Ora</th><th>Codice</th><th>Operatore</th><th>Totale</th><th>Metodo</th><th>Stato</th><th>Azioni</th></tr></thead><tbody>';
-
-            vendite.forEach(function(v) {
-                var statoClass = '';
-                var statoLabel = v.stato;
-                if (v.stato === 'completata') { statoClass = 'badge-success'; statoLabel = 'Completata'; }
-                else if (v.stato === 'annullata') { statoClass = 'badge-danger'; statoLabel = 'Annullata'; }
-                else if (v.stato === 'reso_parziale') { statoClass = 'badge-warning'; statoLabel = 'Reso parziale'; }
-                else if (v.stato === 'reso_totale') { statoClass = 'badge-danger'; statoLabel = 'Reso totale'; }
-
-                var metodoIcon = v.metodo_pagamento === 'contanti' ? '\u{1F4B5}' : v.metodo_pagamento === 'pos' ? '\u{1F4B3}' : '\u{1F4B0}';
-
-                html += '<tr>' +
-                    '<td class="text-sm">' + v.data + ' ' + (v.ora || '') + '</td>' +
-                    '<td><strong>' + v.codice + '</strong></td>' +
-                    '<td class="text-sm">' + ENI.UI.escapeHtml(v.operatore_nome || '-') + '</td>' +
-                    '<td><strong>' + ENI.UI.formatValuta(v.totale) + '</strong></td>' +
-                    '<td>' + metodoIcon + '</td>' +
-                    '<td><span class="badge ' + statoClass + '">' + statoLabel + '</span></td>' +
-                    '<td>' +
-                        '<button class="btn btn-sm btn-outline" data-view-vendita="' + v.id + '">Dettaglio</button>' +
-                        (v.stato === 'completata' ? ' <button class="btn btn-sm btn-outline" data-reso-vendita="' + v.id + '" style="color: var(--color-warning);">Reso</button>' : '') +
-                    '</td>' +
-                '</tr>';
-            });
-
-            html += '</tbody></table></div>';
-            listEl.innerHTML = html;
-
-            // Events
-            ENI.UI.delegate(listEl, 'click', '[data-view-vendita]', function(e, el) {
-                _showDettaglioVendita(el.dataset.viewVendita);
-            });
-
-            ENI.UI.delegate(listEl, 'click', '[data-reso-vendita]', function(e, el) {
-                _showFormReso(el.dataset.resoVendita);
-            });
+            _renderStoricoList();
 
         } catch(e) {
             listEl.innerHTML = '<div class="text-center text-muted">Errore caricamento storico</div>';
@@ -1582,12 +1548,233 @@ ENI.Modules.Vendita = (function() {
     // TAB: RESI
     // ============================================================
 
+    // Disegna la tabella storico con paginazione (SOLO visualizzazione)
+    function _renderStoricoList() {
+        var listEl = document.getElementById('storico-list');
+        if (!listEl) return;
+        var items = _storicoVendite || [];
+
+        if (items.length === 0) {
+            listEl.innerHTML =
+                '<div class="empty-state">' +
+                    '<div class="empty-state-icon">\u{1F4CB}</div>' +
+                    '<p class="empty-state-text">Nessuna vendita nel periodo</p>' +
+                '</div>';
+            return;
+        }
+
+        var totale = items.length;
+        var totalePagine = Math.max(1, Math.ceil(totale / _storicoPerPagina));
+        if (_storicoPagina > totalePagine) _storicoPagina = totalePagine;
+        if (_storicoPagina < 1) _storicoPagina = 1;
+        var startIdx = (_storicoPagina - 1) * _storicoPerPagina;
+        var pageItems = items.slice(startIdx, startIdx + _storicoPerPagina);
+
+        var html = '<div class="table-wrapper"><table class="table">' +
+            '<thead><tr><th>Data/Ora</th><th>Codice</th><th>Operatore</th><th>Totale</th><th>Metodo</th><th>Stato</th><th>Azioni</th></tr></thead><tbody>';
+
+        pageItems.forEach(function(v) {
+            var statoClass = '';
+            var statoLabel = v.stato;
+            if (v.stato === 'completata') { statoClass = 'badge-success'; statoLabel = 'Completata'; }
+            else if (v.stato === 'annullata') { statoClass = 'badge-danger'; statoLabel = 'Annullata'; }
+            else if (v.stato === 'reso_parziale') { statoClass = 'badge-warning'; statoLabel = 'Reso parziale'; }
+            else if (v.stato === 'reso_totale') { statoClass = 'badge-danger'; statoLabel = 'Reso totale'; }
+
+            var metodoIcon = v.metodo_pagamento === 'contanti' ? '\u{1F4B5}' : v.metodo_pagamento === 'pos' ? '\u{1F4B3}' : '\u{1F4B0}';
+
+            html += '<tr>' +
+                '<td class="text-sm">' + v.data + ' ' + (v.ora || '') + '</td>' +
+                '<td><strong>' + v.codice + '</strong></td>' +
+                '<td class="text-sm">' + ENI.UI.escapeHtml(v.operatore_nome || '-') + '</td>' +
+                '<td><strong>' + ENI.UI.formatValuta(v.totale) + '</strong></td>' +
+                '<td>' + metodoIcon + '</td>' +
+                '<td><span class="badge ' + statoClass + '">' + statoLabel + '</span></td>' +
+                '<td>' +
+                    '<button class="btn btn-sm btn-outline" data-view-vendita="' + v.id + '">Dettaglio</button>' +
+                    (v.stato === 'completata' ? ' <button class="btn btn-sm btn-outline" data-reso-vendita="' + v.id + '" style="color: var(--color-warning);">Reso</button>' : '') +
+                '</td>' +
+            '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+        html += _paginazioneControls('storico-per-pagina', _storicoPerPagina, _storicoPagina, totale, totalePagine, startIdx, pageItems.length);
+        listEl.innerHTML = html;
+
+        // Azioni riga
+        listEl.querySelectorAll('[data-view-vendita]').forEach(function(b) {
+            b.addEventListener('click', function() { _showDettaglioVendita(b.getAttribute('data-view-vendita')); });
+        });
+        listEl.querySelectorAll('[data-reso-vendita]').forEach(function(b) {
+            b.addEventListener('click', function() { _showFormReso(b.getAttribute('data-reso-vendita')); });
+        });
+
+        // Paginazione
+        _wirePaginazione(listEl, 'storico-per-pagina', totalePagine,
+            function(pp) { _storicoPerPagina = pp; _storicoPagina = 1; _renderStoricoList(); },
+            function(pag) { _storicoPagina = pag; _renderStoricoList(); },
+            function() { return _storicoPagina; });
+    }
+
+    function _esportaStorico() {
+        if (!_storicoVendite || _storicoVendite.length === 0) { ENI.UI.warning('Nessuna vendita da esportare'); return; }
+        var righe = _storicoVendite.map(function(v) {
+            return {
+                'Data': v.data || '', 'Ora': v.ora || '', 'Codice': v.codice || '',
+                'Operatore': v.operatore_nome || '',
+                'Totale': (v.totale != null ? v.totale : ''),
+                'Contanti': (v.importo_contanti != null ? v.importo_contanti : ''),
+                'POS': (v.importo_pos != null ? v.importo_pos : ''),
+                'Metodo': v.metodo_pagamento || '', 'Stato': v.stato || ''
+            };
+        });
+        _scaricaXlsx(righe, 'Storico vendite', 'storico_vendite', _storicoVendite.length + ' vendite esportate');
+    }
+
+    // Disegna la tabella resi con paginazione (SOLO visualizzazione)
+    function _renderResiList() {
+        var listEl = document.getElementById('resi-list');
+        if (!listEl) return;
+        var items = _resiList || [];
+
+        if (items.length === 0) {
+            listEl.innerHTML =
+                '<div class="empty-state">' +
+                    '<div class="empty-state-icon">↩️</div>' +
+                    '<p class="empty-state-text">Nessun reso effettuato</p>' +
+                '</div>';
+            return;
+        }
+
+        var totale = items.length;
+        var totalePagine = Math.max(1, Math.ceil(totale / _resiPerPagina));
+        if (_resiPagina > totalePagine) _resiPagina = totalePagine;
+        if (_resiPagina < 1) _resiPagina = 1;
+        var startIdx = (_resiPagina - 1) * _resiPerPagina;
+        var pageItems = items.slice(startIdx, startIdx + _resiPerPagina);
+
+        var html = '<div class="table-wrapper"><table class="table">' +
+            '<thead><tr><th>Data</th><th>Codice Reso</th><th>Vendita Orig.</th><th>Operatore</th><th>Totale Reso</th><th>Rimborso</th></tr></thead><tbody>';
+
+        pageItems.forEach(function(r) {
+            html += '<tr>' +
+                '<td class="text-sm">' + r.data + '</td>' +
+                '<td><strong>' + r.codice + '</strong></td>' +
+                '<td>' + (r.vendita_codice || '-') + '</td>' +
+                '<td class="text-sm">' + ENI.UI.escapeHtml(r.operatore_nome || '-') + '</td>' +
+                '<td><strong>' + ENI.UI.formatValuta(r.totale_reso) + '</strong></td>' +
+                '<td>' + r.metodo_rimborso + '</td>' +
+            '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+        html += _paginazioneControls('resi-per-pagina', _resiPerPagina, _resiPagina, totale, totalePagine, startIdx, pageItems.length);
+        listEl.innerHTML = html;
+
+        _wirePaginazione(listEl, 'resi-per-pagina', totalePagine,
+            function(pp) { _resiPerPagina = pp; _resiPagina = 1; _renderResiList(); },
+            function(pag) { _resiPagina = pag; _renderResiList(); },
+            function() { return _resiPagina; });
+    }
+
+    function _esportaResi() {
+        if (!_resiList || _resiList.length === 0) { ENI.UI.warning('Nessun reso da esportare'); return; }
+        var righe = _resiList.map(function(r) {
+            return {
+                'Data': r.data || '', 'Codice Reso': r.codice || '', 'Vendita Orig.': r.vendita_codice || '',
+                'Operatore': r.operatore_nome || '',
+                'Totale Reso': (r.totale_reso != null ? r.totale_reso : ''),
+                'Rimborso': r.metodo_rimborso || ''
+            };
+        });
+        _scaricaXlsx(righe, 'Resi', 'resi', _resiList.length + ' resi esportati');
+    }
+
+    // --- Helper comuni: export xlsx + controlli paginazione ---
+    function _scaricaXlsx(righe, foglio, prefisso, msg) {
+        try {
+            var ws = XLSX.utils.json_to_sheet(righe);
+            var wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, foglio);
+            var oggi = (ENI.UI.oggiISO ? ENI.UI.oggiISO() : new Date().toISOString().slice(0, 10));
+            XLSX.writeFile(wb, prefisso + '_' + oggi + '.xlsx');
+            ENI.UI.success(msg);
+        } catch (e) {
+            console.error('Errore export:', e);
+            ENI.UI.error('Errore durante l\'esportazione');
+        }
+    }
+
+    function _numeriPagina(cur, total) {
+        var pages = [];
+        if (total <= 7) {
+            for (var i = 1; i <= total; i++) pages.push(i);
+            return pages;
+        }
+        pages.push(1);
+        var start = Math.max(2, cur - 1);
+        var end = Math.min(total - 1, cur + 1);
+        if (start > 2) pages.push('...');
+        for (var j = start; j <= end; j++) pages.push(j);
+        if (end < total - 1) pages.push('...');
+        pages.push(total);
+        return pages;
+    }
+
+    function _paginazioneControls(selId, perPagina, cur, totale, totalePagine, startIdx, nInPagina) {
+        var da = totale === 0 ? 0 : startIdx + 1;
+        var a = startIdx + nInPagina;
+        var opts = [10, 25, 50, 100].map(function(n) {
+            return '<option value="' + n + '"' + (n === perPagina ? ' selected' : '') + '>' + n + '</option>';
+        }).join('');
+        var numeri = _numeriPagina(cur, totalePagine).map(function(p) {
+            if (p === '...') return '<span class="text-muted" style="padding:0 0.25rem;">…</span>';
+            var attivo = p === cur;
+            return '<button class="btn btn-sm ' + (attivo ? 'btn-primary' : 'btn-outline') + '" data-pag="' + p + '">' + p + '</button>';
+        }).join('');
+        return '<div class="pagination-bar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;margin-top:0.75rem;">' +
+            '<div class="text-sm text-muted" style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">' +
+                '<span>Mostra</span>' +
+                '<select id="' + selId + '" class="form-select" style="width:auto;display:inline-block;min-height:36px;padding:0.25rem 2rem 0.25rem 0.6rem;">' + opts + '</select>' +
+                '<span>per pagina</span>' +
+                '<span style="margin-left:0.4rem;">' + da + '–' + a + ' di ' + totale + '</span>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:0.25rem;flex-wrap:wrap;">' +
+                '<button class="btn btn-sm btn-outline" data-pag="prev"' + (cur <= 1 ? ' disabled' : '') + '>‹ Indietro</button>' +
+                numeri +
+                '<button class="btn btn-sm btn-outline" data-pag="next"' + (cur >= totalePagine ? ' disabled' : '') + '>Avanti ›</button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    function _wirePaginazione(listEl, selId, totalePagine, onPerPagina, onVaiA, getPagina) {
+        var sel = listEl.querySelector('#' + selId);
+        if (sel) {
+            sel.addEventListener('change', function() { onPerPagina(parseInt(this.value, 10) || 25); });
+        }
+        listEl.querySelectorAll('[data-pag]').forEach(function(b) {
+            if (b.disabled) return;
+            b.addEventListener('click', function() {
+                var v = b.getAttribute('data-pag');
+                var pag = getPagina();
+                if (v === 'prev') pag = Math.max(1, pag - 1);
+                else if (v === 'next') pag = Math.min(totalePagine, pag + 1);
+                else pag = parseInt(v, 10) || 1;
+                onVaiA(pag);
+            });
+        });
+    }
+
     async function _renderResi(container) {
         container.innerHTML =
-            '<div class="filter-bar">' +
-                '<p class="text-sm text-muted">Per effettuare un reso, vai nello Storico Vendite, seleziona la vendita e clicca "Reso".</p>' +
+            '<div class="filter-bar" style="justify-content:space-between;align-items:center;">' +
+                '<p class="text-sm text-muted" style="margin:0;">Per effettuare un reso, vai nello Storico Vendite, seleziona la vendita e clicca "Reso".</p>' +
+                '<button class="btn btn-outline btn-sm" id="btn-resi-export">\u{1F4E4} Esporta</button>' +
             '</div>' +
             '<div id="resi-list"></div>';
+
+        var btnExp = document.getElementById('btn-resi-export');
+        if (btnExp) btnExp.addEventListener('click', _esportaResi);
 
         await _loadResi(container);
     }
@@ -1597,34 +1784,11 @@ ENI.Modules.Vendita = (function() {
         try {
             var resi = await ENI.API.getAll('resi', {
                 order: { col: 'created_at', asc: false },
-                limit: 50
+                limit: 2000
             });
-
-            if (!resi || resi.length === 0) {
-                listEl.innerHTML =
-                    '<div class="empty-state">' +
-                        '<div class="empty-state-icon">\u21A9\uFE0F</div>' +
-                        '<p class="empty-state-text">Nessun reso effettuato</p>' +
-                    '</div>';
-                return;
-            }
-
-            var html = '<div class="table-wrapper"><table class="table">' +
-                '<thead><tr><th>Data</th><th>Codice Reso</th><th>Vendita Orig.</th><th>Operatore</th><th>Totale Reso</th><th>Rimborso</th></tr></thead><tbody>';
-
-            resi.forEach(function(r) {
-                html += '<tr>' +
-                    '<td class="text-sm">' + r.data + '</td>' +
-                    '<td><strong>' + r.codice + '</strong></td>' +
-                    '<td>' + (r.vendita_codice || '-') + '</td>' +
-                    '<td class="text-sm">' + ENI.UI.escapeHtml(r.operatore_nome || '-') + '</td>' +
-                    '<td><strong>' + ENI.UI.formatValuta(r.totale_reso) + '</strong></td>' +
-                    '<td>' + r.metodo_rimborso + '</td>' +
-                '</tr>';
-            });
-
-            html += '</tbody></table></div>';
-            listEl.innerHTML = html;
+            _resiList = resi || [];
+            _resiPagina = 1;
+            _renderResiList();
         } catch(e) {
             listEl.innerHTML = '<div class="text-center text-muted">Errore caricamento resi</div>';
         }
