@@ -760,32 +760,21 @@ ENI.API = (function() {
     // --- Vendite ---
 
     async function salvaVendita(vendita, dettagli) {
-        var codice = await generaCodice('vendite', ENI.Config.PREFISSI.VENDITA);
-        vendita.codice = codice;
         vendita.operatore_id = ENI.State.getUserId();
         vendita.operatore_nome = ENI.State.getUserName();
 
-        var record = await insert('vendite', vendita);
-
-        dettagli.forEach(function(d) {
-            d.vendita_id = record.id;
+        // Salvataggio ATOMICO lato DB: codice + testata + righe + scarico giacenza,
+        // tutto o niente (niente vendite "a meta'"). Buono/saldo restano dopo, nel client.
+        var result = await getClient().rpc('salva_vendita', {
+            p_vendita: vendita,
+            p_dettagli: dettagli,
+            p_prefisso: ENI.Config.PREFISSI.VENDITA
         });
-        await insertBulk('vendite_dettaglio', dettagli);
-
-        // Scalare giacenza (atomico lato DB: niente lost-update multi-postazione)
-        for (var i = 0; i < dettagli.length; i++) {
-            var d = dettagli[i];
-            if (d.prodotto_id) {
-                try {
-                    await movimentaGiacenza(d.prodotto_id, -d.quantita);
-                } catch(e) {
-                    console.error('Errore aggiornamento giacenza prodotto:', d.prodotto_id, e);
-                }
-            }
-        }
+        if (result.error) throw new Error(result.error.message);
+        var record = result.data;
 
         await scriviLog('Vendita', 'Vendita',
-            codice + ' - ' + ENI.UI.formatValuta(vendita.totale) +
+            record.codice + ' - ' + ENI.UI.formatValuta(vendita.totale) +
             ' - ' + vendita.metodo_pagamento);
 
         return record;
