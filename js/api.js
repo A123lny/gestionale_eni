@@ -989,14 +989,28 @@ ENI.API = (function() {
     }
 
     async function utilizzaBuono(buonoId, venditaId) {
-        var record = await update('buoni_cartacei', buonoId, {
-            stato: 'utilizzato',
-            vendita_id: venditaId,
-            utilizzato_at: new Date().toISOString(),
-            utilizzato_da: ENI.State.getUserId()
-        });
+        // Aggiornamento ATOMICO: marca il buono solo se e' ancora 'attivo'.
+        // Se due vendite lo usano insieme, la seconda trova 0 righe -> niente doppia spendita.
+        var result = await getClient()
+            .from('buoni_cartacei')
+            .update({
+                stato: 'utilizzato',
+                vendita_id: venditaId,
+                utilizzato_at: new Date().toISOString(),
+                utilizzato_da: ENI.State.getUserId()
+            })
+            .eq('id', buonoId)
+            .eq('stato', 'attivo')
+            .select();
         ENI.State.cacheClear('buoni');
-        return record;
+        if (result.error) throw new Error(result.error.message);
+        if (!result.data || result.data.length === 0) {
+            // Nessuna riga aggiornata: il buono non era piu' attivo (gia' usato/annullato o inesistente)
+            var err = new Error('Buono non piu\' attivo (gia\' utilizzato o annullato)');
+            err.code = 'BUONO_NON_ATTIVO';
+            throw err;
+        }
+        return result.data[0];
     }
 
     async function annullaBuono(buonoId) {

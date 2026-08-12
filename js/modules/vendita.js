@@ -1252,27 +1252,37 @@ ENI.Modules.Vendita = (function() {
         try {
             var record = await ENI.API.salvaVendita(vendita, dettagli);
 
-            // Marca buono come utilizzato
+            // Marca buono come utilizzato (atomico lato API)
             if (buonoData && buonoData.id) {
                 try {
                     await ENI.API.utilizzaBuono(buonoData.id, record.id);
                 } catch(e2) {
                     console.error('Errore marcatura buono:', e2);
+                    if (e2 && e2.code === 'BUONO_NON_ATTIVO') {
+                        ENI.UI.error('ATTENZIONE: il buono risultava gia utilizzato. La vendita ' + record.codice + ' e salvata ma il buono NON e stato applicato: verifica il pagamento!');
+                    } else {
+                        ENI.UI.error('ATTENZIONE: errore nel registrare il buono sulla vendita ' + record.codice + '. Verifica manualmente.');
+                    }
                 }
             }
 
-            // Deduci saldo wallet
+            // Deduci saldo wallet (controllo esito: la RPC puo' restituire success:false senza eccezione)
             if (walletData && walletData.clientePortaleId) {
                 try {
-                    await ENI.API.deduciSaldoCliente(
+                    var ded = await ENI.API.deduciSaldoCliente(
                         walletData.clientePortaleId,
                         walletData.importo,
                         'Vendita ' + record.codice,
                         'vendita',
                         record.id
                     );
+                    if (!ded || ded.success === false) {
+                        var motivo = (ded && ded.error) ? ded.error : 'motivo sconosciuto';
+                        ENI.UI.error('ATTENZIONE: saldo cliente NON scalato (' + motivo + ') per la vendita ' + record.codice + ' - importo ' + ENI.UI.formatValuta(walletData.importo) + '. Verifica e scala manualmente.');
+                    }
                 } catch(e2) {
                     console.error('Errore deduzione wallet:', e2);
+                    ENI.UI.error('ATTENZIONE: errore nello scalo del saldo cliente per la vendita ' + record.codice + ' (' + ENI.UI.formatValuta(walletData.importo) + '). Verifica e scala manualmente.');
                 }
             }
 
