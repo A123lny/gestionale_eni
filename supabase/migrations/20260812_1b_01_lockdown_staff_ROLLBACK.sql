@@ -16,7 +16,7 @@ declare
     'giacenze_iniziali','import_eni_log','impostazioni_fatturazione','lavaggi','log_attivita',
     'magazzino','manutenzioni','movimenti_banca','pagamenti_programmati','pagamenti_ricorrenti',
     'parametri_fiscali','personale','prezzi_cliente','prezzi_pompa','prodotti_carburante',
-    'resi','resi_dettaglio','rimborsi_stato','smac_riepilogo','vendite','vendite_dettaglio',
+    'resi','resi_dettaglio','rimborsi_stato','smac_riepilogo','spese_cassa','vendite','vendite_dettaglio',
     'vendite_giornaliere','vendite_per_prodotto'
   ];
 begin
