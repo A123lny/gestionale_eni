@@ -449,6 +449,19 @@ ENI.API = (function() {
         return true;
     }
 
+    // Sposta la chiusura di cassa a un'altra data in modo ATOMICO: un solo UPDATE
+    // (niente elimina+ricrea, che rischiava di perdere il record a meta').
+    async function spostaCassa(id, nuovaData) {
+        var result = await getClient()
+            .from('cassa')
+            .update({ data: nuovaData, updated_at: new Date().toISOString() })
+            .eq('id', id)
+            .select()
+            .single();
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
     // --- Spese Cassa ---
 
     async function getSpeseCassa(data) {
@@ -2118,6 +2131,7 @@ ENI.API = (function() {
         getCassaOggi: getCassaOggi,
         getCassaMese: getCassaMese,
         salvaCassa: salvaCassa,
+        spostaCassa: spostaCassa,
         eliminaCassa: eliminaCassa,
         getSpeseCassa: getSpeseCassa,
         salvaSpesa: salvaSpesa,

@@ -415,16 +415,10 @@ ENI.Modules.Cassa = (function() {
 
                 try {
                     ENI.UI.showLoading();
-                    var datiSpostati = Object.assign({}, _cassa);
-                    var vecchioId = datiSpostati.id;
-                    var vecchiaData = datiSpostati.data;
-                    delete datiSpostati.id;
-                    delete datiSpostati.created_at;
-                    delete datiSpostati.updated_at;
-                    datiSpostati.data = nuovaData;
+                    var vecchiaData = _cassa.data;
 
-                    await ENI.API.eliminaCassa(vecchioId, vecchiaData);
-                    await ENI.API.salvaCassa(datiSpostati);
+                    // Spostamento ATOMICO: un solo UPDATE della data (niente elimina+ricrea)
+                    await ENI.API.spostaCassa(_cassa.id, nuovaData);
                     await ENI.API.scriviLog('Spostamento_Cassa', 'Cassa',
                         'Spostata da ' + vecchiaData + ' a ' + nuovaData);
 
