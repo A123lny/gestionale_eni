@@ -1669,42 +1669,19 @@ ENI.API = (function() {
     }
 
     async function salvaFattura(fattura, righe, movimenti) {
-        var anno = fattura.anno || new Date(fattura.data_emissione).getFullYear();
-        var tipoDoc = fattura.tipo_documento || 'FATTURA';
-        if (!fattura.numero) {
-            fattura.numero = await getProssimoNumeroDocumento(anno, tipoDoc);
-            fattura.anno = anno;
-            fattura.tipo_documento = tipoDoc;
-            var prefisso = tipoDoc === 'RICEVUTA' ? 'R' : '';
-            fattura.numero_formattato = prefisso + fattura.numero + '/' + anno;
-        }
         fattura.utente_creazione = ENI.State.getUserId();
 
-        var result = await getClient()
-            .from('fatture')
-            .insert(fattura)
-            .select().single();
+        // Salvataggio ATOMICO lato DB: numero progressivo + testata + righe +
+        // movimenti in un'unica transazione (niente fatture "a meta'" ne' numeri
+        // fiscali sprecati). La logica del numero (formattato, 'R' ricevute) e'
+        // replicata nella RPC salva_fattura.
+        var result = await getClient().rpc('salva_fattura', {
+            p_fattura: fattura,
+            p_righe: righe || [],
+            p_movimenti: movimenti || []
+        });
         if (result.error) throw new Error(result.error.message);
         var f = result.data;
-
-        if (righe && righe.length) {
-            var righeConId = righe.map(function(r, i) {
-                return Object.assign({}, r, { fattura_id: f.id, ordine: r.ordine != null ? r.ordine : i });
-            });
-            var r = await getClient().from('fatture_righe').insert(righeConId);
-            if (r.error) throw new Error(r.error.message);
-        }
-
-        if (movimenti && movimenti.length) {
-            var BATCH = 50;
-            for (var i = 0; i < movimenti.length; i += BATCH) {
-                var batch = movimenti.slice(i, i + BATCH).map(function(m) {
-                    return Object.assign({}, m, { fattura_id: f.id });
-                });
-                var rm = await getClient().from('fatture_movimenti').insert(batch);
-                if (rm.error) throw new Error(rm.error.message);
-            }
-        }
 
         await scriviLog('Emessa fattura ' + f.numero_formattato, 'fatturazione',
             { fattura_id: f.id, cliente_id: f.cliente_id, totale: f.totale });
