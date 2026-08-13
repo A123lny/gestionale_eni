@@ -735,6 +735,121 @@ ENI.API = (function() {
         };
     }
 
+    // --- Dashboard: aggregati periodo (SOLO lettura, per grafici/KPI) ---
+
+    function _dataGiorniFa(giorni) {
+        var d = new Date();
+        d.setDate(d.getDate() - (giorni - 1));
+        return d.toISOString().slice(0, 10);
+    }
+
+    // Vendite completate degli ultimi N giorni (per incassi + ripartizione pagamenti)
+    async function getVenditePeriodo(giorni) {
+        var result = await getClient()
+            .from('vendite')
+            .select('data, totale, importo_contanti, importo_pos, importo_buono, importo_wallet')
+            .gte('data', _dataGiorniFa(giorni))
+            .eq('stato', 'completata')
+            .limit(10000);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // Aggregati carburante giornalieri (litri/importo) degli ultimi N giorni
+    async function getCarburantePeriodo(giorni) {
+        var result = await getClient()
+            .from('vendite_giornaliere')
+            .select('data_inizio, litri_totali, importo_totale')
+            .gte('data_inizio', _dataGiorniFa(giorni))
+            .order('data_inizio', { ascending: true })
+            .limit(2000);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // Lavaggi degli ultimi N giorni (per andamento)
+    async function getLavaggiPeriodo(giorni) {
+        var result = await getClient()
+            .from('lavaggi')
+            .select('data, stato')
+            .gte('data', _dataGiorniFa(giorni))
+            .limit(10000);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // Prodotti (non servizi) sotto la scorta minima
+    async function getSottoScorta() {
+        var result = await getClient()
+            .from('magazzino')
+            .select('id, codice, nome_prodotto, giacenza, giacenza_minima, categoria')
+            .eq('attivo', true)
+            .gt('giacenza_minima', 0)
+            .limit(5000);
+        if (result.error) throw new Error(result.error.message);
+        return (result.data || []).filter(function(p) {
+            return Number(p.giacenza) < Number(p.giacenza_minima);
+        });
+    }
+
+    // Elenco crediti scaduti (per il riquadro allerte)
+    async function getCreditiScaduti() {
+        var result = await getClient()
+            .from('crediti')
+            .select('id, nome_cliente, importo, scadenza')
+            .eq('stato', 'Aperto')
+            .lt('scadenza', ENI.UI.oggiISO())
+            .order('scadenza', { ascending: true })
+            .limit(500);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // Incassi cassa per categoria (righe vendita completate degli ultimi N giorni)
+    async function getIncassiPerCategoria(giorni) {
+        var result = await getClient()
+            .from('vendite_dettaglio')
+            .select('categoria, totale_riga, vendite!inner(data)')
+            .eq('vendite.stato', 'completata')
+            .gte('vendite.data', _dataGiorniFa(giorni))
+            .limit(20000);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // --- Versioni per INTERVALLO di date (da/a inclusi) per il selettore periodo ---
+    async function getIncassiCategoriaRange(da, a) {
+        var result = await getClient()
+            .from('vendite_dettaglio')
+            .select('categoria, totale_riga, vendite!inner(data)')
+            .eq('vendite.stato', 'completata')
+            .gte('vendite.data', da).lte('vendite.data', a)
+            .limit(50000);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getCarburanteRange(da, a) {
+        var result = await getClient()
+            .from('vendite_giornaliere')
+            .select('data_inizio, litri_totali, importo_totale')
+            .gte('data_inizio', da).lte('data_inizio', a)
+            .order('data_inizio', { ascending: true })
+            .limit(5000);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getLavaggiRange(da, a) {
+        var result = await getClient()
+            .from('lavaggi')
+            .select('data, stato')
+            .gte('data', da).lte('data', a)
+            .limit(50000);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
     // --- Bulk Insert (per import CSV) ---
 
     async function insertBulk(tabella, dataArray) {
@@ -2154,6 +2269,15 @@ ENI.API = (function() {
         getVenditaDettaglio: getVenditaDettaglio,
         annullaVendita: annullaVendita,
         getVenditeTotaliPerData: getVenditeTotaliPerData,
+        getVenditePeriodo: getVenditePeriodo,
+        getCarburantePeriodo: getCarburantePeriodo,
+        getLavaggiPeriodo: getLavaggiPeriodo,
+        getSottoScorta: getSottoScorta,
+        getCreditiScaduti: getCreditiScaduti,
+        getIncassiPerCategoria: getIncassiPerCategoria,
+        getIncassiCategoriaRange: getIncassiCategoriaRange,
+        getCarburanteRange: getCarburanteRange,
+        getLavaggiRange: getLavaggiRange,
         salvaReso: salvaReso,
         getResiPerVendita: getResiPerVendita,
         // Buoni cartacei
