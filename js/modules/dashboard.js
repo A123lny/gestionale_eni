@@ -91,8 +91,12 @@ ENI.Modules.Dashboard = (function() {
         var btnPdf = container.querySelector('#btn-pdf');
         if (btnPdf) btnPdf.addEventListener('click', _generaPdf);
 
-        await _drawTrendCharts(vedeSoldi, vedeCarburante); // fissi 7 giorni
-        await _aggiornaKPI();                                // KPI + ripartizione + allerte (periodo)
+        // Grafici trend (7 gg fissi) e KPI/ripartizione (periodo) in parallelo:
+        // tutte le fetch partono insieme, cosi' i grafici compaiono contemporaneamente.
+        await Promise.all([
+            _drawTrendCharts(vedeSoldi, vedeCarburante),
+            _aggiornaKPI()
+        ]);
         _startAutoRefresh();
     }
 
@@ -110,22 +114,22 @@ ENI.Modules.Dashboard = (function() {
         var vedeCarburante = (ruolo === 'Admin');
         var r = _rangePeriodo(_periodo);
         try {
-            var base = await ENI.API.getDashboardData();
-            var lavaggiRows = await ENI.API.getLavaggiRange(r.da, r.a);
+            // Tutte le fetch KPI in parallelo: KPI, ripartizione e allerte compaiono insieme.
+            var res = await Promise.all([
+                ENI.API.getDashboardData(),
+                ENI.API.getLavaggiRange(r.da, r.a),
+                vedeSoldi ? ENI.API.getIncassiCategoriaRange(r.da, r.a) : Promise.resolve([]),
+                vedeSoldi ? ENI.API.getSottoScorta() : Promise.resolve([]),
+                (vedeSoldi && vedeCarburante) ? _carburantePeriodo(r) : Promise.resolve(null)
+            ]);
+            var base = res[0];
+            var lavaggiRows = res[1] || [];
+            var incassiRows = res[2] || [];
+            var sottoScorta = res[3] || [];
+            var carbInfo = res[4];
 
             var incassi = { Lavaggi: 0, Bar: 0, Negozio: 0 };
-            var incassiRows = [];
-            var sottoScorta = [];
-            var carbInfo = null;
-
-            if (vedeSoldi) {
-                var jobs = [ENI.API.getIncassiCategoriaRange(r.da, r.a), ENI.API.getSottoScorta()];
-                var res = await Promise.all(jobs);
-                incassiRows = res[0] || [];
-                incassiRows.forEach(function(x) { incassi[_attivita(x.categoria)] += Number(x.totale_riga || 0); });
-                sottoScorta = res[1] || [];
-                if (vedeCarburante) carbInfo = await _carburantePeriodo(r);
-            }
+            incassiRows.forEach(function(x) { incassi[_attivita(x.categoria)] += Number(x.totale_riga || 0); });
 
             _renderKPI(base, r, incassi, lavaggiRows, carbInfo, sottoScorta, vedeSoldi, vedeCarburante);
             if (vedeSoldi) _graficoRipartizione(incassiRows);
@@ -282,9 +286,15 @@ ENI.Modules.Dashboard = (function() {
             return;
         }
         try {
-            if (vedeSoldi) { _graficoIncassi(await ENI.API.getVenditePeriodo(7)); }
-            if (vedeCarburante) { _graficoCarburante(await ENI.API.getCarburantePeriodo(7)); }
-            _graficoLavaggi(await ENI.API.getLavaggiPeriodo(7));
+            // Fetch in parallelo: i 3 grafici trend si disegnano insieme, non a scaglioni.
+            var res = await Promise.all([
+                vedeSoldi ? ENI.API.getVenditePeriodo(7) : Promise.resolve([]),
+                vedeCarburante ? ENI.API.getCarburantePeriodo(7) : Promise.resolve([]),
+                ENI.API.getLavaggiPeriodo(7)
+            ]);
+            if (vedeSoldi) _graficoIncassi(res[0] || []);
+            if (vedeCarburante) _graficoCarburante(res[1] || []);
+            _graficoLavaggi(res[2] || []);
         } catch(e) { console.error('Dashboard grafici:', e); }
     }
 
