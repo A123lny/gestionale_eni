@@ -109,12 +109,7 @@ ENI.Modules.Clienti = (function() {
             // Filtri
             '<div class="filter-bar">' +
                 '<input type="text" class="form-input" id="search-clienti" placeholder="\u{1F50D} Cerca per nome...">' +
-                '<div class="filter-chips">' +
-                    '<button class="chip active" data-filtro="Tutti">Tutti</button>' +
-                    '<button class="chip" data-filtro="Corporate">\u{1F3E2} Corporate</button>' +
-                    '<button class="chip" data-filtro="Privato">\u{1F464} Privati</button>' +
-                    '<button class="chip" data-filtro="Fornitore">\u{1F69A} Fornitori</button>' +
-                '</div>' +
+                '<div class="filter-chips" id="clienti-chips"></div>' +
             '</div>' +
 
             // Tabella
@@ -142,10 +137,8 @@ ENI.Modules.Clienti = (function() {
         // Filter chips
         ENI.UI.delegate(container, 'click', '.chip[data-filtro]', function(e, el) {
             _filtroTipo = el.dataset.filtro;
-            container.querySelectorAll('.chip[data-filtro]').forEach(function(c) {
-                c.classList.toggle('active', c.dataset.filtro === _filtroTipo);
-            });
             _paginaCorrente = 1;
+            _renderChips();
             _renderList();
         });
 
@@ -177,6 +170,7 @@ ENI.Modules.Clienti = (function() {
     async function _loadClienti() {
         try {
             _clienti = await ENI.API.getClienti();
+            _renderChips();
             _renderList();
         } catch(e) {
             ENI.UI.error('Errore caricamento clienti');
@@ -193,6 +187,48 @@ ENI.Modules.Clienti = (function() {
                 (c.p_iva_coe && c.p_iva_coe.toLowerCase().indexOf(_searchTerm) !== -1);
             return matchTipo && matchSearch;
         });
+    }
+
+    // Colore + icona + etichetta per tipo cliente
+    function _tipoInfo(tipo) {
+        if (tipo === 'Corporate') return { color: '#2a78d6', icon: '\u{1F3E2}', label: 'Corporate' };
+        if (tipo === 'Fornitore') return { color: '#eb6834', icon: '\u{1F69A}', label: 'Fornitore' };
+        if (tipo === 'Privato') return { color: '#1baf7a', icon: '\u{1F464}', label: 'Privato' };
+        return { color: '#898781', icon: '•', label: tipo || '-' };
+    }
+
+    function _tipoBadge(t) {
+        return '<span style="display:inline-flex;align-items:center;gap:0.3rem;padding:2px 10px;border-radius:999px;font-size:0.78rem;font-weight:600;color:' + t.color + ';background:' + t.color + '1f;white-space:nowrap;">' + t.icon + ' ' + t.label + '</span>';
+    }
+
+    // Iniziali per l'avatar (max 2 lettere)
+    function _iniziali(nome) {
+        var parts = String(nome || '').trim().split(/\s+/).filter(Boolean);
+        if (!parts.length) return '?';
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+        return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+    }
+
+    // Chip filtro con conteggi e colori per tipo
+    function _renderChips() {
+        var box = document.getElementById('clienti-chips');
+        if (!box) return;
+        var counts = { Tutti: _clienti.length, Corporate: 0, Privato: 0, Fornitore: 0 };
+        _clienti.forEach(function(c) { if (counts[c.tipo] !== undefined) counts[c.tipo]++; });
+        var defs = [
+            { id: 'Tutti', label: 'Tutti', color: '#52514e', icon: '' },
+            { id: 'Corporate', label: 'Corporate', color: '#2a78d6', icon: '\u{1F3E2}' },
+            { id: 'Privato', label: 'Privati', color: '#1baf7a', icon: '\u{1F464}' },
+            { id: 'Fornitore', label: 'Fornitori', color: '#eb6834', icon: '\u{1F69A}' }
+        ];
+        box.innerHTML = defs.map(function(d) {
+            var active = (_filtroTipo === d.id);
+            var style = active
+                ? 'background:' + d.color + ';color:#fff;border:1px solid ' + d.color + ';'
+                : 'background:transparent;color:' + d.color + ';border:1px solid ' + d.color + '66;';
+            return '<button class="chip" data-filtro="' + d.id + '" style="' + style + '">' +
+                (d.icon ? d.icon + ' ' : '') + d.label + ' (' + counts[d.id] + ')</button>';
+        }).join('');
     }
 
     function _renderList() {
@@ -218,30 +254,38 @@ ENI.Modules.Clienti = (function() {
         var startIdx = (_paginaCorrente - 1) * _perPagina;
         var pageItems = filtered.slice(startIdx, startIdx + _perPagina);
 
-        var html = '<div class="table-wrapper"><table class="table">' +
+        var html = '<style>' +
+            '#clienti-list table tbody tr:hover{background:var(--color-gray-100);}' +
+            '#clienti-list thead th{position:sticky;top:0;background:var(--bg-card);z-index:1;}' +
+            '</style>' +
+            '<div class="table-wrapper"><table class="table">' +
             '<thead><tr>' +
-                '<th>Nome / Ragione Sociale</th>' +
-                '<th>Tipo</th>' +
-                '<th>Pag. Fattura</th>' +
-                '<th>Contatto</th>' +
+                '<th>Cliente</th>' +
+                '<th>Pag. fattura</th>' +
+                '<th>Contatti</th>' +
             '</tr></thead><tbody>';
 
         pageItems.forEach(function(c) {
-            var pagFattLabel = c.modalita_pagamento_fattura
-                ? '<span style="color:var(--color-primary);">' + ENI.UI.escapeHtml(c.modalita_pagamento_fattura) + '</span>'
-                : '<span style="color:var(--color-danger);font-style:italic;">Non impostato</span>';
+            var t = _tipoInfo(c.tipo);
+            var avatar = '<span title="' + ENI.UI.escapeHtml(t.label) + '" style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:' + t.color + '22;color:' + t.color + ';font-weight:700;font-size:0.72rem;flex-shrink:0;">' + ENI.UI.escapeHtml(_iniziali(c.nome_ragione_sociale)) + '</span>';
+            var pag = c.modalita_pagamento_fattura
+                ? '<span class="text-sm">' + ENI.UI.escapeHtml(c.modalita_pagamento_fattura) + '</span>'
+                : '<span title="Pagamento fattura non impostato" style="color:var(--color-warning);font-size:1.1rem;">⚠️</span>';
+            var contatto = '';
+            if (c.telefono) contatto += '<span style="white-space:nowrap;">\u{1F4DE} ' + ENI.UI.escapeHtml(c.telefono) + '</span>';
+            if (c.email) contatto += (contatto ? '<br>' : '') + '<span style="white-space:nowrap;">✉️ ' + ENI.UI.escapeHtml(c.email) + '</span>';
+            if (!contatto) contatto = '<span class="text-muted">—</span>';
             html +=
-                '<tr data-cliente-id="' + c.id + '" style="cursor:pointer;">' +
-                    '<td>' +
-                        '<strong>' + ENI.UI.escapeHtml(c.nome_ragione_sociale) + '</strong>' +
-                        (c.targa ? '<br><span class="text-xs text-muted">' + ENI.UI.escapeHtml(c.targa) + '</span>' : '') +
-                    '</td>' +
-                    '<td>' + ENI.UI.badgeStato(c.tipo) + '</td>' +
-                    '<td class="text-sm">' + pagFattLabel + '</td>' +
-                    '<td class="text-sm text-muted">' +
-                        (c.telefono ? c.telefono : '') +
-                        (c.email ? '<br>' + c.email : '') +
-                    '</td>' +
+                '<tr data-cliente-id="' + c.id + '" style="cursor:pointer;border-left:4px solid ' + t.color + ';">' +
+                    '<td><div style="display:flex;align-items:center;gap:0.6rem;">' +
+                        avatar +
+                        '<div>' +
+                            '<strong>' + ENI.UI.escapeHtml(c.nome_ragione_sociale) + '</strong>' +
+                            (c.targa ? '<div class="text-xs text-muted">' + ENI.UI.escapeHtml(c.targa) + '</div>' : '') +
+                        '</div>' +
+                    '</div></td>' +
+                    '<td>' + pag + '</td>' +
+                    '<td class="text-sm text-muted">' + contatto + '</td>' +
                 '</tr>';
         });
 

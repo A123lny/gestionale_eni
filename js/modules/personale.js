@@ -10,6 +10,7 @@ ENI.Modules.Personale = (function() {
     'use strict';
 
     var _personale = [];
+    var _mostraArchiviati = false;
 
     async function render(container) {
         container.innerHTML =
@@ -45,6 +46,16 @@ ENI.Modules.Personale = (function() {
         ENI.UI.delegate(container, 'click', '[data-edit-id]', function(e, el) {
             _showFormModifica(el.dataset.editId);
         });
+        ENI.UI.delegate(container, 'click', '[data-archivia-id]', function(e, el) {
+            _archivia(el.dataset.archiviaId);
+        });
+        ENI.UI.delegate(container, 'click', '[data-ripristina-id]', function(e, el) {
+            _ripristina(el.dataset.ripristinaId);
+        });
+        ENI.UI.delegate(container, 'click', '[data-toggle-archiviati]', function() {
+            _mostraArchiviati = !_mostraArchiviati;
+            _renderList();
+        });
 
         await _loadPersonale();
     }
@@ -67,27 +78,83 @@ ENI.Modules.Personale = (function() {
         }
     }
 
+    function _ruoloLabel(p) { return p.super_admin ? 'Super Admin' : p.ruolo; }
+
     function _renderList() {
         var listEl = document.getElementById('personale-list');
         if (!listEl) return;
 
-        var html = '<div class="table-wrapper"><table class="table">' +
-            '<thead><tr><th>Username</th><th>Nome</th><th>Ruolo</th><th>PIN</th><th>Attivo</th><th>Azioni</th></tr></thead><tbody>';
+        var attivi = _personale.filter(function(p) { return p.attivo; });
+        var archiviati = _personale.filter(function(p) { return !p.attivo; });
+        var utenteId = ENI.State.getUserId();
 
-        _personale.forEach(function(p) {
+        // --- Elenco attivi ---
+        var html = '<div class="table-wrapper"><table class="table">' +
+            '<thead><tr><th>Username</th><th>Nome</th><th>Ruolo</th><th>PIN</th><th>Azioni</th></tr></thead><tbody>';
+        attivi.forEach(function(p) {
+            var azioni = '<button class="btn btn-sm btn-ghost" data-edit-id="' + p.id + '" title="Modifica">\u{1F4DD}</button>';
+            if (p.id !== utenteId) {
+                azioni += ' <button class="btn btn-sm btn-ghost" data-archivia-id="' + p.id + '" title="Archivia">\u{1F5C4}\uFE0F</button>';
+            }
             html +=
                 '<tr>' +
                     '<td class="text-sm">' + ENI.UI.escapeHtml(p.username) + '</td>' +
                     '<td><strong>' + ENI.UI.escapeHtml(p.nome_completo) + '</strong></td>' +
-                    '<td>' + ENI.UI.escapeHtml(p.super_admin ? 'Super Admin' : p.ruolo) + '</td>' +
+                    '<td>' + ENI.UI.escapeHtml(_ruoloLabel(p)) + '</td>' +
                     '<td class="text-muted">****</td>' +
-                    '<td>' + (p.attivo ? '\u2705' : '\u274C') + '</td>' +
-                    '<td><button class="btn btn-sm btn-ghost" data-edit-id="' + p.id + '">\u{1F4DD}</button></td>' +
+                    '<td>' + azioni + '</td>' +
                 '</tr>';
         });
-
         html += '</tbody></table></div>';
+
+        // --- Sezione archiviati ---
+        html += '<div style="margin-top:var(--space-4);">' +
+            '<button class="btn btn-outline btn-sm" data-toggle-archiviati>' +
+                (_mostraArchiviati ? '\u25BE' : '\u25B8') + ' Archiviati (' + archiviati.length + ')' +
+            '</button>';
+        if (_mostraArchiviati && archiviati.length) {
+            html += '<div class="table-wrapper" style="margin-top:var(--space-2);"><table class="table">' +
+                '<thead><tr><th>Username</th><th>Nome</th><th>Ruolo</th><th>Azioni</th></tr></thead><tbody>';
+            archiviati.forEach(function(p) {
+                html +=
+                    '<tr style="opacity:0.7;">' +
+                        '<td class="text-sm">' + ENI.UI.escapeHtml(p.username) + '</td>' +
+                        '<td>' + ENI.UI.escapeHtml(p.nome_completo) + '</td>' +
+                        '<td>' + ENI.UI.escapeHtml(_ruoloLabel(p)) + '</td>' +
+                        '<td><button class="btn btn-sm btn-outline" data-ripristina-id="' + p.id + '">Ripristina</button></td>' +
+                    '</tr>';
+            });
+            html += '</tbody></table></div>';
+        }
+        html += '</div>';
+
         listEl.innerHTML = html;
+    }
+
+    async function _archivia(id) {
+        var p = _personale.find(function(x) { return x.id === id; });
+        if (!p) return;
+        var ok = await ENI.UI.confirm('Archiviare "' + p.nome_completo + '"? Sparira\' dall\'elenco ma restera\' nello storico e potra\' essere ripristinato.');
+        if (!ok) return;
+        try {
+            await ENI.API.aggiornaPersonale(id, { attivo: false, nome_completo: p.nome_completo });
+            ENI.UI.success(p.nome_completo + ' archiviato');
+            await _loadPersonale();
+        } catch(e) {
+            ENI.UI.error('Errore durante l\'archiviazione');
+        }
+    }
+
+    async function _ripristina(id) {
+        var p = _personale.find(function(x) { return x.id === id; });
+        if (!p) return;
+        try {
+            await ENI.API.aggiornaPersonale(id, { attivo: true, nome_completo: p.nome_completo });
+            ENI.UI.success(p.nome_completo + ' ripristinato');
+            await _loadPersonale();
+        } catch(e) {
+            ENI.UI.error('Errore durante il ripristino');
+        }
     }
 
     function _showFormNuovo() {
