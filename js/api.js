@@ -475,6 +475,18 @@ ENI.API = (function() {
         return result.data || [];
     }
 
+    // Spese di cassa complete su un intervallo (per il report/riepilogo)
+    async function getSpeseCassaReport(da, a) {
+        var result = await getClient()
+            .from('spese_cassa')
+            .select('data, categoria, descrizione, importo, note')
+            .gte('data', da).lte('data', a)
+            .order('data', { ascending: true })
+            .limit(20000);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
     async function salvaSpesa(dati) {
         dati.utente_inserimento = ENI.State.getUserId();
         var record = await insert('spese_cassa', dati);
@@ -2249,6 +2261,7 @@ ENI.API = (function() {
         spostaCassa: spostaCassa,
         eliminaCassa: eliminaCassa,
         getSpeseCassa: getSpeseCassa,
+        getSpeseCassaReport: getSpeseCassaReport,
         salvaSpesa: salvaSpesa,
         eliminaSpesa: eliminaSpesa,
         getMagazzino: getMagazzino,
