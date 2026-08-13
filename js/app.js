@@ -24,7 +24,8 @@ ENI.App = (function() {
                         id: u.id,
                         username: u.username,
                         nome_completo: u.nome_completo,
-                        ruolo: u.ruolo
+                        ruolo: u.ruolo,
+                        super_admin: u.super_admin
                     });
                 }
             } catch (e) { /* nessuna sessione valida */ }
@@ -44,6 +45,7 @@ ENI.App = (function() {
         var app = document.getElementById('app');
         var user = ENI.State.getUser();
         var ruolo = user ? user.ruolo : '';
+        var ruoloLabel = (user && user.super_admin) ? 'Super Admin' : ruolo;
         var navItems = _getNavItemsForRole(ruolo);
 
         app.innerHTML =
@@ -56,7 +58,7 @@ ENI.App = (function() {
                     '<div class="app-header-user">' +
                         '<div>' +
                             '<div class="app-header-user-name">' + ENI.UI.escapeHtml(user ? user.nome_completo : '') + '</div>' +
-                            '<div class="app-header-user-role">' + ENI.UI.escapeHtml(ruolo) + '</div>' +
+                            '<div class="app-header-user-role">' + ENI.UI.escapeHtml(ruoloLabel) + '</div>' +
                         '</div>' +
                         '<button class="btn-logout" id="btn-logout">Esci</button>' +
                     '</div>' +
@@ -93,9 +95,16 @@ ENI.App = (function() {
         var config = ENI.Config.RUOLI[ruolo];
         if (!config) return [];
 
-        return ENI.Config.NAV_ITEMS.filter(function(item) {
+        var items = ENI.Config.NAV_ITEMS.filter(function(item) {
             return config.moduli.indexOf(item.id) !== -1;
         });
+
+        // Dashboard: solo per il Super Admin (in cima al menu)
+        if (ENI.State.isSuperAdmin()) {
+            var dash = ENI.Config.NAV_ITEMS.filter(function(it) { return it.id === 'dashboard'; });
+            items = dash.concat(items);
+        }
+        return items;
     }
 
     // --- Get Section Items for Role ---

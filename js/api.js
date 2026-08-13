@@ -137,7 +137,7 @@ ENI.API = (function() {
         if (!sess.data || !sess.data.user) return null;
         var result = await getClient()
             .from('personale')
-            .select('id, username, nome_completo, ruolo')
+            .select('id, username, nome_completo, ruolo, super_admin')
             .eq('auth_user_id', sess.data.user.id)
             .eq('attivo', true)
             .maybeSingle();

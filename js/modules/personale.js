@@ -23,17 +23,17 @@ ENI.Modules.Personale = (function() {
                 '<div class="card-header"><h3 class="card-title">Matrice Permessi</h3></div>' +
                 '<div class="table-wrapper" style="border:none;">' +
                     '<table class="table">' +
-                        '<thead><tr><th>Modulo</th><th>Admin</th><th>Cassiere</th><th>Lavaggi</th></tr></thead>' +
+                        '<thead><tr><th>Modulo</th><th>Super Admin</th><th>Admin</th><th>Cassiere</th><th>Lavaggi</th></tr></thead>' +
                         '<tbody>' +
-                            _permessiRow('Dashboard', true, true, true) +
-                            _permessiRow('Clienti', true, 'R', 'R') +
-                            _permessiRow('Cassa', true, true, false) +
-                            _permessiRow('Crediti', true, true, false) +
-                            _permessiRow('Lavaggi', true, true, true) +
-                            _permessiRow('Magazzino', true, true, false) +
-                            _permessiRow('Personale', true, false, false) +
-                            _permessiRow('Manutenzioni', true, false, false) +
-                            _permessiRow('Log', true, false, false) +
+                            _permessiRow('Dashboard', true, false, false, false) +
+                            _permessiRow('Clienti', true, true, 'R', 'R') +
+                            _permessiRow('Cassa', true, true, true, false) +
+                            _permessiRow('Crediti', true, true, true, false) +
+                            _permessiRow('Lavaggi', true, true, true, true) +
+                            _permessiRow('Magazzino', true, true, true, false) +
+                            _permessiRow('Personale', true, true, false, false) +
+                            _permessiRow('Manutenzioni', true, true, false, false) +
+                            _permessiRow('Log', true, true, false, false) +
                         '</tbody>' +
                     '</table>' +
                 '</div>' +
@@ -49,13 +49,13 @@ ENI.Modules.Personale = (function() {
         await _loadPersonale();
     }
 
-    function _permessiRow(modulo, admin, cassiere, lavaggi) {
+    function _permessiRow(modulo, superadmin, admin, cassiere, lavaggi) {
         function _cell(val) {
             if (val === true) return '<td class="text-center">\u2705</td>';
             if (val === 'R') return '<td class="text-center">\u{1F441}\uFE0F</td>';
             return '<td class="text-center">\u274C</td>';
         }
-        return '<tr><td>' + modulo + '</td>' + _cell(admin) + _cell(cassiere) + _cell(lavaggi) + '</tr>';
+        return '<tr><td>' + modulo + '</td>' + _cell(superadmin) + _cell(admin) + _cell(cassiere) + _cell(lavaggi) + '</tr>';
     }
 
     async function _loadPersonale() {
@@ -79,7 +79,7 @@ ENI.Modules.Personale = (function() {
                 '<tr>' +
                     '<td class="text-sm">' + ENI.UI.escapeHtml(p.username) + '</td>' +
                     '<td><strong>' + ENI.UI.escapeHtml(p.nome_completo) + '</strong></td>' +
-                    '<td>' + ENI.UI.escapeHtml(p.ruolo) + '</td>' +
+                    '<td>' + ENI.UI.escapeHtml(p.super_admin ? 'Super Admin' : p.ruolo) + '</td>' +
                     '<td class="text-muted">****</td>' +
                     '<td>' + (p.attivo ? '\u2705' : '\u274C') + '</td>' +
                     '<td><button class="btn btn-sm btn-ghost" data-edit-id="' + p.id + '">\u{1F4DD}</button></td>' +

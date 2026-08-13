@@ -44,17 +44,17 @@ ENI.Config = {
     RUOLI: {
         Admin: {
             label: 'Amministratore',
-            moduli: ['dashboard', 'clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'tesoreria', 'fatturazione', 'smac', 'personale', 'manutenzioni', 'log', 'impostazioni'],
+            moduli: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'tesoreria', 'fatturazione', 'smac', 'personale', 'manutenzioni', 'log', 'impostazioni'],
             scrivere: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'tesoreria', 'fatturazione', 'smac', 'personale', 'manutenzioni', 'impostazioni']
         },
         Cassiere: {
             label: 'Cassiere',
-            moduli: ['dashboard', 'clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni'],
+            moduli: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni'],
             scrivere: ['cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni']
         },
         Lavaggi: {
             label: 'Operatore Lavaggi',
-            moduli: ['dashboard', 'clienti', 'lavaggi'],
+            moduli: ['clienti', 'lavaggi'],
             scrivere: ['lavaggi']
         }
     },

@@ -65,9 +65,16 @@ ENI.State = (function() {
         return user ? user.nome_completo : null;
     }
 
+    function isSuperAdmin() {
+        var user = getUser();
+        return !!(user && user.super_admin);
+    }
+
     function canAccess(moduloId) {
         var ruolo = getUserRole();
         if (!ruolo) return false;
+        // La dashboard e' riservata al Super Admin
+        if (moduloId === 'dashboard') return isSuperAdmin();
         var config = ENI.Config.RUOLI[ruolo];
         return config && config.moduli.indexOf(moduloId) !== -1;
     }
@@ -194,6 +201,7 @@ ENI.State = (function() {
         getUserName: getUserName,
         canAccess: canAccess,
         canWrite: canWrite,
+        isSuperAdmin: isSuperAdmin,
         cacheSet: cacheSet,
         cacheGet: cacheGet,
         cacheClear: cacheClear,

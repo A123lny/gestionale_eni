@@ -49,10 +49,20 @@ ENI.Router = (function() {
         window.location.hash = '#/' + route;
     }
 
+    // Pagina di atterraggio in base al ruolo: Super Admin -> dashboard,
+    // altrimenti la prima sezione sensata accessibile.
+    function _homeRoute() {
+        if (ENI.State.canAccess('dashboard')) return 'dashboard';
+        if (ENI.State.canAccess('vendita')) return 'vendita';
+        if (ENI.State.canAccess('lavaggi')) return 'lavaggi';
+        if (ENI.State.canAccess('clienti')) return 'clienti';
+        return 'clienti';
+    }
+
     // --- Hash Change Handler ---
 
     function _onHashChange() {
-        var hash = window.location.hash.replace('#/', '') || 'dashboard';
+        var hash = window.location.hash.replace('#/', '') || _homeRoute();
 
         // ---- AREA CLIENTE: routing separato ----
         if (hash === 'area-cliente' || hash.indexOf('area-cliente/') === 0) {
@@ -68,16 +78,16 @@ ENI.Router = (function() {
 
         var routeConfig = _routes[hash];
 
-        // Route non trovata -> dashboard
+        // Route non trovata -> home del ruolo
         if (!routeConfig) {
-            navigate('dashboard');
+            navigate(_homeRoute());
             return;
         }
 
         // Check permessi
         if (!ENI.State.canAccess(routeConfig.id)) {
             ENI.UI.warning('Non hai i permessi per accedere a questa sezione');
-            navigate('dashboard');
+            navigate(_homeRoute());
             return;
         }
 

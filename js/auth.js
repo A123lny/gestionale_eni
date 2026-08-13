@@ -153,7 +153,8 @@ ENI.Auth = (function() {
                     id: user.id,
                     username: user.username,
                     nome_completo: user.nome_completo,
-                    ruolo: user.ruolo
+                    ruolo: user.ruolo,
+                    super_admin: user.super_admin
                 });
 
                 await ENI.API.scriviLog('Login', 'Personale', user.nome_completo + ' - ' + user.ruolo);
