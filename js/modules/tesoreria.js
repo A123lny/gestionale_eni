@@ -189,9 +189,10 @@ ENI.Modules.Tesoreria = (function() {
             saldoBancaLabel = 'Calcolato al ' + ENI.UI.formatData(flussi[flussi.length - 1].data);
         }
 
-        // Scadenze nei prossimi 7gg e 30gg
+        // Scadenze nei prossimi N giorni (configurabile da Impostazioni) e 30gg
         var oggiStr = ENI.UI.oggiISO();
-        var scadenzeCount = _contaScadenzeProssime(ricorrenti, programmati, autoScadenze, 7);
+        var giorniPreavviso = ENI.Config.CONSTANTS.SCADENZE_PREAVVISO_GIORNI || 7;
+        var scadenzeCount = _contaScadenzeProssime(ricorrenti, programmati, autoScadenze, giorniPreavviso);
 
         // Uscite/entrate previste 30gg
         var prev30 = _calcolaPrevisto30gg(ricorrenti, programmati, autoScadenze, accrediti30gg, mediaSpeseCassaGiorno, entrata4TS);
@@ -214,7 +215,7 @@ ENI.Modules.Tesoreria = (function() {
                 _renderKpiCard('Saldo Banca', saldoBanca, saldoBancaLabel, 'info') +
                 _renderKpiCard('Uscite Previste 30gg', prev30.uscite, prev30.dettaglioUscite, 'danger') +
                 _renderKpiCard('Entrate Previste 30gg', prev30.entrate, prev30.dettaglioEntrate, 'success') +
-                _renderKpiCard('Scadenze 7gg', null, scadenzeCount + ' pagament' + (scadenzeCount === 1 ? 'o' : 'i'), scadenzeCount > 0 ? 'warning' : 'success', scadenzeCount) +
+                _renderKpiCard('Scadenze ' + giorniPreavviso + 'gg', null, scadenzeCount + ' pagament' + (scadenzeCount === 1 ? 'o' : 'i'), scadenzeCount > 0 ? 'warning' : 'success', scadenzeCount) +
             '</div>' +
 
             // Castelletto
@@ -2277,7 +2278,8 @@ ENI.Modules.Tesoreria = (function() {
 
     async function checkScadenze() {
         try {
-            var data = await ENI.API.getScadenzeTesoreria(7);
+            var giorni = ENI.Config.CONSTANTS.SCADENZE_PREAVVISO_GIORNI || 7;
+            var data = await ENI.API.getScadenzeTesoreria(giorni);
             var count = 0;
 
             // Programmati
@@ -2286,7 +2288,7 @@ ENI.Modules.Tesoreria = (function() {
             // Ricorrenti
             var oggi = new Date();
             var limite = new Date();
-            limite.setDate(limite.getDate() + 7);
+            limite.setDate(limite.getDate() + giorni);
 
             data.ricorrenti.forEach(function(r) {
                 var date = _getProssimeDateRicorrente(r, oggi, limite);

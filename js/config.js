@@ -99,6 +99,9 @@ ENI.Config = {
     // Bottom nav mobile (max 5 items, il resto in "Altro")
     BOTTOM_NAV_ITEMS: ['dashboard', 'vendita', 'cassa', 'lavaggi'],
 
+    // Moduli opzionali che il Super Admin puo' nascondere/mostrare da Impostazioni
+    MODULI_OPZIONALI: ['crediti'],
+
     // Modalita pagamento
     MODALITA_PAGAMENTO: [
         { value: 'Cash', label: 'Cash immediato' },
@@ -179,6 +182,9 @@ ENI.Config = {
         PREZZO_MIN: 0,
         PREZZO_MAX: 9999,
         QUANTITA_MIN: 0,
-        QUANTITA_MAX: 99999
+        QUANTITA_MAX: 99999,
+        SCORTA_MINIMA_DEFAULT: 5,     // giacenza minima proposta per i nuovi prodotti (sovrascrivibile da Impostazioni)
+        SCADENZE_PREAVVISO_GIORNI: 7, // giorni di anticipo per l'avviso scadenze pagamenti (Tesoreria)
+        FONDO_CASSA_DEFAULT: 720      // fondo cassa fisso predefinito nella pagina Cassa
     }
 };

@@ -17,6 +17,9 @@ ENI.State = (function() {
     // Cache dati con TTL
     var _cache = {};
 
+    // Moduli disabilitati globalmente (feature toggle, gestiti dal Super Admin)
+    var _moduliDisabilitati = [];
+
     // Listeners per cambiamenti di stato
     var _listeners = {};
 
@@ -75,8 +78,24 @@ ENI.State = (function() {
         if (!ruolo) return false;
         // La dashboard e' riservata al Super Admin
         if (moduloId === 'dashboard') return isSuperAdmin();
+        // Moduli disattivati dal Super Admin: nascosti a tutti (menu + accesso diretto)
+        if (_moduliDisabilitati.indexOf(moduloId) !== -1) return false;
         var config = ENI.Config.RUOLI[ruolo];
         return config && config.moduli.indexOf(moduloId) !== -1;
+    }
+
+    // --- Feature toggle moduli ---
+
+    function setModuliDisabilitati(arr) {
+        _moduliDisabilitati = Array.isArray(arr) ? arr.slice() : [];
+    }
+
+    function getModuliDisabilitati() {
+        return _moduliDisabilitati.slice();
+    }
+
+    function isModuloAttivo(moduloId) {
+        return _moduliDisabilitati.indexOf(moduloId) === -1;
     }
 
     function canWrite(moduloId) {
@@ -202,6 +221,9 @@ ENI.State = (function() {
         canAccess: canAccess,
         canWrite: canWrite,
         isSuperAdmin: isSuperAdmin,
+        setModuliDisabilitati: setModuliDisabilitati,
+        getModuliDisabilitati: getModuliDisabilitati,
+        isModuloAttivo: isModuloAttivo,
         cacheSet: cacheSet,
         cacheGet: cacheGet,
         cacheClear: cacheClear,

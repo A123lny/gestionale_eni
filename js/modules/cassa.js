@@ -153,7 +153,7 @@ ENI.Modules.Cassa = (function() {
                 // Fondo cassa (solo informativo)
                 _section('\u{1F4C5} Informazioni Giornata',
                     '<div class="cassa-grid">' +
-                        _cassaInput('Fondo Cassa Fisso', 'fondo_cassa', c.fondo_cassa || 720, 'number') +
+                        _cassaInput('Fondo Cassa Fisso', 'fondo_cassa', c.fondo_cassa || (ENI.Config.CONSTANTS.FONDO_CASSA_DEFAULT || 720), 'number') +
                     '</div>' +
                     '<div class="text-sm text-muted mt-2">Importo fondo cassa fisso \u2014 solo informativo, <strong>non incide</strong> sul calcolo incassato</div>'
                 ) +

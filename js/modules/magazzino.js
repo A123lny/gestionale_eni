@@ -634,7 +634,7 @@ ENI.Modules.Magazzino = (function() {
                     '</div>' +
                     '<div class="form-group">' +
                         '<label class="form-label">Scorta Minima</label>' +
-                        '<input type="number" min="0" class="form-input" id="prod-scorta" value="5">' +
+                        '<input type="number" min="0" class="form-input" id="prod-scorta" value="' + (ENI.Config.CONSTANTS.SCORTA_MINIMA_DEFAULT || 5) + '">' +
                     '</div>' +
                 '</div>' +
             '</form>';
@@ -681,7 +681,7 @@ ENI.Modules.Magazzino = (function() {
                 prezzo_acquisto: parseFloat(modal.querySelector('#prod-prezzo-acquisto').value) || 0,
                 prezzo_vendita: prezzoVendita,
                 giacenza: isLavaggi ? 0 : (parseInt(modal.querySelector('#prod-giacenza').value, 10) || 0),
-                giacenza_minima: isLavaggi ? 0 : (parseInt(modal.querySelector('#prod-scorta').value, 10) || 5),
+                giacenza_minima: isLavaggi ? 0 : (parseInt(modal.querySelector('#prod-scorta').value, 10) || (ENI.Config.CONSTANTS.SCORTA_MINIMA_DEFAULT || 5)),
                 attivo: true
             };
 

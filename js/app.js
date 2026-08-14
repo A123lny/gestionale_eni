@@ -33,10 +33,30 @@ ENI.App = (function() {
 
         // Check se gia' loggato
         if (ENI.State.isLoggedIn()) {
+            // Carica impostazioni globali (moduli nascosti + soglie) prima di costruire il menu
+            try {
+                var cfg = await Promise.all([
+                    ENI.API.getModuliDisabilitati(),
+                    ENI.API.getImpostazioneApp('soglie')
+                ]);
+                ENI.State.setModuliDisabilitati(cfg[0]);
+                _applicaSoglie(cfg[1]);
+            } catch (e) { /* in caso di errore usa i default */ }
             renderShell();
         }
         // Router sempre attivo (gestisce area-cliente anche senza login staff)
         ENI.Router.init();
+    }
+
+    // Applica le soglie globali (da impostazioni_app) sovrascrivendo i default in ENI.Config
+    function _applicaSoglie(s) {
+        if (!s || typeof s !== 'object') return;
+        var C = ENI.Config.CONSTANTS;
+        if (s.orario_apertura != null && !isNaN(s.orario_apertura)) C.ORARIO_APERTURA = Number(s.orario_apertura);
+        if (s.orario_chiusura != null && !isNaN(s.orario_chiusura)) C.ORARIO_CHIUSURA = Number(s.orario_chiusura);
+        if (s.scorta_minima_default != null && !isNaN(s.scorta_minima_default)) C.SCORTA_MINIMA_DEFAULT = Number(s.scorta_minima_default);
+        if (s.scadenze_preavviso_giorni != null && !isNaN(s.scadenze_preavviso_giorni)) C.SCADENZE_PREAVVISO_GIORNI = Number(s.scadenze_preavviso_giorni);
+        if (s.fondo_cassa_default != null && !isNaN(s.fondo_cassa_default)) C.FONDO_CASSA_DEFAULT = Number(s.fondo_cassa_default);
     }
 
     // --- Render App Shell ---
@@ -96,7 +116,7 @@ ENI.App = (function() {
         if (!config) return [];
 
         var items = ENI.Config.NAV_ITEMS.filter(function(item) {
-            return config.moduli.indexOf(item.id) !== -1;
+            return config.moduli.indexOf(item.id) !== -1 && ENI.State.isModuloAttivo(item.id);
         });
 
         // Dashboard: solo per il Super Admin (in cima al menu)
@@ -114,7 +134,7 @@ ENI.App = (function() {
         if (!config) return [];
 
         return (ENI.Config.NAV_SECTION_ITEMS || []).filter(function(item) {
-            return config.moduli.indexOf(item.id) !== -1;
+            return config.moduli.indexOf(item.id) !== -1 && ENI.State.isModuloAttivo(item.id);
         });
     }
 

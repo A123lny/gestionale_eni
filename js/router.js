@@ -203,10 +203,16 @@ ENI.Router = (function() {
         return _currentRoute;
     }
 
+    // Ri-renderizza la route corrente (usato dopo aver rigenerato la shell/menu)
+    function refresh() {
+        _onHashChange();
+    }
+
     // API pubblica
     return {
         init: init,
         navigate: navigate,
-        getCurrentRoute: getCurrentRoute
+        getCurrentRoute: getCurrentRoute,
+        refresh: refresh
     };
 })();

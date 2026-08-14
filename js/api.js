@@ -149,6 +149,26 @@ ENI.API = (function() {
         await getClient().auth.signOut();
     }
 
+    // Cambia il PIN (password Auth) dell'utente attualmente loggato.
+    // Verifica prima il PIN attuale, poi aggiorna. Ritorna true o lancia errore.
+    async function cambiaPinCorrente(pinAttuale, nuovoPin) {
+        var client = getClient();
+        var sess = await client.auth.getUser();
+        var email = (sess.data && sess.data.user) ? sess.data.user.email : null;
+        if (!email) throw new Error('Sessione non valida, rifai il login');
+
+        // Verifica il PIN attuale ri-autenticando lo stesso utente
+        var check = await client.auth.signInWithPassword({ email: email, password: pinAttuale });
+        if (check.error) throw new Error('PIN attuale errato');
+
+        // Aggiorna il PIN
+        var upd = await client.auth.updateUser({ password: nuovoPin });
+        if (upd.error) throw new Error(upd.error.message);
+
+        try { await scriviLog('Cambio_PIN', 'Impostazioni', 'PIN personale aggiornato'); } catch (e) { /* non bloccare */ }
+        return true;
+    }
+
     // --- Clienti ---
 
     async function getClienti(filtroTipo) {
@@ -502,6 +522,62 @@ ENI.API = (function() {
             spesa.descrizione + ' - ' + ENI.UI.formatValuta(spesa.importo)
         );
         return true;
+    }
+
+    // --- Impostazioni App (feature toggle globali) ---
+
+    // Elenco dei moduli attualmente disabilitati (nascosti dal menu). SOLO LETTURA.
+    async function getModuliDisabilitati() {
+        var result = await getClient()
+            .from('impostazioni_app')
+            .select('valore')
+            .eq('chiave', 'moduli_disabilitati')
+            .maybeSingle();
+        if (result.error) throw new Error(result.error.message);
+        var v = result.data ? result.data.valore : null;
+        return Array.isArray(v) ? v : [];
+    }
+
+    // Salva l'elenco dei moduli disabilitati (upsert). Consentito solo al Super Admin dal RLS.
+    async function salvaModuliDisabilitati(arr) {
+        var lista = Array.isArray(arr) ? arr : [];
+        var result = await getClient()
+            .from('impostazioni_app')
+            .upsert({ chiave: 'moduli_disabilitati', valore: lista, aggiornato_at: new Date().toISOString() }, { onConflict: 'chiave' });
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Modifica_Impostazioni', 'Impostazioni', 'Moduli visibili aggiornati: ' + (lista.length ? lista.join(', ') + ' nascosti' : 'tutti visibili'));
+        return true;
+    }
+
+    // Lettura generica di un'impostazione app per chiave. Ritorna il valore JSON o null. SOLO LETTURA.
+    async function getImpostazioneApp(chiave) {
+        var result = await getClient()
+            .from('impostazioni_app')
+            .select('valore')
+            .eq('chiave', chiave)
+            .maybeSingle();
+        if (result.error) throw new Error(result.error.message);
+        return result.data ? result.data.valore : null;
+    }
+
+    // Salvataggio generico di un'impostazione app (upsert). Consentito solo al Super Admin dal RLS.
+    async function salvaImpostazioneApp(chiave, valore) {
+        var result = await getClient()
+            .from('impostazioni_app')
+            .upsert({ chiave: chiave, valore: valore, aggiornato_at: new Date().toISOString() }, { onConflict: 'chiave' });
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Modifica_Impostazioni', 'Impostazioni', 'Impostazione aggiornata: ' + chiave);
+        return true;
+    }
+
+    // Legge l'intero contenuto di una tabella (per il backup/esporta). SOLO LETTURA.
+    async function getTabellaBackup(nome) {
+        var result = await getClient()
+            .from(nome)
+            .select('*')
+            .limit(100000);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
     }
 
     // --- Magazzino ---
@@ -2231,6 +2307,7 @@ ENI.API = (function() {
         scriviLog: scriviLog,
         getStaffLoginList: getStaffLoginList,
         loginConPin: loginConPin,
+        cambiaPinCorrente: cambiaPinCorrente,
         getUtenteCorrente: getUtenteCorrente,
         logoutAuth: logoutAuth,
         getClienti: getClienti,
@@ -2264,6 +2341,11 @@ ENI.API = (function() {
         getSpeseCassaReport: getSpeseCassaReport,
         salvaSpesa: salvaSpesa,
         eliminaSpesa: eliminaSpesa,
+        getModuliDisabilitati: getModuliDisabilitati,
+        salvaModuliDisabilitati: salvaModuliDisabilitati,
+        getImpostazioneApp: getImpostazioneApp,
+        salvaImpostazioneApp: salvaImpostazioneApp,
+        getTabellaBackup: getTabellaBackup,
         getMagazzino: getMagazzino,
         salvaProdotto: salvaProdotto,
         aggiornaProdotto: aggiornaProdotto,
