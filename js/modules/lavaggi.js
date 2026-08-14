@@ -14,6 +14,12 @@ ENI.Modules.Lavaggi = (function() {
     var _vistaCorrente = 'tabella';
     var _meseCorrente = parseInt(ENI.UI.oggiISO().split('-')[1], 10);
     var _annoCorrente = parseInt(ENI.UI.oggiISO().split('-')[0], 10);
+    var _filtroStato = 'tutti';   // tutti | dafare | completati
+    var _ricerca = '';
+    var _reportPeriodo = 'mese';  // settimana | mese | anno
+    var _reportData = [];
+    var _reportChart = null;
+    var _reportChartConfig = null;
 
     function _canEditListino() {
         var ruolo = ENI.State.getUserRole();
@@ -21,14 +27,20 @@ ENI.Modules.Lavaggi = (function() {
     }
 
     async function render(container) {
+        // Il Report lavaggi è riservato al Super Admin
+        if (_vistaCorrente === 'report' && !ENI.State.isSuperAdmin()) _vistaCorrente = 'tabella';
+
         var listinoChip = _canEditListino()
             ? '<button class="chip ' + (_vistaCorrente === 'listino' ? 'active' : '') + '" data-vista="listino">\u{1F4B0} Listino</button>'
+            : '';
+        var reportChip = ENI.State.isSuperAdmin()
+            ? '<button class="chip ' + (_vistaCorrente === 'report' ? 'active' : '') + '" data-vista="report">\u{1F4CA} Report</button>'
             : '';
 
         container.innerHTML =
             '<div class="page-header">' +
                 '<h1 class="page-title">\u{1F697} Lavaggi</h1>' +
-                '<div class="btn-group" id="lavaggi-actions">' +
+                '<div class="btn-group" id="lavaggi-actions"' + (['listino', 'prenotazioni', 'report', 'calendario'].indexOf(_vistaCorrente) !== -1 ? ' style="display:none;"' : '') + '>' +
                     '<button class="btn btn-primary" id="btn-nuovo-lavaggio">\u{1F4C5} Prenota</button>' +
                     '<button class="btn btn-outline" id="btn-walkin">\u{1F6B6} Walk-in</button>' +
                 '</div>' +
@@ -36,12 +48,13 @@ ENI.Modules.Lavaggi = (function() {
 
             '<div class="filter-bar">' +
                 '<input type="date" class="form-input" id="lavaggi-data" value="' + _dataSelezionata + '"' +
-                    (_vistaCorrente === 'listino' || _vistaCorrente === 'prenotazioni' ? ' style="display:none;"' : '') + '>' +
+                    (['listino', 'prenotazioni', 'report', 'calendario'].indexOf(_vistaCorrente) !== -1 ? ' style="display:none;"' : '') + '>' +
                 '<div class="filter-chips">' +
                     '<button class="chip ' + (_vistaCorrente === 'tabella' ? 'active' : '') + '" data-vista="tabella">\u{1F4CB} Tabella</button>' +
                     '<button class="chip ' + (_vistaCorrente === 'timeline' ? 'active' : '') + '" data-vista="timeline">\u{1F3A8} Timeline</button>' +
                     '<button class="chip ' + (_vistaCorrente === 'calendario' ? 'active' : '') + '" data-vista="calendario">\u{1F4C5} Calendario</button>' +
-                    '<button class="chip ' + (_vistaCorrente === 'prenotazioni' ? 'active' : '') + '" data-vista="prenotazioni">\u{1F514} Prenotazioni</button>' +
+                    reportChip +
+                    '<button class="chip ' + (_vistaCorrente === 'prenotazioni' ? 'active' : '') + '" data-vista="prenotazioni">\u{1F514} Prenotazioni online</button>' +
                     listinoChip +
                 '</div>' +
             '</div>' +
@@ -53,6 +66,8 @@ ENI.Modules.Lavaggi = (function() {
             _renderListino();
         } else if (_vistaCorrente === 'prenotazioni') {
             _renderPrenotazioni();
+        } else if (_vistaCorrente === 'report') {
+            _renderReport();
         } else {
             await _loadLavaggi();
         }
@@ -93,6 +108,10 @@ ENI.Modules.Lavaggi = (function() {
                 if (dateInput) dateInput.style.display = 'none';
                 if (actionsEl) actionsEl.style.display = 'none';
                 _renderPrenotazioni();
+            } else if (_vistaCorrente === 'report') {
+                if (dateInput) dateInput.style.display = 'none';
+                if (actionsEl) actionsEl.style.display = 'none';
+                _renderReport();
             } else {
                 if (dateInput) dateInput.style.display = '';
                 if (actionsEl) actionsEl.style.display = '';
@@ -178,68 +197,243 @@ ENI.Modules.Lavaggi = (function() {
         }
     }
 
-    // --- Tabella ---
+    // --- Tabella (con riepilogo, filtri, evidenza priorit\u00E0 e vista mobile) ---
 
-    function _renderTabella() {
-        var contentEl = document.getElementById('lavaggi-content');
-        if (!contentEl) return;
+    function _ensureStyle() {
+        if (document.getElementById('lavaggi-enh-style')) return;
+        var st = document.createElement('style');
+        st.id = 'lavaggi-enh-style';
+        st.textContent =
+            '#lavaggi-content .lav-summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}' +
+            '#lavaggi-content .lav-kpi{flex:1;min-width:88px;background:var(--bg-card);border:1px solid var(--color-gray-200);border-radius:var(--radius-md);padding:8px 12px;text-align:center;}' +
+            '#lavaggi-content .lav-kpi-val{font-size:1.25rem;font-weight:700;line-height:1.1;}' +
+            '#lavaggi-content .lav-kpi-lbl{font-size:0.7rem;color:var(--color-gray-500);text-transform:uppercase;letter-spacing:.03em;margin-top:2px;}' +
+            '#lavaggi-content .lav-kpi.k-dafare .lav-kpi-val{color:var(--color-primary);}' +
+            '#lavaggi-content .lav-kpi.k-done .lav-kpi-val{color:#1baf7a;}' +
+            '#lavaggi-content .lav-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px;}' +
+            '#lavaggi-content .lav-search{max-width:280px;}' +
+            '#lavaggi-content tr.lav-row-aspetta>td{background:rgba(27,175,122,0.09);}' +
+            '#lavaggi-content tr.lav-row-aspetta>td:first-child{box-shadow:inset 3px 0 0 #1baf7a;}' +
+            '#lavaggi-content tr.lav-row-done{opacity:0.55;}' +
+            '#lavaggi-content .lav-cards{display:flex;flex-direction:column;gap:8px;}' +
+            '#lavaggi-content .lav-card{background:var(--bg-card);border:1px solid var(--color-gray-200);border-left:4px solid var(--color-gray-200);border-radius:var(--radius-md);padding:10px 12px;}' +
+            '#lavaggi-content .lav-card.lav-card-aspetta{border-left-color:#1baf7a;background:rgba(27,175,122,0.06);}' +
+            '#lavaggi-content .lav-card.lav-card-done{opacity:0.6;}' +
+            '#lavaggi-content .lav-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}' +
+            '#lavaggi-content .lav-card-orario{font-weight:600;font-size:0.85rem;}' +
+            '#lavaggi-content .lav-card-veicolo{font-weight:700;}' +
+            '#lavaggi-content .lav-card-meta{font-size:0.85rem;margin:2px 0;}' +
+            '#lavaggi-content .lav-card-actions{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;}' +
+            '#lavaggi-content .lav-desktop thead th{position:sticky;top:0;z-index:2;background:var(--bg-card);}' +
+            '#lavaggi-content .lav-cards-tot{padding:8px 12px;margin-top:4px;font-weight:600;text-align:right;color:var(--color-gray-600,#52514e);}' +
+            '@media (max-width:768px){#lavaggi-content .lav-desktop{display:none;}}' +
+            '@media (min-width:769px){#lavaggi-content .lav-mobile{display:none;}}';
+        document.head.appendChild(st);
+    }
 
-        if (_lavaggi.length === 0) {
-            contentEl.innerHTML =
+    function _riepilogoHtml() {
+        var tot = _lavaggi.length, daFare = 0, completati = 0, incasso = 0, previsto = 0;
+        _lavaggi.forEach(function(l) {
+            if (l.stato === 'Prenotato') { daFare++; previsto += Number(l.prezzo || 0); }
+            else if (l.stato === 'Completato') { completati++; incasso += Number(l.prezzo || 0); }
+        });
+        function kpi(val, label, cls) {
+            return '<div class="lav-kpi ' + (cls || '') + '"><div class="lav-kpi-val">' + val + '</div><div class="lav-kpi-lbl">' + label + '</div></div>';
+        }
+        return '<div class="lav-summary">' +
+            kpi(tot, 'Lavaggi') +
+            kpi(daFare, 'Da fare', 'k-dafare') +
+            kpi(completati, 'Completati', 'k-done') +
+            kpi(ENI.UI.formatValuta(incasso), 'Incasso') +
+            kpi(ENI.UI.formatValuta(previsto), 'Previsto') +
+        '</div>';
+    }
+
+    function _toolbarHtml() {
+        var nTutti = _lavaggi.length, nDaFare = 0, nCompl = 0;
+        _lavaggi.forEach(function(l) {
+            if (l.stato === 'Prenotato') nDaFare++;
+            else if (l.stato === 'Completato') nCompl++;
+        });
+        function chip(id, label) {
+            return '<button class="chip lav-filtro' + (_filtroStato === id ? ' active' : '') + '" data-filtro="' + id + '">' + label + '</button>';
+        }
+        return '<div class="lav-toolbar">' +
+            '<div class="filter-chips">' +
+                chip('tutti', 'Tutti (' + nTutti + ')') +
+                chip('dafare', 'Da fare (' + nDaFare + ')') +
+                chip('completati', 'Completati (' + nCompl + ')') +
+            '</div>' +
+            '<input type="search" class="form-input lav-search" id="lav-ricerca" placeholder="Cerca targa, veicolo, cliente\u2026" value="' + ENI.UI.escapeHtml(_ricerca) + '">' +
+        '</div>';
+    }
+
+    function _lavaggiVista() {
+        var q = _ricerca.trim().toLowerCase();
+        function statoRank(l) { return l.stato === 'Prenotato' ? 0 : (l.stato === 'Completato' ? 1 : 2); }
+        function prioRank(l) { return l.priorita === 'ASPETTA' ? 0 : 1; }
+        var arr = _lavaggi.filter(function(l) {
+            if (_filtroStato === 'dafare' && l.stato !== 'Prenotato') return false;
+            if (_filtroStato === 'completati' && l.stato !== 'Completato') return false;
+            if (q) {
+                var hay = ((l.veicolo || '') + ' ' + (l.nome_cliente || '') + ' ' + (l.cellulare || '') + ' ' + (l.tipo_lavaggio || '')).toLowerCase();
+                if (hay.indexOf(q) === -1) return false;
+            }
+            return true;
+        });
+        arr.sort(function(a, b) {
+            var s = statoRank(a) - statoRank(b);
+            if (s) return s;
+            if (a.stato === 'Prenotato' && b.stato === 'Prenotato') {
+                var p = prioRank(a) - prioRank(b);
+                if (p) return p;
+            }
+            return (a.orario_inizio || '').localeCompare(b.orario_inizio || '');
+        });
+        return arr;
+    }
+
+    function _azioniHtml(l) {
+        var isPrenotato = l.stato === 'Prenotato';
+        return (isPrenotato
+                ? '<button class="btn btn-sm btn-success" data-completa-id="' + l.id + '" title="Completa">\u2713</button>' +
+                  '<button class="btn btn-sm btn-outline" data-modifica-id="' + l.id + '" title="Modifica">\u270F\uFE0F</button>' +
+                  '<button class="btn btn-sm btn-ghost" data-annulla-id="' + l.id + '" title="Annulla">\u274C</button>'
+                : '') +
+            (l.stato === 'Completato'
+                ? '<button class="btn btn-sm btn-outline" data-modifica-id="' + l.id + '" title="Modifica">\u270F\uFE0F</button>'
+                : '') +
+            '<button class="btn btn-sm btn-ghost" data-elimina-id="' + l.id + '" title="Elimina definitivamente">\u{1F5D1}</button>';
+    }
+
+    function _extraBadge(l) {
+        if (!l.servizi_extra || l.servizi_extra.length === 0) return '';
+        var titolo = l.servizi_extra.map(function(e) { return ENI.UI.escapeHtml(e.nome); }).join(', ');
+        return ' <span class="badge badge-info" title="' + titolo + '">+' + l.servizi_extra.length + ' extra</span>';
+    }
+
+    function _clienteIcona(l) {
+        if (l.walk_in) return '\u{1F6B6} ';
+        if (l.cliente_id) return '\u{1F464} ';
+        return '';
+    }
+
+    function _notaIcona(l) {
+        if (l.note && String(l.note).trim()) {
+            return ' <span title="' + ENI.UI.escapeHtml(String(l.note).trim()) + '">\u{1F4DD}</span>';
+        }
+        return '';
+    }
+
+    function _prioritaLabel(l) {
+        if (l.priorita === 'ASPETTA') return '\u{1F7E2} Aspetta';
+        if (l.priorita === 'LASCIA') return '\u{1F534} Lascia';
+        return '-';
+    }
+
+    function _orarioLabel(l) {
+        var i = ENI.UI.formatOra(l.orario_inizio);
+        if (l.walk_in || !l.orario_fine || l.orario_inizio === l.orario_fine) return i;
+        return i + '-' + ENI.UI.formatOra(l.orario_fine);
+    }
+
+    function _rigaTabella(l) {
+        var trClass = l.stato === 'Completato' ? 'lav-row-done'
+            : ((l.priorita === 'ASPETTA' && l.stato === 'Prenotato') ? 'lav-row-aspetta' : '');
+        return '<tr' + (trClass ? ' class="' + trClass + '"' : '') + '>' +
+            '<td class="text-sm">' + _orarioLabel(l) + '</td>' +
+            '<td><strong>' + ENI.UI.escapeHtml(l.veicolo || '-') + '</strong>' + _notaIcona(l) + '</td>' +
+            '<td class="text-sm">' +
+                _clienteIcona(l) + ENI.UI.escapeHtml(l.nome_cliente) +
+                (l.cellulare ? '<br><a href="tel:' + ENI.UI.escapeHtml(l.cellulare) + '" class="text-xs text-muted">\u{1F4F1} ' + ENI.UI.escapeHtml(l.cellulare) + '</a>' : '') +
+            '</td>' +
+            '<td class="text-sm">' + ENI.UI.escapeHtml(l.tipo_lavaggio) + _extraBadge(l) + '</td>' +
+            '<td><strong>' + ENI.UI.formatValuta(l.prezzo) + '</strong></td>' +
+            '<td class="text-sm">' + _prioritaLabel(l) + '</td>' +
+            '<td>' + ENI.UI.badgeStato(l.stato) + '</td>' +
+            '<td class="table-actions">' + _azioniHtml(l) + '</td>' +
+        '</tr>';
+    }
+
+    function _cardLavaggio(l) {
+        var cls = l.stato === 'Completato' ? 'lav-card-done'
+            : ((l.priorita === 'ASPETTA' && l.stato === 'Prenotato') ? 'lav-card-aspetta' : '');
+        return '<div class="lav-card ' + cls + '">' +
+            '<div class="lav-card-top">' +
+                '<span class="lav-card-orario">' + _orarioLabel(l) + '</span>' +
+                ENI.UI.badgeStato(l.stato) +
+            '</div>' +
+            '<div class="lav-card-veicolo">' + ENI.UI.escapeHtml(l.veicolo || l.nome_cliente || '-') + _notaIcona(l) + '</div>' +
+            '<div class="lav-card-meta">' + ENI.UI.escapeHtml(l.tipo_lavaggio) + ' \u00B7 <strong>' + ENI.UI.formatValuta(l.prezzo) + '</strong>' +
+                (l.priorita ? ' \u00B7 ' + _prioritaLabel(l) : '') + _extraBadge(l) +
+            '</div>' +
+            '<div class="lav-card-cliente text-sm text-muted">' + _clienteIcona(l) + ENI.UI.escapeHtml(l.nome_cliente || '') +
+                (l.cellulare ? ' \u00B7 <a href="tel:' + ENI.UI.escapeHtml(l.cellulare) + '">\u{1F4F1} ' + ENI.UI.escapeHtml(l.cellulare) + '</a>' : '') +
+            '</div>' +
+            '<div class="lav-card-actions table-actions">' + _azioniHtml(l) + '</div>' +
+        '</div>';
+    }
+
+    function _renderLavList() {
+        var listaEl = document.getElementById('lav-lista');
+        if (!listaEl) return;
+        var lista = _lavaggiVista();
+
+        if (lista.length === 0) {
+            listaEl.innerHTML =
                 '<div class="empty-state">' +
                     '<div class="empty-state-icon">\u{1F697}</div>' +
-                    '<p class="empty-state-text">Nessun lavaggio per questa data</p>' +
+                    '<p class="empty-state-text">' + (_lavaggi.length === 0 ? 'Nessun lavaggio per questa data' : 'Nessun lavaggio con questi filtri') + '</p>' +
                 '</div>';
             return;
         }
 
-        var html = '<div class="table-wrapper"><table class="table">' +
+        var table = '<div class="lav-desktop"><div class="table-wrapper"><table class="table">' +
             '<thead><tr>' +
-                '<th>Orario</th>' +
-                '<th>Veicolo</th>' +
-                '<th>Cliente</th>' +
-                '<th>Tipo</th>' +
-                '<th>Prezzo</th>' +
-                '<th>Priorit\u00E0</th>' +
-                '<th>Stato</th>' +
-                '<th>Azioni</th>' +
-            '</tr></thead><tbody>';
+                '<th>Orario</th><th>Veicolo</th><th>Cliente</th><th>Tipo</th>' +
+                '<th>Prezzo</th><th>Priorit\u00E0</th><th>Stato</th><th>Azioni</th>' +
+            '</tr></thead><tbody>' +
+            lista.map(_rigaTabella).join('') +
+            '</tbody></table></div></div>';
 
-        _lavaggi.forEach(function(l) {
-            var orario = ENI.UI.formatOra(l.orario_inizio) + '-' + ENI.UI.formatOra(l.orario_fine);
-            var isPrenotato = l.stato === 'Prenotato';
+        var cards = '<div class="lav-mobile"><div class="lav-cards">' +
+            lista.map(_cardLavaggio).join('') +
+        '</div></div>';
 
-            html +=
-                '<tr>' +
-                    '<td class="text-sm">' + orario + '</td>' +
-                    '<td><strong>' + ENI.UI.escapeHtml(l.veicolo || '-') + '</strong></td>' +
-                    '<td class="text-sm">' +
-                        ENI.UI.escapeHtml(l.nome_cliente) +
-                        (l.walk_in ? ' <span class="badge badge-annullato">walk-in</span>' : '') +
-                        (l.cellulare ? '<br><a href="tel:' + ENI.UI.escapeHtml(l.cellulare) + '" class="text-xs text-muted">\u{1F4F1} ' + ENI.UI.escapeHtml(l.cellulare) + '</a>' : '') +
-                    '</td>' +
-                    '<td class="text-sm">' + ENI.UI.escapeHtml(l.tipo_lavaggio) +
-                        (l.servizi_extra && l.servizi_extra.length > 0 ? ' <span class="badge badge-info" title="' + l.servizi_extra.map(function(e) { return e.nome; }).join(', ') + '">+' + l.servizi_extra.length + ' extra</span>' : '') +
-                    '</td>' +
-                    '<td><strong>' + ENI.UI.formatValuta(l.prezzo) + '</strong></td>' +
-                    '<td>' + (l.priorita ? ENI.UI.badgeStato(l.priorita) : '-') + '</td>' +
-                    '<td>' + ENI.UI.badgeStato(l.stato) + '</td>' +
-                    '<td class="table-actions">' +
-                        (isPrenotato
-                            ? '<button class="btn btn-sm btn-success" data-completa-id="' + l.id + '" title="Completa">\u2713</button>' +
-                              '<button class="btn btn-sm btn-outline" data-modifica-id="' + l.id + '" title="Modifica">\u270F\uFE0F</button>' +
-                              '<button class="btn btn-sm btn-ghost" data-annulla-id="' + l.id + '" title="Annulla">\u274C</button>'
-                            : '') +
-                        (l.stato === 'Completato'
-                            ? '<button class="btn btn-sm btn-outline" data-modifica-id="' + l.id + '" title="Modifica">\u270F\uFE0F</button>'
-                            : '') +
-                        '<button class="btn btn-sm btn-ghost" data-elimina-id="' + l.id + '" title="Elimina definitivamente">\u{1F5D1}</button>' +
-                    '</td>' +
-                '</tr>';
+        listaEl.innerHTML = table + cards;
+    }
+
+    function _wireToolbar(contentEl) {
+        contentEl.querySelectorAll('.lav-filtro[data-filtro]').forEach(function(b) {
+            b.addEventListener('click', function() {
+                _filtroStato = b.dataset.filtro;
+                contentEl.querySelectorAll('.lav-filtro[data-filtro]').forEach(function(x) {
+                    x.classList.toggle('active', x.dataset.filtro === _filtroStato);
+                });
+                _renderLavList();
+            });
         });
+        var search = contentEl.querySelector('#lav-ricerca');
+        if (search) {
+            search.addEventListener('input', function() {
+                _ricerca = search.value;
+                _renderLavList();
+            });
+        }
+    }
 
-        html += '</tbody></table></div>';
-        contentEl.innerHTML = html;
+    function _renderTabella() {
+        var contentEl = document.getElementById('lavaggi-content');
+        if (!contentEl) return;
+        _ensureStyle();
+
+        contentEl.innerHTML =
+            _riepilogoHtml() +
+            _toolbarHtml() +
+            '<div id="lav-lista"></div>';
+
+        _wireToolbar(contentEl);
+        _renderLavList();
     }
 
     // --- Timeline ---
@@ -310,7 +504,9 @@ ENI.Modules.Lavaggi = (function() {
                 '<span>\u2B1C Completato</span>' +
             '</div>';
 
+        _ensureStyle();
         contentEl.innerHTML =
+            _riepilogoHtml() +
             '<div class="card">' +
                 '<div class="timeline-container">' +
                     '<div class="timeline">' + headerHtml + rowsHtml + '</div>' +
@@ -353,21 +549,7 @@ ENI.Modules.Lavaggi = (function() {
     // --- Form Nuovo Lavaggio ---
 
     async function _showFormLavaggio(isWalkin) {
-        var clienti = await ENI.API.getClienti();
         var listino = await ENI.API.getListino();
-
-        // Dropdown clienti - anonimo di default per entrambi
-        var clientiOptions = '<option value="">-- Nessun cliente (anonimo) --</option>';
-        clienti.forEach(function(c) {
-            var icon = c.tipo === 'Corporate' ? '\u{1F3E2}' : '\u{1F464}';
-            clientiOptions += '<option value="' + c.id + '"' +
-                ' data-tipo="' + c.tipo + '"' +
-                ' data-pagamento="' + c.modalita_pagamento + '"' +
-                ' data-telefono="' + ENI.UI.escapeHtml(c.telefono || '') + '"' +
-                ' data-listino=\'' + (c.listino_personalizzato ? JSON.stringify(c.listino_personalizzato) : '') + '\'>' +
-                icon + ' ' + ENI.UI.escapeHtml(c.nome_ragione_sociale) +
-            '</option>';
-        });
 
         var listinoOptions = listino.map(function(l) {
             return '<option value="' + ENI.UI.escapeHtml(l.tipo_lavaggio) + '" data-prezzo="' + l.prezzo_standard + '" data-durata="' + (l.durata_minuti || 30) + '">' +
@@ -381,6 +563,12 @@ ENI.Modules.Lavaggi = (function() {
                     ? '<div class="stock-alert mb-4"><span>\u{1F6B6}</span> Walk-in: il lavaggio verr\u00E0 registrato come gi\u00E0 completato</div>'
                     : '') +
 
+                // Data del lavaggio
+                '<div class="form-group">' +
+                    '<label class="form-label form-label-required">Data</label>' +
+                    '<input type="date" class="form-input" id="lav-data" value="' + _dataSelezionata + '">' +
+                '</div>' +
+
                 // Veicolo e Cellulare (obbligatori)
                 '<div class="form-row">' +
                     '<div class="form-group">' +
@@ -393,12 +581,15 @@ ENI.Modules.Lavaggi = (function() {
                     '</div>' +
                 '</div>' +
 
-                // Cliente (opzionale) con bottone + Nuovo
+                // Cliente (opzionale) - ricerca invece di elenco completo
                 '<div class="form-group">' +
                     '<label class="form-label">Cliente registrato</label>' +
-                    '<div style="display:flex;gap:8px;">' +
-                        '<select class="form-select" id="lav-cliente" style="flex:1;">' + clientiOptions + '</select>' +
-                        '<button type="button" class="btn btn-outline" id="btn-nuovo-cliente-inline" title="Nuovo Cliente">+ Nuovo</button>' +
+                    '<div style="position:relative;">' +
+                        '<div style="display:flex;gap:8px;">' +
+                            '<input type="text" class="form-input" id="lav-cliente-search" autocomplete="off" placeholder="Cerca per nome, targa o P.IVA… (vuoto = anonimo)" style="flex:1;">' +
+                            '<button type="button" class="btn btn-outline" id="btn-nuovo-cliente-inline" title="Nuovo Cliente" style="white-space:nowrap;">+ Nuovo</button>' +
+                        '</div>' +
+                        '<div id="lav-cliente-results" style="display:none; position:absolute; z-index:50; left:0; right:0; margin-top:4px; background:var(--bg-card); border:1px solid var(--color-gray-200); border-radius:var(--radius-md); max-height:240px; overflow:auto; box-shadow:0 6px 20px rgba(0,0,0,0.12);"></div>' +
                     '</div>' +
                     '<div id="lav-cliente-info" class="text-xs text-muted mt-1"></div>' +
                 '</div>' +
@@ -476,14 +667,88 @@ ENI.Modules.Lavaggi = (function() {
         });
 
         var tipoSelect = modal.querySelector('#lav-tipo');
-        var clienteSelect = modal.querySelector('#lav-cliente');
         var prezzoInput = modal.querySelector('#lav-prezzo');
         var prezzoInfo = modal.querySelector('#lav-prezzo-info');
         var clienteInfo = modal.querySelector('#lav-cliente-info');
         var cellulareInput = modal.querySelector('#lav-cellulare');
+        var clienteSearch = modal.querySelector('#lav-cliente-search');
+        var clienteResults = modal.querySelector('#lav-cliente-results');
 
-        // Cache prezzi cliente per sessione form
+        // Cliente selezionato (null = anonimo) e cache prezzi per sessione form
+        var clienteSelezionato = null;
         var _prezziClienteCache = {};
+
+        // --- Ricerca cliente (digita e scegli) ---
+        var _ricercaTimer = null;
+        var _risultatiClienti = [];
+
+        function _mostraRisultati(lista) {
+            _risultatiClienti = lista || [];
+            if (!clienteResults) return;
+            if (!_risultatiClienti.length) {
+                clienteResults.innerHTML = '<div style="padding:8px 12px;" class="text-sm text-muted">Nessun cliente trovato</div>';
+                clienteResults.style.display = 'block';
+                return;
+            }
+            clienteResults.innerHTML = _risultatiClienti.map(function(c, i) {
+                var icon = c.tipo === 'Corporate' ? '\u{1F3E2}' : '\u{1F464}';
+                var meta = [c.targa, c.telefono].filter(Boolean).map(function(x) { return ENI.UI.escapeHtml(x); }).join(' · ');
+                return '<div class="cli-result-item" data-idx="' + i + '" style="padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--color-gray-200);">' +
+                    icon + ' <strong>' + ENI.UI.escapeHtml(c.nome_ragione_sociale) + '</strong>' +
+                    (meta ? '<div class="text-xs text-muted">' + meta + '</div>' : '') +
+                '</div>';
+            }).join('');
+            clienteResults.style.display = 'block';
+        }
+
+        function _nascondiRisultati() {
+            if (clienteResults) clienteResults.style.display = 'none';
+        }
+
+        function _selezionaCliente(c) {
+            clienteSelezionato = c || null;
+            _nascondiRisultati();
+            if (c) {
+                clienteSearch.value = c.nome_ragione_sociale;
+                if (c.telefono) cellulareInput.value = c.telefono;
+                var pagLabel = ENI.Config.MODALITA_PAGAMENTO.find(function(m) { return m.value === c.modalita_pagamento; });
+                clienteInfo.innerHTML = '✓ ' + ENI.UI.escapeHtml(c.tipo || '') + (c.modalita_pagamento ? ' - ' + (pagLabel ? pagLabel.label : c.modalita_pagamento) : '') +
+                    ' <a href="#" id="lav-cliente-clear" style="margin-left:6px;">✕ rimuovi</a>';
+                var clearLink = modal.querySelector('#lav-cliente-clear');
+                if (clearLink) clearLink.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    _selezionaCliente(null);
+                    clienteSearch.value = '';
+                    clienteSearch.focus();
+                });
+            } else {
+                clienteInfo.textContent = '';
+            }
+            _aggiornaPrezzo();
+        }
+
+        if (clienteSearch) {
+            clienteSearch.addEventListener('input', function() {
+                var term = clienteSearch.value.trim();
+                // Se l'utente modifica il testo, la selezione precedente non è più valida
+                if (clienteSelezionato && term !== clienteSelezionato.nome_ragione_sociale) {
+                    clienteSelezionato = null;
+                    clienteInfo.textContent = '';
+                }
+                if (_ricercaTimer) clearTimeout(_ricercaTimer);
+                if (term.length < ENI.Config.CONSTANTS.SEARCH_MIN_CHARS) { _nascondiRisultati(); return; }
+                _ricercaTimer = setTimeout(function() {
+                    ENI.API.cercaClienti(term).then(_mostraRisultati).catch(function() { _nascondiRisultati(); });
+                }, ENI.Config.CONSTANTS.SEARCH_DEBOUNCE_MS);
+            });
+            ENI.UI.delegate(clienteResults, 'click', '.cli-result-item', function(e, el) {
+                var c = _risultatiClienti[parseInt(el.dataset.idx, 10)];
+                if (c) _selezionaCliente(c);
+            });
+            document.addEventListener('click', function(e) {
+                if (clienteResults && !clienteResults.contains(e.target) && e.target !== clienteSearch) _nascondiRisultati();
+            });
+        }
 
         // Auto-prezzo da listino o da prezzi_cliente
         async function _aggiornaPrezzo() {
@@ -491,8 +756,7 @@ ENI.Modules.Lavaggi = (function() {
             if (!tipoOpt || !tipoOpt.value) return;
 
             var prezzoStandard = parseFloat(tipoOpt.dataset.prezzo);
-            var clienteOpt = clienteSelect.options[clienteSelect.selectedIndex];
-            var clienteId = clienteOpt ? clienteOpt.value : '';
+            var clienteId = clienteSelezionato ? clienteSelezionato.id : '';
 
             var trovato = false;
 
@@ -519,7 +783,7 @@ ENI.Modules.Lavaggi = (function() {
 
             // Fallback: listino_personalizzato sul cliente (retrocompatibilita)
             if (!trovato && clienteId) {
-                var listinoCliente = clienteOpt.dataset.listino ? JSON.parse(clienteOpt.dataset.listino) : null;
+                var listinoCliente = (clienteSelezionato && clienteSelezionato.listino_personalizzato) ? clienteSelezionato.listino_personalizzato : null;
                 if (listinoCliente && listinoCliente[tipoOpt.value] !== undefined) {
                     prezzoInput.value = listinoCliente[tipoOpt.value];
                     prezzoInfo.textContent = 'Standard: ' + ENI.UI.formatValuta(prezzoStandard) + ' \u2192 Personalizzato';
@@ -546,22 +810,6 @@ ENI.Modules.Lavaggi = (function() {
         }
 
         tipoSelect.addEventListener('change', _aggiornaPrezzo);
-
-        // Cambio cliente: auto-compila cellulare e mostra info
-        clienteSelect.addEventListener('change', function() {
-            var opt = clienteSelect.options[clienteSelect.selectedIndex];
-            if (opt && opt.value) {
-                var telefono = opt.dataset.telefono;
-                if (telefono) cellulareInput.value = telefono;
-                var pag = opt.dataset.pagamento;
-                var tipo = opt.dataset.tipo;
-                var pagLabel = ENI.Config.MODALITA_PAGAMENTO.find(function(m) { return m.value === pag; });
-                clienteInfo.innerHTML = tipo + ' - ' + (pagLabel ? pagLabel.label : pag);
-            } else {
-                clienteInfo.textContent = '';
-            }
-            _aggiornaPrezzo();
-        });
 
         // Servizi extra: ricalcola totale
         function _aggiornaExtraTotale() {
@@ -593,7 +841,7 @@ ENI.Modules.Lavaggi = (function() {
 
         // Bottone + Nuovo cliente inline
         modal.querySelector('#btn-nuovo-cliente-inline').addEventListener('click', function() {
-            _showFormNuovoClienteInline(modal, clienteSelect, cellulareInput, clienti);
+            _showFormNuovoClienteInline(function(record) { _selezionaCliente(record); });
         });
 
         // Salva lavaggio
@@ -616,11 +864,8 @@ ENI.Modules.Lavaggi = (function() {
                 return;
             }
 
-            var clienteOpt = clienteSelect.options[clienteSelect.selectedIndex];
-            var clienteId = clienteOpt ? clienteOpt.value || null : null;
-            var nomeCliente = clienteId
-                ? clienteOpt.textContent.replace(/^[\u{1F3E2}\u{1F464}]\s*/u, '').trim()
-                : 'Walk-in';
+            var clienteId = clienteSelezionato ? clienteSelezionato.id : null;
+            var nomeCliente = clienteSelezionato ? clienteSelezionato.nome_ragione_sociale : 'Walk-in';
 
             // Raccogli servizi extra selezionati
             var serviziExtra = [];
@@ -640,7 +885,7 @@ ENI.Modules.Lavaggi = (function() {
             var prezzoTotale = prezzo + totExtra;
 
             var dati = {
-                data: _dataSelezionata,
+                data: (modal.querySelector('#lav-data') || {}).value || _dataSelezionata,
                 cliente_id: clienteId || null,
                 nome_cliente: nomeCliente,
                 tipo_lavaggio: tipo,
@@ -667,9 +912,19 @@ ENI.Modules.Lavaggi = (function() {
             }
 
             try {
+                var dataSalvata = dati.data;
                 await ENI.API.salvaLavaggio(dati);
                 ENI.UI.closeModal(modal);
                 ENI.UI.success(isWalkin ? 'Walk-in registrato' : 'Lavaggio prenotato');
+                // Porta la vista sul giorno scelto se diverso da quello corrente
+                if (dataSalvata && dataSalvata !== _dataSelezionata) {
+                    _dataSelezionata = dataSalvata;
+                    var df = document.getElementById('lavaggi-data');
+                    if (df) df.value = _dataSelezionata;
+                    var pd = _dataSelezionata.split('-');
+                    _annoCorrente = parseInt(pd[0], 10);
+                    _meseCorrente = parseInt(pd[1], 10);
+                }
                 await _loadLavaggi();
             } catch(e) {
                 ENI.UI.handleError(e, 'salvataggio lavaggio');
@@ -679,7 +934,7 @@ ENI.Modules.Lavaggi = (function() {
 
     // --- Form Nuovo Cliente Inline ---
 
-    function _showFormNuovoClienteInline(parentModal, clienteSelect, cellulareInput, clientiArray) {
+    function _showFormNuovoClienteInline(onCreated) {
         var body =
             '<form>' +
                 '<div class="form-row">' +
@@ -737,23 +992,9 @@ ENI.Modules.Lavaggi = (function() {
                     attivo: true
                 });
 
-                // Aggiungi alla lista e seleziona nel dropdown
-                var icon = record.tipo === 'Corporate' ? '\u{1F3E2}' : '\u{1F464}';
-                var newOpt = document.createElement('option');
-                newOpt.value = record.id;
-                newOpt.dataset.tipo = record.tipo;
-                newOpt.dataset.pagamento = record.modalita_pagamento;
-                newOpt.dataset.telefono = record.telefono || '';
-                newOpt.dataset.listino = '';
-                newOpt.textContent = icon + ' ' + record.nome_ragione_sociale;
-                clienteSelect.appendChild(newOpt);
-                clienteSelect.value = record.id;
-
-                // Auto-compila cellulare
-                if (telefono) cellulareInput.value = telefono;
-
                 ENI.UI.closeModal(ncModal);
                 ENI.UI.success('Cliente "' + nome + '" creato');
+                if (typeof onCreated === 'function') onCreated(record);
             } catch(e) {
                 ENI.UI.error('Errore: ' + e.message);
             }
@@ -1528,7 +1769,7 @@ ENI.Modules.Lavaggi = (function() {
             var recenti = altre.slice(0, 20);
             if (recenti.length > 0) {
                 html += '<div class="card">' +
-                    '<div class="card-header"><h3>\u{1F4CB} Storico prenotazioni</h3></div>' +
+                    '<div class="card-header"><h3>\u{1F4CB} Storico richieste online</h3></div>' +
                     '<div class="card-body">' +
                     '<div class="table-wrapper"><table class="table"><thead><tr>' +
                         '<th>Data</th><th>Orario</th><th>Cliente</th><th>Tipo</th><th>Stato</th>' +
@@ -1601,6 +1842,221 @@ ENI.Modules.Lavaggi = (function() {
             if (ENI.App.updateBadge) ENI.App.updateBadge();
         } catch(e) {
             ENI.UI.error('Errore: ' + e.message);
+        }
+    }
+
+    // ============================================================
+    // REPORT LAVAGGI (periodo, KPI, grafico per tipo, export)
+    // ============================================================
+
+    function _lavKpi(val, label, cls) {
+        return '<div class="lav-kpi ' + (cls || '') + '"><div class="lav-kpi-val">' + val + '</div><div class="lav-kpi-lbl">' + label + '</div></div>';
+    }
+
+    function _addGiorni(iso, n) {
+        var p = iso.split('-');
+        var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+        d.setDate(d.getDate() + n);
+        var m = String(d.getMonth() + 1).padStart(2, '0');
+        var g = String(d.getDate()).padStart(2, '0');
+        return d.getFullYear() + '-' + m + '-' + g;
+    }
+
+    function _rangeReport(id) {
+        var oggi = ENI.UI.oggiISO();
+        if (id === 'settimana') return { da: _addGiorni(oggi, -6), a: oggi, label: 'Settimana' };
+        if (id === 'anno') return { da: _addGiorni(oggi, -364), a: oggi, label: 'Anno' };
+        return { da: _addGiorni(oggi, -29), a: oggi, label: 'Mese' };
+    }
+
+    async function _renderReport() {
+        var contentEl = document.getElementById('lavaggi-content');
+        if (!contentEl) return;
+        _ensureStyle();
+        var r = _rangeReport(_reportPeriodo);
+
+        var chips = [['settimana', 'Settimana'], ['mese', 'Mese'], ['anno', 'Anno']].map(function(d) {
+            return '<button class="chip' + (_reportPeriodo === d[0] ? ' active' : '') + '" data-report-periodo="' + d[0] + '">' + d[1] + '</button>';
+        }).join('');
+
+        contentEl.innerHTML =
+            '<div class="filter-chips" id="lav-report-periodo" style="margin-bottom:var(--space-3);">' + chips + '</div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.75rem;margin-bottom:var(--space-3);">' +
+                '<div class="text-sm text-muted">Report lavaggi · ' + r.label + '</div>' +
+                '<div><button class="btn btn-outline btn-sm" id="btn-lav-xlsx">\u{1F4CA} Excel</button> ' +
+                    '<button class="btn btn-outline btn-sm" id="btn-lav-pdf">\u{1F4C4} PDF</button></div>' +
+            '</div>' +
+            '<div id="lav-report-kpi" class="lav-summary"></div>' +
+            '<div style="background:var(--bg-card);border:1px solid var(--color-gray-200);border-radius:var(--radius-md);padding:var(--space-3);margin:var(--space-3) 0;">' +
+                '<div style="font-weight:600;margin-bottom:0.5rem;font-size:0.9rem;">\u{1F4CA} Incasso per tipo di lavaggio</div>' +
+                '<div style="position:relative;height:260px;"><canvas id="lav-report-chart"></canvas></div>' +
+            '</div>' +
+            '<div id="lav-report-lista"></div>';
+
+        contentEl.querySelector('#lav-report-periodo').addEventListener('click', function(e) {
+            var b = e.target.closest('[data-report-periodo]');
+            if (!b) return;
+            _reportPeriodo = b.getAttribute('data-report-periodo');
+            _renderReport();
+        });
+        contentEl.querySelector('#btn-lav-xlsx').addEventListener('click', function() { _esportaReportExcel(r); });
+        contentEl.querySelector('#btn-lav-pdf').addEventListener('click', function() { _esportaReportPdf(r); });
+
+        try { _reportData = await ENI.API.getLavaggiReport(r.da, r.a); } catch(e) { _reportData = []; }
+        _renderReportDati();
+    }
+
+    function _aggregaReport() {
+        var completati = 0, annullati = 0, prenotati = 0, incasso = 0, perTipo = {};
+        _reportData.forEach(function(l) {
+            if (l.stato === 'Completato') {
+                completati++;
+                incasso += Number(l.prezzo || 0);
+                var k = l.tipo_lavaggio || 'Altro';
+                if (!perTipo[k]) perTipo[k] = { n: 0, tot: 0 };
+                perTipo[k].n++;
+                perTipo[k].tot += Number(l.prezzo || 0);
+            } else if (l.stato === 'Annullato') { annullati++; }
+            else if (l.stato === 'Prenotato') { prenotati++; }
+        });
+        var voci = Object.keys(perTipo).map(function(k) { return { tipo: k, n: perTipo[k].n, tot: perTipo[k].tot }; })
+            .sort(function(a, b) { return b.tot - a.tot; });
+        return { completati: completati, annullati: annullati, prenotati: prenotati, incasso: incasso, voci: voci };
+    }
+
+    function _renderReportDati() {
+        var a = _aggregaReport();
+        var media = a.completati > 0 ? a.incasso / a.completati : 0;
+
+        var kpiEl = document.getElementById('lav-report-kpi');
+        if (kpiEl) {
+            kpiEl.innerHTML =
+                _lavKpi(a.completati, 'Completati', 'k-done') +
+                _lavKpi(ENI.UI.formatValuta(a.incasso), 'Incasso') +
+                _lavKpi(ENI.UI.formatValuta(media), 'Media/lav.') +
+                _lavKpi(a.prenotati, 'Da completare', 'k-dafare') +
+                _lavKpi(a.annullati, 'Annullati');
+        }
+
+        _drawReportChart(a.voci);
+
+        var listaEl = document.getElementById('lav-report-lista');
+        if (!listaEl) return;
+        if (!a.voci.length) {
+            listaEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u{1F697}</div><p class="empty-state-text">Nessun lavaggio completato nel periodo</p></div>';
+            return;
+        }
+        var html = '<div class="table-wrapper"><table class="table"><thead><tr>' +
+            '<th>Tipo lavaggio</th><th>N.</th><th>Incasso</th><th>%</th></tr></thead><tbody>';
+        a.voci.forEach(function(v) {
+            var perc = a.incasso > 0 ? Math.round(v.tot / a.incasso * 100) : 0;
+            html += '<tr>' +
+                '<td><strong>' + ENI.UI.escapeHtml(v.tipo) + '</strong></td>' +
+                '<td class="text-sm">' + v.n + '</td>' +
+                '<td><strong>' + ENI.UI.formatValuta(v.tot) + '</strong></td>' +
+                '<td class="text-sm text-muted">' + perc + '%</td>' +
+            '</tr>';
+        });
+        html += '</tbody><tfoot><tr><td><strong>TOTALE</strong></td><td class="text-sm">' + a.completati + '</td>' +
+            '<td><strong>' + ENI.UI.formatValuta(a.incasso) + '</strong></td><td></td></tr></tfoot></table></div>';
+        listaEl.innerHTML = html;
+    }
+
+    function _drawReportChart(voci) {
+        var cv = document.getElementById('lav-report-chart');
+        if (!cv || typeof Chart === 'undefined') return;
+        if (_reportChart) { try { _reportChart.destroy(); } catch(e) {} _reportChart = null; }
+        var COLS = ['#2a78d6', '#eb6834', '#1baf7a', '#4a3aa7', '#eda100', '#e87ba4', '#898781'];
+        _reportChartConfig = {
+            type: 'bar',
+            data: {
+                labels: voci.map(function(v) { return v.tipo; }),
+                datasets: [{ data: voci.map(function(v) { return v.tot; }), backgroundColor: voci.map(function(v, i) { return COLS[i % COLS.length]; }), borderRadius: 4 }]
+            },
+            options: {
+                indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ENI.UI.formatValuta(ctx.parsed.x); } } } },
+                scales: { x: { grid: { color: '#e1e0d9' }, ticks: { color: '#898781' } }, y: { grid: { display: false }, ticks: { color: '#898781' } } }
+            }
+        };
+        _reportChart = new Chart(cv, _reportChartConfig);
+    }
+
+    function _immagineGraficoHiRes(config) {
+        var canvas = document.createElement('canvas');
+        canvas.width = 1000; canvas.height = 420;
+        var cfg = JSON.parse(JSON.stringify(config));
+        cfg.options = cfg.options || {};
+        cfg.options.animation = false;
+        cfg.options.responsive = false;
+        cfg.options.maintainAspectRatio = false;
+        cfg.options.devicePixelRatio = 2;
+        if (cfg.options.scales) {
+            ['x', 'y'].forEach(function(ax) {
+                if (cfg.options.scales[ax]) { cfg.options.scales[ax].ticks = cfg.options.scales[ax].ticks || {}; cfg.options.scales[ax].ticks.font = { size: 16 }; cfg.options.scales[ax].ticks.color = '#333333'; }
+            });
+        }
+        var ch = new Chart(canvas, cfg);
+        var img = ch.toBase64Image('image/png', 1);
+        ch.destroy();
+        return img;
+    }
+
+    function _esportaReportExcel(r) {
+        if (!_reportData.length) { ENI.UI.warning('Nessun lavaggio da esportare'); return; }
+        var righe = _reportData.map(function(l) {
+            return { 'Data': l.data || '', 'Tipo': l.tipo_lavaggio || '', 'Stato': l.stato || '', 'Cliente': l.nome_cliente || '', 'Veicolo': l.veicolo || '', 'Prezzo': (l.prezzo != null ? l.prezzo : '') };
+        });
+        try {
+            var ws = XLSX.utils.json_to_sheet(righe);
+            var wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Lavaggi');
+            XLSX.writeFile(wb, 'report_lavaggi_' + r.label.toLowerCase() + '_' + ENI.UI.oggiISO() + '.xlsx');
+            ENI.UI.success(righe.length + ' lavaggi esportati');
+        } catch(e) { console.error(e); ENI.UI.error('Errore export'); }
+    }
+
+    function _esportaReportPdf(r) {
+        var lib = window.jspdf || (typeof jspdf !== 'undefined' ? jspdf : null);
+        if (!lib || !lib.jsPDF) { ENI.UI.error('Libreria PDF non disponibile'); return; }
+        if (!_reportData.length) { ENI.UI.warning('Nessun lavaggio da esportare'); return; }
+        try {
+            var a = _aggregaReport();
+            var media = a.completati > 0 ? a.incasso / a.completati : 0;
+            var doc = new lib.jsPDF({ unit: 'mm', format: 'a4' });
+            var W = doc.internal.pageSize.getWidth();
+            var y = 16;
+            doc.setFontSize(16); doc.text('Titanwash – Report lavaggi', 14, y); y += 7;
+            doc.setFontSize(10); doc.setTextColor(110);
+            doc.text('Periodo: ' + r.label + ' (' + r.da + ' → ' + r.a + ')   ·   Generato: ' + new Date().toLocaleString('it-IT'), 14, y); y += 8;
+            doc.setTextColor(0);
+            doc.setFontSize(12);
+            doc.text('Completati: ' + a.completati + '   ·   Incasso: ' + ENI.UI.formatValuta(a.incasso) + '   ·   Media: ' + ENI.UI.formatValuta(media), 14, y); y += 6;
+            doc.text('Da completare: ' + a.prenotati + '   ·   Annullati: ' + a.annullati, 14, y); y += 9;
+
+            doc.setFontSize(11); doc.setTextColor(90);
+            doc.text('Tipo lavaggio', 14, y); doc.text('N.', 120, y); doc.text('Incasso', 140, y); doc.text('%', 175, y);
+            doc.setTextColor(0); y += 2; doc.line(14, y, W - 14, y); y += 5;
+            a.voci.forEach(function(v) {
+                if (y > 270) { doc.addPage(); y = 16; }
+                var perc = a.incasso > 0 ? Math.round(v.tot / a.incasso * 100) : 0;
+                doc.text(String(v.tipo), 14, y); doc.text(String(v.n), 120, y);
+                doc.text(ENI.UI.formatValuta(v.tot), 140, y); doc.text(perc + '%', 175, y);
+                y += 6.5;
+            });
+            y += 4;
+            if (_reportChartConfig) {
+                try {
+                    var img = _immagineGraficoHiRes(_reportChartConfig);
+                    if (y + 80 > 290) { doc.addPage(); y = 16; }
+                    doc.setFontSize(11); doc.text('Incasso per tipo di lavaggio', 14, y); y += 4;
+                    doc.addImage(img, 'PNG', 14, y, W - 28, 76);
+                } catch(e) {}
+            }
+            doc.save('report_lavaggi_' + r.label.toLowerCase() + '_' + ENI.UI.oggiISO() + '.pdf');
+        } catch(e) {
+            console.error('PDF lavaggi:', e);
+            ENI.UI.error('Errore nella generazione del PDF');
         }
     }
 

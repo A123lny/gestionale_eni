@@ -210,7 +210,7 @@ ENI.API = (function() {
     async function cercaClienti(searchTerm) {
         var result = await getClient()
             .from('clienti')
-            .select('id, nome_ragione_sociale, targa, p_iva_coe, tipo, telefono, email, modalita_pagamento')
+            .select('id, nome_ragione_sociale, targa, p_iva_coe, tipo, telefono, email, modalita_pagamento, listino_personalizzato')
             .eq('attivo', true)
             .or(
                 'nome_ragione_sociale.ilike.%' + searchTerm + '%,' +
@@ -933,6 +933,18 @@ ENI.API = (function() {
             .from('lavaggi')
             .select('data, stato')
             .gte('data', da).lte('data', a)
+            .limit(50000);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // Lavaggi su un intervallo con i campi utili al report (tipo, prezzo, stato). SOLO LETTURA.
+    async function getLavaggiReport(da, a) {
+        var result = await getClient()
+            .from('lavaggi')
+            .select('data, stato, tipo_lavaggio, prezzo, priorita, nome_cliente, veicolo')
+            .gte('data', da).lte('data', a)
+            .order('data', { ascending: true })
             .limit(50000);
         if (result.error) throw new Error(result.error.message);
         return result.data || [];
@@ -2373,6 +2385,7 @@ ENI.API = (function() {
         getIncassiCategoriaRange: getIncassiCategoriaRange,
         getCarburanteRange: getCarburanteRange,
         getLavaggiRange: getLavaggiRange,
+        getLavaggiReport: getLavaggiReport,
         salvaReso: salvaReso,
         getResiPerVendita: getResiPerVendita,
         // Buoni cartacei

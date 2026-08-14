@@ -743,6 +743,27 @@ ENI.Modules.Clienti = (function() {
     // ============================================================
     async function _showFormModificaCliente(cliente) {
         var c = cliente;
+
+        // Listino personalizzato: tabella prezzi per tipo di lavaggio, precompilata
+        var listino = await ENI.API.getListino();
+        var lpEsistente = c.listino_personalizzato || {};
+        var tipiLavaggio = listino.map(function(l) {
+            var val = (lpEsistente[l.tipo_lavaggio] != null && lpEsistente[l.tipo_lavaggio] !== '') ? lpEsistente[l.tipo_lavaggio] : '';
+            var scontoInit = '-';
+            var vn = parseFloat(val);
+            if (!isNaN(vn) && vn > 0 && l.prezzo_standard) {
+                var sc = ((l.prezzo_standard - vn) / l.prezzo_standard) * 100;
+                scontoInit = sc > 0 ? '<span class="listino-sconto discount">-' + sc.toFixed(1) + '%</span>'
+                    : (sc < 0 ? '<span class="listino-sconto surcharge">+' + Math.abs(sc).toFixed(1) + '%</span>' : '0%');
+            }
+            return '<tr>' +
+                '<td>' + ENI.UI.escapeHtml(l.tipo_lavaggio) + '</td>' +
+                '<td>' + ENI.UI.formatValuta(l.prezzo_standard) + '</td>' +
+                '<td><input type="number" step="0.01" min="0" class="form-input" data-listino-tipo="' + ENI.UI.escapeHtml(l.tipo_lavaggio) + '" style="max-width:100px;" value="' + val + '" placeholder="' + l.prezzo_standard + '"></td>' +
+                '<td class="text-sm" data-sconto-for="' + ENI.UI.escapeHtml(l.tipo_lavaggio) + '">' + scontoInit + '</td>' +
+            '</tr>';
+        }).join('');
+
         var modPagFatt = ['RIBA','RID_SDD','BONIFICO','CONTANTI','FINE_MESE'];
         var modPagFattOpts = '<option value="">Non impostato</option>' +
             modPagFatt.map(function(v) { return '<option value="' + v + '"' + (c.modalita_pagamento_fattura === v ? ' selected' : '') + '>' + v + '</option>'; }).join('');
@@ -777,6 +798,15 @@ ENI.Modules.Clienti = (function() {
                     '<select class="form-select" id="mod-pagamento">' + modPagOpts + '</select></div>' +
                 '<div class="form-group"><label class="form-label">Note</label>' +
                     '<textarea class="form-textarea" id="mod-note" rows="2">' + ENI.UI.escapeHtml(c.note || '') + '</textarea></div>' +
+                // Listino personalizzato (prezzi speciali per tipo di lavaggio)
+                '<div id="mod-listino-section"' + (c.tipo === 'Corporate' ? '' : ' style="display:none;"') + '>' +
+                    '<div class="section-title mt-3">\u{1F4B3} Listino Personalizzato</div>' +
+                    '<div class="text-xs text-muted" style="margin-bottom:0.5rem;">Prezzi speciali per questo cliente: verranno proposti in automatico quando prenoti un lavaggio.</div>' +
+                    '<div class="table-wrapper"><table class="listino-table">' +
+                        '<thead><tr><th>Tipo</th><th>Standard</th><th>Personalizzato</th><th>Sconto</th></tr></thead>' +
+                        '<tbody>' + tipiLavaggio + '</tbody>' +
+                    '</table></div>' +
+                '</div>' +
                 // Sezione fatturazione
                 '<div class="section-title mt-3">Dati fatturazione</div>' +
                 '<div class="form-group"><label class="form-label">Indirizzo sede legale</label>' +
@@ -842,13 +872,51 @@ ENI.Modules.Clienti = (function() {
             });
         }
 
+        // Mostra/nascondi il listino personalizzato in base al tipo cliente
+        modal.querySelectorAll('input[name="tipo"]').forEach(function(radio) {
+            radio.addEventListener('change', function(e) {
+                var sec = modal.querySelector('#mod-listino-section');
+                if (sec) sec.style.display = (e.target.value === 'Corporate') ? '' : 'none';
+            });
+        });
+
+        // Calcolo sconto dinamico sui prezzi personalizzati
+        modal.querySelectorAll('[data-listino-tipo]').forEach(function(input) {
+            input.addEventListener('input', function() {
+                var tipo = input.dataset.listinoTipo;
+                var standard = listino.find(function(l) { return l.tipo_lavaggio === tipo; });
+                var scontoEl = modal.querySelector('[data-sconto-for="' + tipo + '"]');
+                if (!standard || !scontoEl) return;
+                var val = parseFloat(input.value);
+                if (isNaN(val) || val <= 0) { scontoEl.innerHTML = '-'; return; }
+                var sconto = ((standard.prezzo_standard - val) / standard.prezzo_standard) * 100;
+                if (sconto > 0) scontoEl.innerHTML = '<span class="listino-sconto discount">-' + sconto.toFixed(1) + '%</span>';
+                else if (sconto < 0) scontoEl.innerHTML = '<span class="listino-sconto surcharge">+' + Math.abs(sconto).toFixed(1) + '%</span>';
+                else scontoEl.innerHTML = '0%';
+            });
+        });
+
         modal.querySelector('#btn-salva-modifica').addEventListener('click', async function() {
             var nome = modal.querySelector('#mod-nome').value.trim();
             if (!nome) { ENI.UI.toast('Il nome è obbligatorio', 'danger'); return; }
 
+            var tipoCliente = modal.querySelector('input[name="tipo"]:checked').value;
+
+            // Raccoglie il listino personalizzato (solo Corporate)
+            var listinoPersonalizzato = null;
+            if (tipoCliente === 'Corporate') {
+                var lp = {}; var hasListino = false;
+                modal.querySelectorAll('[data-listino-tipo]').forEach(function(input) {
+                    var val = parseFloat(input.value);
+                    if (!isNaN(val) && val > 0) { lp[input.dataset.listinoTipo] = val; hasListino = true; }
+                });
+                if (hasListino) listinoPersonalizzato = lp;
+            }
+
             var dati = {
-                tipo: modal.querySelector('input[name="tipo"]:checked').value,
+                tipo: tipoCliente,
                 nome_ragione_sociale: nome,
+                listino_personalizzato: listinoPersonalizzato,
                 p_iva_coe: modal.querySelector('#mod-piva').value.trim() || null,
                 email: modal.querySelector('#mod-email').value.trim() || null,
                 telefono: modal.querySelector('#mod-telefono').value.trim() || null,
