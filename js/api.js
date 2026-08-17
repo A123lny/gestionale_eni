@@ -223,6 +223,18 @@ ENI.API = (function() {
         return result.data || [];
     }
 
+    // Clienti abituali = quelli con un listino personalizzato configurato (per le scorciatoie nel form lavaggio)
+    async function getClientiConPrezzi() {
+        var result = await getClient()
+            .from('clienti')
+            .select('id, nome_ragione_sociale, targa, tipo, telefono, modalita_pagamento, listino_personalizzato')
+            .eq('attivo', true)
+            .not('listino_personalizzato', 'is', null)
+            .order('nome_ragione_sociale', { ascending: true });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
     // --- Listino Lavaggi ---
 
     async function getListino() {
@@ -2326,6 +2338,7 @@ ENI.API = (function() {
         salvaCliente: salvaCliente,
         aggiornaCliente: aggiornaCliente,
         cercaClienti: cercaClienti,
+        getClientiConPrezzi: getClientiConPrezzi,
         getListino: getListino,
         getListinoCompleto: getListinoCompleto,
         salvaListino: salvaListino,

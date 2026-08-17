@@ -550,6 +550,8 @@ ENI.Modules.Lavaggi = (function() {
 
     async function _showFormLavaggio(isWalkin) {
         var listino = await ENI.API.getListino();
+        var clientiAbituali = [];
+        try { clientiAbituali = await ENI.API.getClientiConPrezzi(); } catch(e) { clientiAbituali = []; }
 
         var listinoOptions = listino.map(function(l) {
             return '<option value="' + ENI.UI.escapeHtml(l.tipo_lavaggio) + '" data-prezzo="' + l.prezzo_standard + '" data-durata="' + (l.durata_minuti || 30) + '">' +
@@ -705,6 +707,25 @@ ENI.Modules.Lavaggi = (function() {
             if (clienteResults) clienteResults.style.display = 'none';
         }
 
+        function _mostraAbituali() {
+            if (!clienteResults || !clientiAbituali || !clientiAbituali.length) { _nascondiRisultati(); return; }
+            _risultatiClienti = clientiAbituali;
+            var head = '<div style="padding:6px 12px; font-size:0.72rem; text-transform:uppercase; letter-spacing:.03em; color:var(--color-gray-500); background:var(--bg-secondary);">Clienti abituali</div>';
+            clienteResults.innerHTML = head + clientiAbituali.map(function(c, i) {
+                var prezzi = '';
+                if (c.listino_personalizzato) {
+                    prezzi = Object.keys(c.listino_personalizzato).map(function(k) {
+                        return ENI.UI.escapeHtml(k) + ' ' + ENI.UI.formatValuta(c.listino_personalizzato[k]);
+                    }).join(' · ');
+                }
+                return '<div class="cli-result-item" data-idx="' + i + '" style="padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--color-gray-200);">' +
+                    '\u{1F3E2} <strong>' + ENI.UI.escapeHtml(c.nome_ragione_sociale) + '</strong>' +
+                    (prezzi ? '<div class="text-xs text-muted">' + prezzi + '</div>' : '') +
+                '</div>';
+            }).join('');
+            clienteResults.style.display = 'block';
+        }
+
         function _selezionaCliente(c) {
             clienteSelezionato = c || null;
             _nascondiRisultati();
@@ -736,10 +757,14 @@ ENI.Modules.Lavaggi = (function() {
                     clienteInfo.textContent = '';
                 }
                 if (_ricercaTimer) clearTimeout(_ricercaTimer);
+                if (term.length === 0) { _mostraAbituali(); return; }
                 if (term.length < ENI.Config.CONSTANTS.SEARCH_MIN_CHARS) { _nascondiRisultati(); return; }
                 _ricercaTimer = setTimeout(function() {
                     ENI.API.cercaClienti(term).then(_mostraRisultati).catch(function() { _nascondiRisultati(); });
                 }, ENI.Config.CONSTANTS.SEARCH_DEBOUNCE_MS);
+            });
+            clienteSearch.addEventListener('focus', function() {
+                if (!clienteSearch.value.trim()) _mostraAbituali();
             });
             ENI.UI.delegate(clienteResults, 'click', '.cli-result-item', function(e, el) {
                 var c = _risultatiClienti[parseInt(el.dataset.idx, 10)];
