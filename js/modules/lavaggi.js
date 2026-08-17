@@ -548,6 +548,32 @@ ENI.Modules.Lavaggi = (function() {
 
     // --- Form Nuovo Lavaggio ---
 
+    var NOTE_PRESET = [
+        { icon: '\u{1F4DE}', label: 'Chiamare quando è pronta', testo: 'Chiamare quando è pronta' },
+        { icon: '⛽', label: 'Fare il pieno', testo: 'Fare il pieno' },
+        { icon: '\u{1F6E2}️', label: 'Controllo livelli', testo: 'Controllo livelli' },
+        { icon: '\u{1F6DE}', label: 'Controllo gomme', testo: 'Controllo gomme' }
+    ];
+
+    // Aggiunge/rimuove una nota preimpostata nella textarea (una per riga)
+    function _toggleNotaPreset(testo, chipEl, textarea) {
+        if (!textarea) return;
+        var lines = textarea.value.split('\n');
+        var idx = -1;
+        for (var i = 0; i < lines.length; i++) {
+            if (lines[i].trim() === testo) { idx = i; break; }
+        }
+        if (idx !== -1) {
+            lines.splice(idx, 1);
+            if (chipEl) chipEl.classList.remove('active');
+        } else {
+            if (lines.length === 1 && lines[0].trim() === '') lines = [];
+            lines.push(testo);
+            if (chipEl) chipEl.classList.add('active');
+        }
+        textarea.value = lines.join('\n');
+    }
+
     async function _showFormLavaggio(isWalkin) {
         var listino = await ENI.API.getListino();
         var clientiAbituali = [];
@@ -654,7 +680,12 @@ ENI.Modules.Lavaggi = (function() {
 
                 '<div class="form-group">' +
                     '<label class="form-label">Note</label>' +
-                    '<textarea class="form-textarea" id="lav-note" rows="2"></textarea>' +
+                    '<div class="lav-note-quick" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;">' +
+                        NOTE_PRESET.map(function(n) {
+                            return '<button type="button" class="chip lav-nota-preset" data-nota="' + ENI.UI.escapeHtml(n.testo) + '">' + n.icon + ' ' + ENI.UI.escapeHtml(n.label) + '</button>';
+                        }).join('') +
+                    '</div>' +
+                    '<textarea class="form-textarea" id="lav-note" rows="2" placeholder="Clicca una nota rapida o scrivi qui…"></textarea>' +
                 '</div>' +
             '</form>';
 
@@ -877,6 +908,14 @@ ENI.Modules.Lavaggi = (function() {
         });
         modal.querySelectorAll('.lav-extra-prezzo').forEach(function(inp) {
             inp.addEventListener('input', _aggiornaExtraTotale);
+        });
+
+        // Note preimpostate: toggle nella textarea
+        var noteTextarea = modal.querySelector('#lav-note');
+        modal.querySelectorAll('.lav-nota-preset').forEach(function(chip) {
+            chip.addEventListener('click', function() {
+                _toggleNotaPreset(chip.getAttribute('data-nota'), chip, noteTextarea);
+            });
         });
 
         // Bottone + Nuovo cliente inline
