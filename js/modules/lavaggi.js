@@ -745,6 +745,7 @@ ENI.Modules.Lavaggi = (function() {
             } else {
                 clienteInfo.textContent = '';
             }
+            _aggiornaEtichetteTipo();
             _aggiornaPrezzo();
         }
 
@@ -755,6 +756,7 @@ ENI.Modules.Lavaggi = (function() {
                 if (clienteSelezionato && term !== clienteSelezionato.nome_ragione_sociale) {
                     clienteSelezionato = null;
                     clienteInfo.textContent = '';
+                    _aggiornaEtichetteTipo();
                 }
                 if (_ricercaTimer) clearTimeout(_ricercaTimer);
                 if (term.length === 0) { _mostraAbituali(); return; }
@@ -831,6 +833,19 @@ ENI.Modules.Lavaggi = (function() {
                     d.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10) + parseInt(tipoOpt.dataset.durata, 10));
                     fineInput.value = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
                 }
+            }
+        }
+
+        // Aggiorna le etichette del menu "Tipo Lavaggio" con i prezzi del cliente selezionato
+        function _aggiornaEtichetteTipo() {
+            if (!tipoSelect) return;
+            var lp = (clienteSelezionato && clienteSelezionato.listino_personalizzato) ? clienteSelezionato.listino_personalizzato : null;
+            for (var i = 0; i < tipoSelect.options.length; i++) {
+                var opt = tipoSelect.options[i];
+                if (!opt.value) continue;
+                var std = parseFloat(opt.dataset.prezzo);
+                var prezzo = (lp && lp[opt.value] != null) ? Number(lp[opt.value]) : std;
+                opt.textContent = opt.value + ' - ' + ENI.UI.formatValuta(prezzo);
             }
         }
 
@@ -941,6 +956,8 @@ ENI.Modules.Lavaggi = (function() {
                 await ENI.API.salvaLavaggio(dati);
                 ENI.UI.closeModal(modal);
                 ENI.UI.success(isWalkin ? 'Walk-in registrato' : 'Lavaggio prenotato');
+                // Walk-in = lavaggio già completato → stampa scontrino
+                if (isWalkin) _stampaScontrinoLavaggio(dati);
                 // Porta la vista sul giorno scelto se diverso da quello corrente
                 if (dataSalvata && dataSalvata !== _dataSelezionata) {
                     _dataSelezionata = dataSalvata;
@@ -1089,6 +1106,7 @@ ENI.Modules.Lavaggi = (function() {
         try {
             await ENI.API.completaLavaggio(id, lavaggio);
             ENI.UI.success('Lavaggio completato');
+            _stampaScontrinoLavaggio(lavaggio);
             await _loadLavaggi();
 
             // Chiedi se registrare come vendita
@@ -1136,6 +1154,73 @@ ENI.Modules.Lavaggi = (function() {
                 ENI.UI.error('Errore registrazione vendita: ' + e.message);
             }
         });
+    }
+
+    // --- Stampa scontrino lavaggio (riusa il print-server della Vendita) ---
+
+    function _stampaScontrinoLavaggio(lavaggio) {
+        if (!lavaggio) return;
+        var now = new Date();
+        var savedLayout = null;
+        try { var raw = localStorage.getItem('titanwash_print_layout'); if (raw) savedLayout = JSON.parse(raw); } catch(e) {}
+
+        var extras = lavaggio.servizi_extra || [];
+        var totExtra = extras.reduce(function(s, e) { return s + Number(e.prezzo || 0); }, 0);
+        var prezzoTot = Number(lavaggio.prezzo || 0);
+        var prezzoBase = prezzoTot - totExtra;
+
+        var righe = [{
+            nome: lavaggio.tipo_lavaggio + (lavaggio.veicolo ? ' - ' + lavaggio.veicolo : ''),
+            quantita: 1,
+            prezzo_unitario: prezzoBase,
+            sconto: 0,
+            totale_riga: prezzoBase
+        }];
+        extras.forEach(function(e) {
+            righe.push({ nome: e.nome, quantita: 1, prezzo_unitario: Number(e.prezzo || 0), sconto: 0, totale_riga: Number(e.prezzo || 0) });
+        });
+
+        var printData = {
+            data: now.toLocaleDateString('it-IT'),
+            ora: now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+            operatore: ENI.State.getUserName() || '-',
+            righe: righe,
+            subtotale: prezzoTot,
+            totale: prezzoTot,
+            metodo_pagamento: 'contanti',
+            importo_contanti: prezzoTot,
+            resto: 0,
+            codice: lavaggio.codice || '',
+            printer_ip: savedLayout ? savedLayout.printer_ip : ENI.Config.PRINTER_IP,
+            printer_port: savedLayout ? savedLayout.printer_port : ENI.Config.PRINTER_PORT,
+            layout: savedLayout || null
+        };
+
+        var serverUrl = ENI.Config.PRINT_SERVER_URL || 'http://localhost:3333';
+        fetch(serverUrl + '/print', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(printData)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (res.success) ENI.UI.toast('Scontrino stampato', 'success');
+            else ENI.UI.toast('Errore stampa: ' + (res.message || 'sconosciuto'), 'error');
+        })
+        .catch(function() { _inviaLavaggioACodaStampa(printData); });
+    }
+
+    function _inviaLavaggioACodaStampa(printData) {
+        var client = ENI.API.getClient ? ENI.API.getClient() : null;
+        if (!client) { ENI.UI.toast('Print server non raggiungibile', 'error'); return; }
+        client.from('print_queue').insert({
+            vendita_codice: printData.codice || 'LAV',
+            print_data: printData,
+            stato: 'pending'
+        }).then(function(res) {
+            if (res.error) ENI.UI.toast('Errore coda stampa', 'error');
+            else ENI.UI.toast('Scontrino in coda di stampa', 'success');
+        }).catch(function() { ENI.UI.toast('Errore coda stampa', 'error'); });
     }
 
     // --- Listino Lavaggi ---
