@@ -909,11 +909,13 @@ ENI.Modules.MarginalitaCarburante = (function() {
     }
 
     // --- Form Carico Multi-Prodotto ---
-    function _showCaricoForm() {
+    function _showCaricoForm(opts) {
+        opts = opts || {};
         var oggi = _todayStr();
 
         // Costruisci form con una sezione per ogni prodotto
         var body =
+            (opts.senzaPrezzo ? '<p class="text-xs text-muted" style="margin-top:0;">Registri i litri arrivati. Prezzo MP e accisa li completi dopo in Marginalità → Carichi, quando hai la fattura.</p>' : '') +
             _formField('Data carico', 'mc-car-data', 'date', oggi) +
             _formField('Note (opzionale)', 'mc-car-note', 'text', '') +
             '<hr style="margin:var(--space-3) 0; border:none; border-top:1px solid var(--color-gray-200);">';
@@ -932,10 +934,11 @@ ENI.Modules.MarginalitaCarburante = (function() {
                             '<input type="number" class="form-input mc-car-field" id="mc-car-comm-' + prod.id + '" step="0.01" data-prod="' + prod.id + '" data-field="comm"></div>' +
                         '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.7rem;">Lt. fiscali</label>' +
                             '<input type="number" class="form-input mc-car-field" id="mc-car-fisc-' + prod.id + '" step="0.01" data-prod="' + prod.id + '" data-field="fisc"></div>' +
+                        (opts.senzaPrezzo ? '' :
                         '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.7rem;">Prezzo MP (\u20AC/lt)</label>' +
                             '<input type="number" class="form-input mc-car-field" id="mc-car-mp-' + prod.id + '" step="0.00001" data-prod="' + prod.id + '" data-field="mp"></div>' +
                         '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.7rem;">Accisa (\u20AC/lt)</label>' +
-                            '<input type="number" class="form-input mc-car-field" id="mc-car-acc-' + prod.id + '" step="0.000001" data-prod="' + prod.id + '" data-field="acc"></div>' +
+                            '<input type="number" class="form-input mc-car-field" id="mc-car-acc-' + prod.id + '" step="0.000001" data-prod="' + prod.id + '" data-field="acc"></div>') +
                     '</div>' +
                     '<div id="mc-car-prev-' + prod.id + '" style="font-size:0.75rem; color:var(--text-secondary); margin-top:var(--space-1);"></div>' +
                 '</div>';
@@ -943,11 +946,12 @@ ENI.Modules.MarginalitaCarburante = (function() {
 
         body += '<div id="mc-car-totale" style="padding:var(--space-2); background:var(--color-primary-light); border-radius:var(--radius-md); font-weight:600; text-align:right;"></div>';
 
-        var modal = _modal('mc-modal-carico', 'Nuovo Carico', body, 'mc-car-salva', 'Registra Carico');
+        var modal = _modal('mc-modal-carico', opts.senzaPrezzo ? 'Carico arrivato' : 'Nuovo Carico', body, 'mc-car-salva', 'Registra Carico');
         _openModal(modal, 'mc-modal-carico');
 
         // Precompila accise per ogni prodotto alla data selezionata
         async function precompileAccise() {
+            if (opts.senzaPrezzo) { updatePreviews(); return; } // niente campo accisa
             var dataCarico = document.getElementById('mc-car-data').value || _todayStr();
             for (var i = 0; i < _prodotti.length; i++) {
                 var prod = _prodotti[i];
@@ -958,7 +962,8 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 for (var j = 0; j < accise.length; j++) {
                     var a = accise[j];
                     if (a.data_inizio <= dataCarico && (!a.data_fine || a.data_fine >= dataCarico)) {
-                        document.getElementById('mc-car-acc-' + prod.id).value = a.accisa;
+                        var accEl = document.getElementById('mc-car-acc-' + prod.id);
+                        if (accEl) accEl.value = a.accisa;
                         break;
                     }
                 }
@@ -970,6 +975,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
 
         // Preview per prodotto + totale
         function updatePreviews() {
+            if (opts.senzaPrezzo) { var t0 = document.getElementById('mc-car-totale'); if (t0) t0.innerHTML = ''; return; }
             var totale = 0;
             _prodotti.forEach(function(prod) {
                 var comm = parseFloat(document.getElementById('mc-car-comm-' + prod.id).value) || 0;
@@ -1008,11 +1014,15 @@ ENI.Modules.MarginalitaCarburante = (function() {
             _prodotti.forEach(function(prod) {
                 var comm = parseFloat(document.getElementById('mc-car-comm-' + prod.id).value) || 0;
                 var fisc = parseFloat(document.getElementById('mc-car-fisc-' + prod.id).value) || 0;
-                var mp = parseFloat(document.getElementById('mc-car-mp-' + prod.id).value) || 0;
-                var acc = parseFloat(document.getElementById('mc-car-acc-' + prod.id).value) || 0;
+                var mpEl = document.getElementById('mc-car-mp-' + prod.id);
+                var accEl = document.getElementById('mc-car-acc-' + prod.id);
+                var mp = mpEl ? parseFloat(mpEl.value) || 0 : 0;
+                var acc = accEl ? parseFloat(accEl.value) || 0 : 0;
                 var ord = parseFloat(document.getElementById('mc-car-ord-' + prod.id).value) || 0;
 
-                if (comm > 0 && fisc > 0 && mp > 0) {
+                // Senza prezzo (carico arrivato): bastano litri commerciali e fiscali.
+                var valido = opts.senzaPrezzo ? (comm > 0 && fisc > 0) : (comm > 0 && fisc > 0 && mp > 0);
+                if (valido) {
                     haAlmenoUnProdotto = true;
                     prodottiDaSalvare.push({ prodId: prod.id, ord: ord, comm: comm, fisc: fisc, mp: mp, acc: acc });
                 }
@@ -1052,7 +1062,13 @@ ENI.Modules.MarginalitaCarburante = (function() {
                     try { await ENI.API.sincronizzaMonofaseDaCarichi(new Date(data)); } catch(e) { console.error('Sync monofase:', e); }
                 }
                 await _ricalcolaStato();
-                _renderPage();
+                // Se aperto da un'altra pagina (es. Ordine Carburante) non ridisegnare Marginalità:
+                // notifica il chiamante via callback.
+                if (opts.onSaved) {
+                    try { opts.onSaved({ data: data, prodotti: prodottiDaSalvare }); } catch(e) { console.error('onSaved carico:', e); }
+                } else {
+                    _renderPage();
+                }
                 ENI.UI.success('Carico registrato (' + prodottiDaSalvare.length + ' prodotti)');
             } catch(e) { ENI.UI.error('Errore: ' + e.message); }
         });
@@ -2857,5 +2873,14 @@ ENI.Modules.MarginalitaCarburante = (function() {
     // API PUBBLICA
     // ============================================================
 
-    return { render: render };
+    // Apre il form di registrazione carico da un'altra pagina (es. Ordine Carburante),
+    // riusando tutta la logica contabile. opts.onSaved({data, prodotti}) viene chiamata al salvataggio.
+    async function apriRegistrazioneCarico(opts) {
+        opts = opts || {};
+        if (!_prodotti || !_prodotti.length) await _loadBase();
+        await _ricalcolaStato();
+        _showCaricoForm(opts);
+    }
+
+    return { render: render, apriRegistrazioneCarico: apriRegistrazioneCarico };
 })();

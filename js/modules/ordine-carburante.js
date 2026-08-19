@@ -79,6 +79,7 @@ ENI.Modules.OrdineCarburante = (function() {
             '<div class="page-header">' +
                 '<h1 class="page-title">⛽ Ordine Carburante</h1>' +
                 '<div class="btn-group" id="oc-actions">' +
+                    '<button class="btn btn-primary btn-sm" id="oc-btn-carico">📥 Carico arrivato</button>' +
                     '<button class="btn btn-outline btn-sm" id="oc-btn-param">⚙️ Parametri</button>' +
                     '<button class="btn btn-outline btn-sm" id="oc-btn-xlsx">📊 Excel</button>' +
                     '<button class="btn btn-outline btn-sm" id="oc-btn-print">🖨️ Stampa</button>' +
@@ -109,6 +110,7 @@ ENI.Modules.OrdineCarburante = (function() {
             viewBar.querySelectorAll('[data-vista]').forEach(function(x) { x.classList.toggle('active', x.getAttribute('data-vista') === _vista); });
             _renderVista();
         });
+        container.querySelector('#oc-btn-carico').addEventListener('click', _registraCaricoArrivato);
         container.querySelector('#oc-btn-param').addEventListener('click', _showParametri);
         container.querySelector('#oc-btn-xlsx').addEventListener('click', _esportaExcel);
         container.querySelector('#oc-btn-print').addEventListener('click', function() { window.print(); });
@@ -394,6 +396,65 @@ ENI.Modules.OrdineCarburante = (function() {
                 ENI.UI.closeModal(modal);
                 ENI.UI.success('Carico eliminato');
                 _renderProdotto();
+            } catch (e) { ENI.UI.error('Errore: ' + e.message); }
+        });
+    }
+
+    // --- Registra carico arrivato (riusa il form contabile di Marginalità) ---
+    function _registraCaricoArrivato() {
+        var M = ENI.Modules.MarginalitaCarburante;
+        if (!M || !M.apriRegistrazioneCarico) { ENI.UI.error('Registrazione carico non disponibile'); return; }
+        M.apriRegistrazioneCarico({
+            prodId: _prodSel,
+            senzaPrezzo: true,
+            onSaved: function(info) { _proponiGiacenzePostCarico(info); }
+        });
+    }
+
+    // Dopo il salvataggio del carico, propone la nuova giacenza (attuale + litri arrivati), modificabile.
+    async function _proponiGiacenzePostCarico(info) {
+        var saved = (info && info.prodotti) || [];
+        var dataCarico = (info && info.data) || _oggi();
+        var righe = [];
+        for (var i = 0; i < saved.length; i++) {
+            var pid = saved[i].prodId;
+            var prod = _prodById(pid);
+            if (!prod) continue;
+            var g = null;
+            try { g = await ENI.API.getGiacenzaRilevata(pid); } catch (e) {}
+            var attuale = g ? Number(g.litri) : 0;
+            var arrivati = Number(saved[i].comm) || 0;
+            righe.push({ pid: pid, nome: prod.nome, attuale: attuale, arrivati: arrivati, nuovo: Math.round(attuale + arrivati) });
+        }
+        if (!righe.length) { _renderVista(); return; }
+
+        var body =
+            '<p class="text-sm text-muted" style="margin-top:0;">Carico registrato ✓. Vuoi aggiornare la <strong>giacenza del serbatoio</strong>? Il valore proposto è <em>giacenza attuale + litri arrivati</em> ed è modificabile — fai comunque il tuo controllo manuale sul serbatoio.</p>' +
+            righe.map(function(r) {
+                return '<div style="border:1px solid var(--color-gray-200);border-radius:var(--radius-md);padding:10px;margin-bottom:8px;">' +
+                    '<div style="font-weight:600;margin-bottom:4px;">' + ENI.UI.escapeHtml(r.nome) + '</div>' +
+                    '<div class="text-xs text-muted" style="margin-bottom:6px;">Attuale ' + _fmtL(r.attuale) + ' L + arrivati ' + _fmtL(r.arrivati) + ' L</div>' +
+                    '<label class="form-label">Nuova giacenza (L) al ' + _fmtData(dataCarico) + '</label>' +
+                    '<input type="number" min="0" step="1" class="form-input oc-newgiac" data-pid="' + r.pid + '" value="' + r.nuovo + '">' +
+                '</div>';
+            }).join('');
+
+        var modal = ENI.UI.showModal({
+            title: '📥 Aggiorna giacenza dopo il carico',
+            body: body,
+            footer: '<button class="btn btn-outline" data-modal-close>Salta</button><button class="btn btn-primary" id="oc-giac-post-salva">Salva giacenze</button>'
+        });
+        modal.querySelector('#oc-giac-post-salva').addEventListener('click', async function() {
+            try {
+                var inputs = modal.querySelectorAll('.oc-newgiac');
+                for (var i = 0; i < inputs.length; i++) {
+                    var val = parseFloat(inputs[i].value);
+                    if (isNaN(val) || val < 0) continue;
+                    await ENI.API.salvaGiacenzaRilevata({ prodotto_id: inputs[i].getAttribute('data-pid'), data: dataCarico, litri: val, origine: 'manuale' });
+                }
+                ENI.UI.closeModal(modal);
+                ENI.UI.success('Giacenze aggiornate');
+                _renderVista();
             } catch (e) { ENI.UI.error('Errore: ' + e.message); }
         });
     }
