@@ -76,6 +76,7 @@ ENI.App = (function() {
                         '<img src="assets/logo_ritagliato.png" alt="Titanwash" class="header-logo-img">' +
                     '</div>' +
                     '<div class="app-header-user">' +
+                        _notifBellHtml() +
                         '<div>' +
                             '<div class="app-header-user-name">' + ENI.UI.escapeHtml(user ? user.nome_completo : '') + '</div>' +
                             '<div class="app-header-user-role">' + ENI.UI.escapeHtml(ruoloLabel) + '</div>' +
@@ -107,6 +108,7 @@ ENI.App = (function() {
 
         _setupEventListeners();
         _startBadgeCheck();
+        _setupNotifiche();
     }
 
     // --- Get Nav Items for Role ---
@@ -355,6 +357,8 @@ ENI.App = (function() {
 
         // Tesoreria: check scadenze per pulse animation
         _updateTesoreriaBadge();
+        // Campanellina notifiche (aggrega i segnali attivi)
+        _updateNotifiche();
     }
 
     async function _updateTesoreriaBadge() {
@@ -376,6 +380,150 @@ ENI.App = (function() {
         } catch(e) {
             // Silenzioso
         }
+    }
+
+    // --- Campanellina notifiche (aggrega i segnali attivi; sola lettura) ---
+    // Stato "letto" salvato per dispositivo in localStorage: nessuna scrittura sul DB.
+
+    var _notifCurrent = [];
+
+    function _notifBellHtml() {
+        return '<div class="notif-wrap">' +
+                '<button class="notif-bell" id="notif-bell" aria-label="Notifiche" title="Notifiche">' +
+                    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' +
+                    '<span class="notif-badge" id="notif-badge" style="display:none;">0</span>' +
+                '</button>' +
+                '<div class="notif-panel" id="notif-panel" style="display:none;">' +
+                    '<div class="notif-panel-header">Notifiche</div>' +
+                    '<div class="notif-list" id="notif-list"><div class="notif-empty">🔕 Nessuna notifica</div></div>' +
+                '</div>' +
+            '</div>';
+    }
+
+    function _notifDays(a, b) { var pa = a.split('-'), pb = b.split('-'); return Math.round((new Date(+pb[0], +pb[1] - 1, +pb[2]) - new Date(+pa[0], +pa[1] - 1, +pa[2])) / 86400000); }
+    function _notifNum(n) { return Math.round(Number(n) || 0).toLocaleString('it-IT'); }
+    function _notifData(iso) { var p = String(iso).split('-'); return p[2] + '/' + p[1]; }
+    function _notifSeenGet() { try { return JSON.parse(localStorage.getItem('eni_notif_seen') || '[]'); } catch (e) { return []; } }
+    function _notifSeenSet(keys) { try { localStorage.setItem('eni_notif_seen', JSON.stringify(keys)); } catch (e) {} }
+
+    async function _buildNotifiche() {
+        var oggi = ENI.UI.oggiISO();
+        var can = ENI.State.canAccess;
+        var jobs = [];
+
+        // Prenotazioni online in attesa
+        jobs.push(can('lavaggi')
+            ? ENI.API.getPrenotazioniLavaggio({ stato: 'in_attesa' }).then(function(p) {
+                var n = p ? p.length : 0;
+                return n ? [{ key: 'pren:' + n, icon: '📅', testo: n === 1 ? '1 prenotazione online in attesa' : n + ' prenotazioni online in attesa', route: 'lavaggi' }] : [];
+            }).catch(function() { return []; })
+            : Promise.resolve([]));
+
+        // Carburante da ordinare oggi/domani (semaforo giallo/rosso)
+        jobs.push((can('ordine-carburante') && ENI.Modules.OrdineCarburante && ENI.Modules.OrdineCarburante.calcolaTutti)
+            ? ENI.Modules.OrdineCarburante.calcolaTutti().then(function(lista) {
+                var out = [];
+                (lista || []).forEach(function(item) {
+                    var prop = item.res.proposta;
+                    if (!prop.serve) return;
+                    var gg = _notifDays(oggi, prop.dataOrdine);
+                    if (gg > 2) return; // solo imminenti
+                    var urgente = gg <= 0;
+                    out.push({
+                        key: 'carb:' + item.prod.id + ':' + prop.dataOrdine,
+                        icon: '⛽',
+                        testo: urgente
+                            ? ENI.UI.escapeHtml(item.prod.nome) + ' — ordina SUBITO (' + _notifNum(prop.quantita) + ' L)'
+                            : ENI.UI.escapeHtml(item.prod.nome) + ' — ordina entro 8:30 del ' + _notifData(prop.dataOrdine) + ' (' + _notifNum(prop.quantita) + ' L)',
+                        route: 'ordine-carburante', urgente: urgente
+                    });
+                });
+                return out;
+            }).catch(function() { return []; })
+            : Promise.resolve([]));
+
+        // Scorte magazzino sotto minimo
+        jobs.push(can('magazzino')
+            ? ENI.API.getSottoScorta().then(function(s) {
+                var n = s ? s.length : 0;
+                return n ? [{ key: 'scorte:' + n, icon: '📦', testo: n === 1 ? '1 prodotto sotto scorta minima' : n + ' prodotti sotto scorta minima', route: 'magazzino' }] : [];
+            }).catch(function() { return []; })
+            : Promise.resolve([]));
+
+        // Scadenze tesoreria in arrivo
+        jobs.push((can('tesoreria') && ENI.Modules.Tesoreria && ENI.Modules.Tesoreria.checkScadenze)
+            ? ENI.Modules.Tesoreria.checkScadenze().then(function(n) {
+                n = n || 0;
+                return n ? [{ key: 'scad:' + n, icon: '💶', testo: n === 1 ? '1 scadenza tesoreria in arrivo' : n + ' scadenze tesoreria in arrivo', route: 'tesoreria' }] : [];
+            }).catch(function() { return []; })
+            : Promise.resolve([]));
+
+        var res = await Promise.all(jobs);
+        var flat = res.reduce(function(a, b) { return a.concat(b); }, []);
+        flat.sort(function(a, b) { return (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0); }); // urgenti in cima
+        return flat;
+    }
+
+    function _renderNotifList(items) {
+        var list = document.getElementById('notif-list');
+        if (!list) return;
+        if (!items.length) { list.innerHTML = '<div class="notif-empty">🔕 Nessuna notifica</div>'; return; }
+        list.innerHTML = items.map(function(it) {
+            return '<a class="notif-item' + (it.urgente ? ' notif-urgent' : '') + '" data-route="' + it.route + '" href="#">' +
+                '<span class="notif-item-icon">' + it.icon + '</span>' +
+                '<span class="notif-item-text">' + it.testo + '</span>' +
+            '</a>';
+        }).join('');
+    }
+
+    function _notifMarkSeen() {
+        _notifSeenSet(_notifCurrent.map(function(it) { return it.key; }));
+        var badge = document.getElementById('notif-badge');
+        if (badge) badge.style.display = 'none';
+    }
+
+    async function _updateNotifiche() {
+        var bell = document.getElementById('notif-bell');
+        if (!bell) return;
+        var items;
+        try { items = await _buildNotifiche(); } catch (e) { return; }
+        _notifCurrent = items;
+        _renderNotifList(items);
+        var panel = document.getElementById('notif-panel');
+        var aperto = panel && panel.style.display !== 'none';
+        if (aperto) { _notifMarkSeen(); return; } // se sto guardando la tendina, tutto è "letto"
+        var seen = _notifSeenGet();
+        var nuovi = items.filter(function(it) { return seen.indexOf(it.key) === -1; }).length;
+        var badge = document.getElementById('notif-badge');
+        if (badge) {
+            if (nuovi > 0) { badge.style.display = ''; badge.textContent = nuovi > 9 ? '9+' : String(nuovi); }
+            else badge.style.display = 'none';
+        }
+    }
+
+    function _setupNotifiche() {
+        var bell = document.getElementById('notif-bell');
+        var panel = document.getElementById('notif-panel');
+        var list = document.getElementById('notif-list');
+        if (!bell || !panel) return;
+        bell.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+            panel.style.display = '';
+            _notifMarkSeen();
+        });
+        if (list) list.addEventListener('click', function(e) {
+            var a = e.target.closest('[data-route]');
+            if (!a) return;
+            e.preventDefault();
+            panel.style.display = 'none';
+            ENI.Router.navigate(a.getAttribute('data-route'));
+        });
+        document.addEventListener('click', function(e) {
+            if (panel.style.display === 'none') return;
+            if (e.target.closest('.notif-wrap')) return;
+            panel.style.display = 'none';
+        });
     }
 
     // API pubblica

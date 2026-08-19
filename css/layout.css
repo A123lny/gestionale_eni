@@ -73,6 +73,77 @@
     color: var(--text-inverse);
 }
 
+/* --- Notifiche (campanellina header) --- */
+.notif-wrap { position: relative; display: flex; align-items: center; }
+.notif-bell {
+    position: relative;
+    background: none;
+    border: none;
+    color: var(--color-gray-300);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    min-width: 36px;
+}
+.notif-bell:hover { background-color: var(--color-gray-700); color: var(--text-inverse); }
+.notif-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    background: var(--color-danger, #e5484d);
+    color: #fff;
+    border-radius: 999px;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+    font-weight: 700;
+    box-sizing: border-box;
+}
+.notif-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 320px;
+    max-width: calc(100vw - 24px);
+    background: var(--bg-card, #fff);
+    color: var(--text-primary, #222);
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.15));
+    z-index: calc(var(--z-nav) + 10);
+    overflow: hidden;
+}
+.notif-panel-header {
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--color-gray-200);
+}
+.notif-list { max-height: 60vh; overflow-y: auto; }
+.notif-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    text-decoration: none;
+    color: inherit;
+    border-bottom: 1px solid var(--color-gray-100);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: var(--bg-secondary, #f5f5f2); }
+.notif-item-icon { font-size: 1.1rem; flex: 0 0 auto; }
+.notif-item.notif-urgent { border-left: 3px solid var(--color-danger, #e5484d); }
+.notif-empty { padding: 20px 14px; text-align: center; color: var(--color-gray-500); font-size: 0.85rem; }
+
 /* --- Main Layout --- */
 .app-layout {
     display: flex;
