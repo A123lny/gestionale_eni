@@ -27,6 +27,11 @@ ENI.Modules.Lavaggi = (function() {
     }
 
     async function render(container) {
+        // Riallinea sempre al giorno corrente all'apertura della pagina
+        _dataSelezionata = ENI.UI.oggiISO();
+        _meseCorrente = parseInt(_dataSelezionata.split('-')[1], 10);
+        _annoCorrente = parseInt(_dataSelezionata.split('-')[0], 10);
+
         // Il Report lavaggi è riservato al Super Admin
         if (_vistaCorrente === 'report' && !ENI.State.isSuperAdmin()) _vistaCorrente = 'tabella';
 
