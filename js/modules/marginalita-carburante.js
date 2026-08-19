@@ -76,6 +76,16 @@ ENI.Modules.MarginalitaCarburante = (function() {
     async function _ricalcolaStato() {
         _statoProdotti = {};
 
+        // Ottimizzazione: carica le date di TUTTE le vendite in una sola query (mappa id -> data),
+        // invece di interrogare il DB una volta per ogni riga di vendita (problema N+1 → pagina lenta).
+        var _venditeDateMap = {};
+        try {
+            var _vdRes = await ENI.API.getClient().from(T.VENDITE).select('id, data_inizio');
+            if (_vdRes && !_vdRes.error && _vdRes.data) {
+                _vdRes.data.forEach(function(vg) { _venditeDateMap[vg.id] = vg.data_inizio; });
+            }
+        } catch(e) { /* in caso di errore, le vendite senza data vengono saltate sotto */ }
+
         for (var i = 0; i < _prodotti.length; i++) {
             var prod = _prodotti[i];
 
@@ -136,17 +146,16 @@ ENI.Modules.MarginalitaCarburante = (function() {
             var venditeConDate = [];
             for (var v = 0; v < venditeProd.length; v++) {
                 var vp = venditeProd[v];
-                try {
-                    var vendita = await ENI.API.getById(T.VENDITE, vp.vendita_id);
-                    // Filtra per data se c'è una chiusura
-                    if (dataFiltro && vendita.data_inizio < dataFiltro) continue;
-                    venditeConDate.push({
-                        tipo: 'vendita',
-                        data: vendita.data_inizio,
-                        litri: parseFloat(vp.litri) || 0,
-                        prezzo_pompa: parseFloat(vp.prezzo_pompa) || 0
-                    });
-                } catch(e) { /* vendita non trovata */ }
+                var vData = _venditeDateMap[vp.vendita_id];
+                if (!vData) continue; // vendita non trovata
+                // Filtra per data se c'è una chiusura
+                if (dataFiltro && vData < dataFiltro) continue;
+                venditeConDate.push({
+                    tipo: 'vendita',
+                    data: vData,
+                    litri: parseFloat(vp.litri) || 0,
+                    prezzo_pompa: parseFloat(vp.prezzo_pompa) || 0
+                });
             }
 
             var conguagli = await ENI.API.getAll(T.CONGUAGLI, {
