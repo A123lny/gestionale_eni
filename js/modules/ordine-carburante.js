@@ -411,7 +411,8 @@ ENI.Modules.OrdineCarburante = (function() {
         });
     }
 
-    // Dopo il salvataggio del carico, propone la nuova giacenza (attuale + litri arrivati), modificabile.
+    // Dopo il salvataggio del carico: propone la nuova giacenza (attuale + litri arrivati, modificabile)
+    // e la rimozione del carico previsto corrispondente (±3 giorni) per non contarlo due volte.
     async function _proponiGiacenzePostCarico(info) {
         var saved = (info && info.prodotti) || [];
         var dataCarico = (info && info.data) || _oggi();
@@ -420,29 +421,40 @@ ENI.Modules.OrdineCarburante = (function() {
             var pid = saved[i].prodId;
             var prod = _prodById(pid);
             if (!prod) continue;
-            var g = null;
+            var g = null, previsti = [];
             try { g = await ENI.API.getGiacenzaRilevata(pid); } catch (e) {}
+            try {
+                var tutti = await ENI.API.getCarichiPrevisti(pid) || [];
+                previsti = tutti.filter(function(c) { return Math.abs(_daysBetween(dataCarico, c.data_prevista)) <= 3; });
+            } catch (e) {}
             var attuale = g ? Number(g.litri) : 0;
             var arrivati = Number(saved[i].comm) || 0;
-            righe.push({ pid: pid, nome: prod.nome, attuale: attuale, arrivati: arrivati, nuovo: Math.round(attuale + arrivati) });
+            righe.push({ pid: pid, nome: prod.nome, attuale: attuale, arrivati: arrivati, nuovo: Math.round(attuale + arrivati), previsti: previsti });
         }
         if (!righe.length) { _renderVista(); return; }
 
         var body =
-            '<p class="text-sm text-muted" style="margin-top:0;">Carico registrato ✓. Vuoi aggiornare la <strong>giacenza del serbatoio</strong>? Il valore proposto è <em>giacenza attuale + litri arrivati</em> ed è modificabile — fai comunque il tuo controllo manuale sul serbatoio.</p>' +
+            '<p class="text-sm text-muted" style="margin-top:0;">Carico registrato ✓. Aggiorna la <strong>giacenza del serbatoio</strong> (proposta = attuale + litri arrivati, modificabile) e conferma la rimozione del carico previsto corrispondente, così non viene contato due volte.</p>' +
             righe.map(function(r) {
+                var prevHtml = r.previsti.map(function(c) {
+                    return '<label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:0.85rem;">' +
+                        '<input type="checkbox" class="oc-rmprev" data-id="' + c.id + '" checked> ' +
+                        'Rimuovi carico previsto: +' + _fmtL(c.litri) + ' L del ' + _fmtData(c.data_prevista) +
+                    '</label>';
+                }).join('');
                 return '<div style="border:1px solid var(--color-gray-200);border-radius:var(--radius-md);padding:10px;margin-bottom:8px;">' +
                     '<div style="font-weight:600;margin-bottom:4px;">' + ENI.UI.escapeHtml(r.nome) + '</div>' +
                     '<div class="text-xs text-muted" style="margin-bottom:6px;">Attuale ' + _fmtL(r.attuale) + ' L + arrivati ' + _fmtL(r.arrivati) + ' L</div>' +
                     '<label class="form-label">Nuova giacenza (L) al ' + _fmtData(dataCarico) + '</label>' +
                     '<input type="number" min="0" step="1" class="form-input oc-newgiac" data-pid="' + r.pid + '" value="' + r.nuovo + '">' +
+                    prevHtml +
                 '</div>';
             }).join('');
 
         var modal = ENI.UI.showModal({
             title: '📥 Aggiorna giacenza dopo il carico',
             body: body,
-            footer: '<button class="btn btn-outline" data-modal-close>Salta</button><button class="btn btn-primary" id="oc-giac-post-salva">Salva giacenze</button>'
+            footer: '<button class="btn btn-outline" data-modal-close>Salta</button><button class="btn btn-primary" id="oc-giac-post-salva">Salva</button>'
         });
         modal.querySelector('#oc-giac-post-salva').addEventListener('click', async function() {
             try {
@@ -452,8 +464,12 @@ ENI.Modules.OrdineCarburante = (function() {
                     if (isNaN(val) || val < 0) continue;
                     await ENI.API.salvaGiacenzaRilevata({ prodotto_id: inputs[i].getAttribute('data-pid'), data: dataCarico, litri: val, origine: 'manuale' });
                 }
+                var checks = modal.querySelectorAll('.oc-rmprev:checked');
+                for (var j = 0; j < checks.length; j++) {
+                    try { await ENI.API.eliminaCaricoPrevisto(checks[j].getAttribute('data-id')); } catch (e) {}
+                }
                 ENI.UI.closeModal(modal);
-                ENI.UI.success('Giacenze aggiornate');
+                ENI.UI.success('Giacenza aggiornata' + (checks.length ? ' · carico previsto rimosso' : ''));
                 _renderVista();
             } catch (e) { ENI.UI.error('Errore: ' + e.message); }
         });
