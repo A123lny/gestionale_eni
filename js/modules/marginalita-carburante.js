@@ -1108,6 +1108,20 @@ ENI.Modules.MarginalitaCarburante = (function() {
             return;
         }
 
+        // Dettaglio per prodotto del mese (per mostrarlo in lista sotto ogni riga)
+        var _prodNomeMap = {};
+        _prodotti.forEach(function(p) { _prodNomeMap[p.id] = p.nome; });
+        var _perProdMap = {};
+        try {
+            var _ids = vendite.map(function(v) { return v.id; });
+            var _vpRes = await ENI.API.getClient().from(T.VENDITE_PROD).select('vendita_id, prodotto_id, litri').in('vendita_id', _ids);
+            if (_vpRes && !_vpRes.error && _vpRes.data) {
+                _vpRes.data.forEach(function(r) {
+                    (_perProdMap[r.vendita_id] = _perProdMap[r.vendita_id] || []).push(r);
+                });
+            }
+        } catch(e) { /* se fallisce, la lista mostra solo i totali */ }
+
         var totLitri = 0, totImporto = 0;
         var html = '<div class="card"><div class="card-body" style="overflow-x:auto; padding:var(--space-2);">' +
             '<table class="table cm-table-compact"><thead><tr>' +
@@ -1122,8 +1136,16 @@ ENI.Modules.MarginalitaCarburante = (function() {
             totLitri += parseFloat(v.litri_totali) || 0;
             totImporto += parseFloat(v.importo_totale) || 0;
 
+            var _dett = _perProdMap[v.id];
+            var _dettHtml = '';
+            if (_dett && _dett.length) {
+                _dettHtml = '<div style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">' +
+                    _dett.map(function(r) { return ENI.UI.escapeHtml(_prodNomeMap[r.prodotto_id] || '?') + ': ' + _fmt(r.litri, 0); }).join(' · ') +
+                '</div>';
+            }
+
             html += '<tr>' +
-                '<td>' + dataLabel + '</td>' +
+                '<td>' + dataLabel + _dettHtml + '</td>' +
                 '<td class="text-right">' + _fmt(v.litri_totali, 2) + '</td>' +
                 '<td class="text-right"><strong>' + _fmtEuro(v.importo_totale) + '</strong></td>' +
                 '<td style="font-size:0.75rem; color:var(--text-secondary);">' + (v.note || '') + '</td>' +
@@ -1198,6 +1220,23 @@ ENI.Modules.MarginalitaCarburante = (function() {
         var modal = _modal('mc-modal-vendita', isEdit ? 'Modifica Vendita' : 'Registra Vendita', body, 'mc-vend-salva', isEdit ? 'Salva' : 'Registra');
         _openModal(modal, 'mc-modal-vendita');
 
+        // In modifica: precompila i litri per prodotto già salvati nel DB (altrimenti apparivano vuoti)
+        if (isEdit && existing && existing.id) {
+            ENI.API.getAll(T.VENDITE_PROD, { filters: [{ op: 'eq', col: 'vendita_id', val: existing.id }] })
+                .then(function(rows) {
+                    var inputs = document.querySelectorAll('.mc-vend-prod-litri');
+                    (rows || []).forEach(function(r) {
+                        for (var i = 0; i < inputs.length; i++) {
+                            if (String(inputs[i].getAttribute('data-prod')) === String(r.prodotto_id)) {
+                                inputs[i].value = r.litri;
+                                break;
+                            }
+                        }
+                    });
+                })
+                .catch(function() { /* silenzioso: se non ci sono dettagli, resta vuoto */ });
+        }
+
         // Toggle festivo
         var chkFestivo = document.getElementById('mc-vend-festivo');
         var extraDiv = document.getElementById('mc-vend-festivo-extra');
@@ -1250,10 +1289,11 @@ ENI.Modules.MarginalitaCarburante = (function() {
                             }) || [];
                             var pp = prezziProd.length > 0 ? parseFloat(prezziProd[0].prezzo) : 0;
 
-                            await ENI.API.getClient().from(T.VENDITE_PROD).upsert({
+                            var upRes = await ENI.API.getClient().from(T.VENDITE_PROD).upsert({
                                 vendita_id: venditaId, prodotto_id: prodId, litri: prodLitri,
                                 prezzo_pompa: pp, importo: prodLitri * pp, costo_medio_ref: st.costo_medio || 0
                             }, { onConflict: 'vendita_id,prodotto_id' });
+                            if (upRes && upRes.error) throw new Error('Dettaglio prodotto non salvato: ' + upRes.error.message);
                         }
                     }
                 }
