@@ -68,6 +68,7 @@ ENI.Modules.Dashboard = (function() {
                 '<button class="btn btn-outline btn-sm" id="btn-pdf">\u{1F4C4} Report PDF</button>' +
             '</div>' +
             '<div class="kpi-grid" id="kpi-grid"></div>' +
+            (vedeCarburante ? '<div id="dashboard-ordine" style="margin-top:var(--space-3);">' + _ordineSkeleton() + '</div>' : '') +
             '<div id="dashboard-charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--space-4);margin-top:var(--space-4);">' +
                 _chartCardsHtml(vedeSoldi, vedeCarburante) +
             '</div>' +
@@ -95,7 +96,8 @@ ENI.Modules.Dashboard = (function() {
         // tutte le fetch partono insieme, cosi' i grafici compaiono contemporaneamente.
         await Promise.all([
             _drawTrendCharts(vedeSoldi, vedeCarburante),
-            _aggiornaKPI()
+            _aggiornaKPI(),
+            vedeCarburante ? _renderOrdineCarburante() : Promise.resolve()
         ]);
         _startAutoRefresh();
     }
@@ -232,6 +234,71 @@ ENI.Modules.Dashboard = (function() {
             '<div class="kpi-label">' + label + '</div>' +
             '<div class="kpi-value">' + valore + '</div>' +
             '<div class="kpi-detail">' + dettaglio + '</div>' +
+        '</div>';
+    }
+
+    // ---------- Card Ordine Carburante (semaforo autonomia serbatoi) ----------
+
+    function _daysBetween(a, b) {
+        var pa = a.split('-'), pb = b.split('-');
+        var da = new Date(Number(pa[0]), Number(pa[1]) - 1, Number(pa[2]));
+        var db = new Date(Number(pb[0]), Number(pb[1]) - 1, Number(pb[2]));
+        return Math.round((db - da) / 86400000);
+    }
+
+    function _ordineSkeleton() {
+        var card = '<div style="background:var(--bg-card);border:1px solid var(--color-gray-200);border-left:4px solid var(--color-gray-200);border-radius:var(--radius-md);padding:var(--space-3);min-height:100px;display:flex;align-items:center;justify-content:center;"><div class="spinner"></div></div>';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-2);">' +
+                '<div style="font-weight:600;">⛽ Ordine carburante</div>' +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--space-3);">' + card + card + card + '</div>';
+    }
+
+    async function _renderOrdineCarburante() {
+        var el = document.getElementById('dashboard-ordine');
+        if (!el) return;
+        if (!ENI.Modules.OrdineCarburante || !ENI.Modules.OrdineCarburante.calcolaTutti) { el.innerHTML = ''; return; }
+        var lista;
+        try { lista = await ENI.Modules.OrdineCarburante.calcolaTutti(); }
+        catch (e) { console.error('Dashboard ordine carburante:', e); el.innerHTML = ''; return; }
+        if (!lista || !lista.length) { el.innerHTML = ''; return; }
+        el.innerHTML =
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-2);">' +
+                '<div style="font-weight:600;">⛽ Ordine carburante</div>' +
+                '<button class="btn btn-outline btn-sm" onclick="ENI.Router.navigate(\'ordine-carburante\')">Apri →</button>' +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--space-3);">' +
+                lista.map(_ordineCard).join('') +
+            '</div>';
+    }
+
+    function _ordineCard(item) {
+        var prop = item.res.proposta, ind = item.res.indicatori;
+        var oggi = ENI.UI.oggiISO();
+        var C = { verde: '#1baf7a', giallo: '#eda100', rosso: '#e5484d' };
+        var giacL = item.giac ? _num(item.giac.litri) + ' L' : '— da inserire';
+        var col, titolo, corpo;
+        if (!prop.serve) {
+            col = C.verde;
+            titolo = '<span style="font-size:1.3rem;font-weight:700;color:' + C.verde + ';">✅ Scorte OK</span>';
+            corpo = '<div class="text-xs text-muted" style="margin-top:4px;">Giacenza ' + giacL + ' · autonomia oltre 3 settimane</div>';
+        } else {
+            var gg = _daysBetween(oggi, prop.dataOrdine);
+            col = gg <= 0 ? C.rosso : (gg <= 2 ? C.giallo : C.verde);
+            var azione = gg <= 0
+                ? '<span style="color:' + C.rosso + ';font-weight:700;">⚠ Ordina SUBITO</span> <span class="text-xs text-muted">(era 8:30 del ' + _labelGiorno(prop.dataOrdine) + ')</span>'
+                : '🕗 Ordina entro le <strong>8:30 del ' + _labelGiorno(prop.dataOrdine) + '</strong>';
+            titolo = '<span style="font-size:1.4rem;font-weight:700;">' + _num(prop.quantita) + ' L</span> <span class="text-sm text-muted">da ordinare</span>';
+            corpo = '<div class="text-sm" style="margin-top:2px;">' + azione + '</div>' +
+                '<div class="text-xs text-muted" style="margin-top:4px;">Consegna ' + _labelGiorno(prop.dataConsegna) +
+                    ' · giacenza ' + giacL + ' · autonomia ' + (ind.giorniAutonomia != null ? ind.giorniAutonomia + ' gg' : '—') + '</div>';
+        }
+        return '<div onclick="ENI.Router.navigate(\'ordine-carburante\')" style="cursor:pointer;background:var(--bg-card);border:1px solid var(--color-gray-200);border-left:4px solid ' + col + ';border-radius:var(--radius-md);padding:var(--space-3);">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+                '<div style="font-weight:600;">⛽ ' + ENI.UI.escapeHtml(item.prod.nome) + '</div>' +
+                '<span style="width:12px;height:12px;border-radius:50%;background:' + col + ';display:inline-block;"></span>' +
+            '</div>' +
+            '<div>' + titolo + '</div>' + corpo +
         '</div>';
     }
 

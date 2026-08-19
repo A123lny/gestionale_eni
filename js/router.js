@@ -24,6 +24,7 @@ ENI.Router = (function() {
         'buoni':        { module: 'Buoni',        id: 'buoni' },
         'coefficiente-monofase': { module: 'CoefficienteMonofase', id: 'coefficiente-monofase' },
         'marginalita-carburante': { module: 'MarginalitaCarburante', id: 'marginalita-carburante' },
+        'ordine-carburante': { module: 'OrdineCarburante', id: 'ordine-carburante' },
         'tesoreria':  { module: 'Tesoreria',  id: 'tesoreria' },
         'fatturazione': { module: 'Fatturazione', id: 'fatturazione' },
         'smac':         { module: 'Smac',         id: 'smac' },

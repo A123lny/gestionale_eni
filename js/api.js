@@ -592,6 +592,196 @@ ENI.API = (function() {
         return result.data || [];
     }
 
+    // --- Ordine Carburante / Previsione autonomia serbatoi ---
+
+    async function getSerbatoi() {
+        var result = await getClient().from('serbatoi').select('*');
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function salvaSerbatoio(prodottoId, dati) {
+        var payload = {
+            capacita_nominale: Number(dati.capacita_nominale) || 0,
+            capacita_utile: Number(dati.capacita_utile) || 0,
+            scorta_minima: Number(dati.scorta_minima) || 0,
+            lotto_minimo: Number(dati.lotto_minimo) || 0,
+            aggiornato_at: new Date().toISOString()
+        };
+        if (payload.capacita_utile > payload.capacita_nominale) throw new Error('La capacità utile non può superare la capacità nominale');
+        if (payload.scorta_minima < 0 || payload.lotto_minimo < 0) throw new Error('Scorta minima e lotto minimo non possono essere negativi');
+        if (payload.scorta_minima >= payload.capacita_utile) throw new Error('La scorta minima deve essere inferiore alla capacità utile');
+        var result = await getClient().from('serbatoi').update(payload).eq('prodotto_id', prodottoId);
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Modifica_Serbatoio', 'OrdineCarburante', prodottoId + ': cap.utile ' + payload.capacita_utile + ', scorta ' + payload.scorta_minima + ', lotto ' + payload.lotto_minimo);
+        return true;
+    }
+
+    var _PARAM_PREV_DEFAULT = {
+        finestra_giorni: 12,
+        orizzonte: 21,
+        modalita_media: 'auto',              // 'auto' | 'manuale'
+        fattori_giorno: { '0': 0.5, '6': 0.8 }, // domenica 0.5, sabato 0.8; gli altri = 1
+        media_manuale: {}                    // { prodottoId: { totale, giorni } }
+    };
+
+    async function getParametriPrevisione() {
+        var result = await getClient().from('config_carburanti').select('valore').eq('chiave', 'previsione_parametri').maybeSingle();
+        if (result.error) throw new Error(result.error.message);
+        if (result.data && result.data.valore) {
+            try { return Object.assign({}, _PARAM_PREV_DEFAULT, JSON.parse(result.data.valore)); } catch (e) {}
+        }
+        return Object.assign({}, _PARAM_PREV_DEFAULT);
+    }
+
+    async function salvaParametriPrevisione(param) {
+        var payload = Object.assign({}, _PARAM_PREV_DEFAULT, param || {});
+        if (Number(payload.finestra_giorni) <= 0) throw new Error('La finestra storica deve essere maggiore di zero');
+        if (Number(payload.orizzonte) <= 0) throw new Error('L\'orizzonte di proiezione deve essere maggiore di zero');
+        var result = await getClient().from('config_carburanti')
+            .upsert({ chiave: 'previsione_parametri', valore: JSON.stringify(payload), updated_at: new Date().toISOString() }, { onConflict: 'chiave' });
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Modifica_Parametri_Previsione', 'OrdineCarburante', 'finestra ' + payload.finestra_giorni + 'gg, orizzonte ' + payload.orizzonte + 'gg, media ' + payload.modalita_media);
+        return true;
+    }
+
+    // Ultima giacenza rilevata (manuale o auto) per un prodotto
+    async function getGiacenzaRilevata(prodottoId) {
+        var result = await getClient().from('giacenze_rilevate')
+            .select('*').eq('prodotto_id', prodottoId)
+            .order('data', { ascending: false }).limit(1).maybeSingle();
+        if (result.error) throw new Error(result.error.message);
+        return result.data || null;
+    }
+
+    async function salvaGiacenzaRilevata(dati) {
+        if (!dati.prodotto_id || !dati.data) throw new Error('Prodotto e data sono obbligatori');
+        var litri = Number(dati.litri);
+        if (isNaN(litri) || litri < 0) throw new Error('Litri non validi');
+        var origine = dati.origine === 'auto' ? 'auto' : 'manuale';
+        var result = await getClient().from('giacenze_rilevate')
+            .upsert({ prodotto_id: dati.prodotto_id, data: dati.data, litri: Math.round(litri), origine: origine, note: dati.note || null }, { onConflict: 'prodotto_id,data' });
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Giacenza_Rilevata', 'OrdineCarburante', dati.prodotto_id + ' ' + dati.data + ': ' + Math.round(litri) + ' L (' + origine + ')');
+        return true;
+    }
+
+    // Carichi previsti (rifornimenti futuri)
+    async function getCarichiPrevisti(prodottoId) {
+        var q = getClient().from('carichi_previsti').select('*').order('data_prevista', { ascending: true });
+        if (prodottoId) q = q.eq('prodotto_id', prodottoId);
+        var result = await q;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function salvaCaricoPrevisto(dati) {
+        if (!dati.prodotto_id || !dati.data_prevista) throw new Error('Prodotto e data prevista sono obbligatori');
+        var litri = Number(dati.litri);
+        if (isNaN(litri) || litri <= 0) throw new Error('I litri devono essere maggiori di zero');
+        var statiValidi = ['previsto', 'confermato', 'consegnato'];
+        var stato = statiValidi.indexOf(dati.stato) !== -1 ? dati.stato : 'previsto';
+        var payload = {
+            prodotto_id: dati.prodotto_id, data_prevista: dati.data_prevista, litri: Math.round(litri),
+            stato: stato, fornitore: dati.fornitore || null, note: dati.note || null, updated_at: new Date().toISOString()
+        };
+        var record;
+        if (dati.id) {
+            var upd = await getClient().from('carichi_previsti').update(payload).eq('id', dati.id).select().single();
+            if (upd.error) throw new Error(upd.error.message);
+            record = upd.data;
+            await scriviLog('Modifica_Carico_Previsto', 'OrdineCarburante', dati.prodotto_id + ' ' + dati.data_prevista + ': ' + payload.litri + ' L (' + stato + ')');
+        } else {
+            var ins = await getClient().from('carichi_previsti').insert(payload).select().single();
+            if (ins.error) throw new Error(ins.error.message);
+            record = ins.data;
+            await scriviLog('Nuovo_Carico_Previsto', 'OrdineCarburante', dati.prodotto_id + ' ' + dati.data_prevista + ': ' + payload.litri + ' L (' + stato + ')');
+        }
+        return record;
+    }
+
+    async function eliminaCaricoPrevisto(id) {
+        var result = await getClient().from('carichi_previsti').delete().eq('id', id);
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Elimina_Carico_Previsto', 'OrdineCarburante', 'id ' + id);
+        return true;
+    }
+
+    // Totale erogato (litri) per prodotto in un intervallo [da, a] — per la media automatica. SOLO LETTURA.
+    async function getErogatoPeriodo(prodottoId, da, a) {
+        var client = getClient();
+        var vg = await client.from('vendite_giornaliere').select('id').gte('data_inizio', da).lte('data_inizio', a);
+        if (vg.error) throw new Error(vg.error.message);
+        var ids = (vg.data || []).map(function(r) { return r.id; });
+        if (!ids.length) return { totale: 0, giorni_con_dati: 0 };
+        var vp = await client.from('vendite_per_prodotto').select('litri').eq('prodotto_id', prodottoId).in('vendita_id', ids);
+        if (vp.error) throw new Error(vp.error.message);
+        var totale = (vp.data || []).reduce(function(s, r) { return s + (Number(r.litri) || 0); }, 0);
+        return { totale: Math.round(totale), giorni_con_dati: (vp.data || []).length };
+    }
+
+    // Giacenza fisica calcolata a oggi (riferimento + carichi − venduto), coerente col motore Marginalità. SOLO LETTURA.
+    async function getGiacenzaCalcolata(prodottoId) {
+        var client = getClient();
+        var riferimentoLitri = 0, dataDa = null;
+
+        var chius = await client.from('chiusure_mensili_carburante')
+            .select('anno, mese, giacenza_reale').eq('prodotto_id', prodottoId)
+            .order('anno', { ascending: false }).order('mese', { ascending: false }).limit(1);
+        if (!chius.error && chius.data && chius.data.length) {
+            riferimentoLitri = Number(chius.data[0].giacenza_reale) || 0;
+            var mese = chius.data[0].mese + 1, anno = chius.data[0].anno;
+            if (mese > 12) { mese = 1; anno++; }
+            dataDa = anno + '-' + String(mese).padStart(2, '0') + '-01';
+        } else {
+            var gi = await client.from('giacenze_iniziali').select('data, litri_fisici').eq('prodotto_id', prodottoId)
+                .order('data', { ascending: false }).limit(1);
+            if (!gi.error && gi.data && gi.data.length) {
+                riferimentoLitri = Number(gi.data[0].litri_fisici) || 0;
+                dataDa = gi.data[0].data;
+            }
+        }
+
+        var oggi = ENI.UI.oggiISO();
+        var qCar = client.from('carichi_carburante').select('litri_fisici').eq('prodotto_id', prodottoId).lte('data', oggi);
+        if (dataDa) qCar = qCar.gte('data', dataDa);
+        var car = await qCar;
+        var totCarichi = (car.data || []).reduce(function(s, r) { return s + (Number(r.litri_fisici) || 0); }, 0);
+
+        var qvg = client.from('vendite_giornaliere').select('id').lte('data_inizio', oggi);
+        if (dataDa) qvg = qvg.gte('data_inizio', dataDa);
+        var vg2 = await qvg;
+        var ids2 = (vg2.data || []).map(function(r) { return r.id; });
+        var totVenduto = 0;
+        if (ids2.length) {
+            var vp2 = await client.from('vendite_per_prodotto').select('litri').eq('prodotto_id', prodottoId).in('vendita_id', ids2);
+            totVenduto = (vp2.data || []).reduce(function(s, r) { return s + (Number(r.litri) || 0); }, 0);
+        }
+        return Math.round(riferimentoLitri + totCarichi - totVenduto);
+    }
+
+    // Erogato per data (litri) di un prodotto in un intervallo — per lo storico. SOLO LETTURA.
+    async function getErogatoGiornaliero(prodottoId, da, a) {
+        var client = getClient();
+        var vg = await client.from('vendite_giornaliere').select('id, data_inizio').gte('data_inizio', da).lte('data_inizio', a);
+        if (vg.error) throw new Error(vg.error.message);
+        var mapDate = {}, ids = [];
+        (vg.data || []).forEach(function(r) { mapDate[r.id] = r.data_inizio; ids.push(r.id); });
+        if (!ids.length) return [];
+        var vp = await client.from('vendite_per_prodotto').select('vendita_id, litri').eq('prodotto_id', prodottoId).in('vendita_id', ids);
+        if (vp.error) throw new Error(vp.error.message);
+        return (vp.data || []).map(function(r) { return { data: mapDate[r.vendita_id], litri: Number(r.litri) || 0 }; }).filter(function(x) { return x.data; });
+    }
+
+    // Consegne reali (carichi) di un prodotto in un intervallo — per lo storico. SOLO LETTURA.
+    async function getConsegneStoriche(prodottoId, da, a) {
+        var result = await getClient().from('carichi_carburante')
+            .select('data, litri_fisici').eq('prodotto_id', prodottoId)
+            .gte('data', da).lte('data', a).order('data', { ascending: true });
+        if (result.error) throw new Error(result.error.message);
+        return (result.data || []).map(function(r) { return { data: r.data, litri: Number(r.litri_fisici) || 0 }; });
+    }
+
     // --- Magazzino ---
 
     async function getMagazzino(categoria) {
@@ -2371,6 +2561,19 @@ ENI.API = (function() {
         getImpostazioneApp: getImpostazioneApp,
         salvaImpostazioneApp: salvaImpostazioneApp,
         getTabellaBackup: getTabellaBackup,
+        getSerbatoi: getSerbatoi,
+        salvaSerbatoio: salvaSerbatoio,
+        getParametriPrevisione: getParametriPrevisione,
+        salvaParametriPrevisione: salvaParametriPrevisione,
+        getGiacenzaRilevata: getGiacenzaRilevata,
+        salvaGiacenzaRilevata: salvaGiacenzaRilevata,
+        getCarichiPrevisti: getCarichiPrevisti,
+        salvaCaricoPrevisto: salvaCaricoPrevisto,
+        eliminaCaricoPrevisto: eliminaCaricoPrevisto,
+        getErogatoPeriodo: getErogatoPeriodo,
+        getGiacenzaCalcolata: getGiacenzaCalcolata,
+        getErogatoGiornaliero: getErogatoGiornaliero,
+        getConsegneStoriche: getConsegneStoriche,
         getMagazzino: getMagazzino,
         salvaProdotto: salvaProdotto,
         aggiornaProdotto: aggiornaProdotto,

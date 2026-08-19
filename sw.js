@@ -3,7 +3,7 @@
 // Network-first per JS/CSS, cache-first per assets statici
 // ============================================================
 
-const CACHE_NAME = 'titanwash-v64';
+const CACHE_NAME = 'titanwash-v69';
 const BASE = self.registration.scope;
 const STATIC_ASSETS = [
     BASE,
@@ -21,6 +21,7 @@ const STATIC_ASSETS = [
     BASE + 'js/api.js',
     BASE + 'js/auth.js',
     BASE + 'js/lib/calcoli.js',
+    BASE + 'js/lib/previsione-carburante.js',
     BASE + 'js/router.js',
     BASE + 'js/app.js',
     BASE + 'js/modules/dashboard.js',
@@ -38,6 +39,7 @@ const STATIC_ASSETS = [
     BASE + 'js/modules/buoni.js',
     BASE + 'js/modules/coefficiente-monofase.js',
     BASE + 'js/modules/marginalita-carburante.js',
+    BASE + 'js/modules/ordine-carburante.js',
     BASE + 'js/modules/area-cliente.js',
     BASE + 'js/modules/impostazioni.js',
     BASE + 'manifest.json'
