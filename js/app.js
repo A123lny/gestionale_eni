@@ -394,7 +394,7 @@ ENI.App = (function() {
                     '<span class="notif-badge" id="notif-badge" style="display:none;">0</span>' +
                 '</button>' +
                 '<div class="notif-panel" id="notif-panel" style="display:none;">' +
-                    '<div class="notif-panel-header">Notifiche</div>' +
+                    '<div class="notif-panel-header">Notifiche<button class="notif-clear" id="notif-clear" style="display:none;">Cancella tutte</button></div>' +
                     '<div class="notif-list" id="notif-list"><div class="notif-empty">🔕 Nessuna notifica</div></div>' +
                 '</div>' +
             '</div>';
@@ -405,6 +405,8 @@ ENI.App = (function() {
     function _notifData(iso) { var p = String(iso).split('-'); return p[2] + '/' + p[1]; }
     function _notifSeenGet() { try { return JSON.parse(localStorage.getItem('eni_notif_seen') || '[]'); } catch (e) { return []; } }
     function _notifSeenSet(keys) { try { localStorage.setItem('eni_notif_seen', JSON.stringify(keys)); } catch (e) {} }
+    function _notifDismissedGet() { try { return JSON.parse(localStorage.getItem('eni_notif_dismissed') || '[]'); } catch (e) { return []; } }
+    function _notifDismissedSet(keys) { try { localStorage.setItem('eni_notif_dismissed', JSON.stringify(keys)); } catch (e) {} }
 
     async function _buildNotifiche() {
         var oggi = ENI.UI.oggiISO();
@@ -466,6 +468,8 @@ ENI.App = (function() {
 
     function _renderNotifList(items) {
         var list = document.getElementById('notif-list');
+        var clr = document.getElementById('notif-clear');
+        if (clr) clr.style.display = items.length ? '' : 'none';
         if (!list) return;
         if (!items.length) { list.innerHTML = '<div class="notif-empty">🔕 Nessuna notifica</div>'; return; }
         list.innerHTML = items.map(function(it) {
@@ -482,18 +486,35 @@ ENI.App = (function() {
         if (badge) badge.style.display = 'none';
     }
 
+    // Nasconde tutte le notifiche attualmente visibili finché la loro situazione non cambia.
+    function _notifCancellaTutte() {
+        var dismissed = _notifDismissedGet();
+        _notifCurrent.forEach(function(it) { if (dismissed.indexOf(it.key) === -1) dismissed.push(it.key); });
+        _notifDismissedSet(dismissed);
+        _notifCurrent = [];
+        _renderNotifList([]);
+        var badge = document.getElementById('notif-badge');
+        if (badge) badge.style.display = 'none';
+    }
+
     async function _updateNotifiche() {
         var bell = document.getElementById('notif-bell');
         if (!bell) return;
         var items;
         try { items = await _buildNotifiche(); } catch (e) { return; }
-        _notifCurrent = items;
-        _renderNotifList(items);
+        var allKeys = items.map(function(it) { return it.key; });
+        // Prune: tieni tra i "dismissed" solo le notifiche ancora attive (le altre si sono risolte).
+        var dismissed = _notifDismissedGet().filter(function(k) { return allKeys.indexOf(k) !== -1; });
+        _notifDismissedSet(dismissed);
+        // Nascondi quelle cancellate dall'utente
+        var visible = items.filter(function(it) { return dismissed.indexOf(it.key) === -1; });
+        _notifCurrent = visible;
+        _renderNotifList(visible);
         var panel = document.getElementById('notif-panel');
         var aperto = panel && panel.style.display !== 'none';
         if (aperto) { _notifMarkSeen(); return; } // se sto guardando la tendina, tutto è "letto"
         var seen = _notifSeenGet();
-        var nuovi = items.filter(function(it) { return seen.indexOf(it.key) === -1; }).length;
+        var nuovi = visible.filter(function(it) { return seen.indexOf(it.key) === -1; }).length;
         var badge = document.getElementById('notif-badge');
         if (badge) {
             if (nuovi > 0) { badge.style.display = ''; badge.textContent = nuovi > 9 ? '9+' : String(nuovi); }
@@ -519,6 +540,8 @@ ENI.App = (function() {
             panel.style.display = 'none';
             ENI.Router.navigate(a.getAttribute('data-route'));
         });
+        var clear = document.getElementById('notif-clear');
+        if (clear) clear.addEventListener('click', function(e) { e.stopPropagation(); _notifCancellaTutte(); });
         document.addEventListener('click', function(e) {
             if (panel.style.display === 'none') return;
             if (e.target.closest('.notif-wrap')) return;

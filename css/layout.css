@@ -126,6 +126,17 @@
     font-size: 0.9rem;
     border-bottom: 1px solid var(--color-gray-200);
 }
+.notif-clear {
+    float: right;
+    background: none;
+    border: none;
+    color: var(--color-primary, #2a78d6);
+    font-size: 0.72rem;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+}
+.notif-clear:hover { text-decoration: underline; }
 .notif-list { max-height: 60vh; overflow-y: auto; }
 .notif-item {
     display: flex;
