@@ -29,20 +29,25 @@
 
 .cassa-row {
     display: flex;
-    align-items: center;
-    gap: var(--space-3);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
 }
 
 .cassa-row-label {
-    flex: 1;
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
-    min-width: 120px;
+    line-height: 1.25;
 }
 
 .cassa-row-input {
-    flex: 1;
-    max-width: 140px;
+    width: 100%;
+    max-width: none;
+}
+
+.cassa-row-input .form-input,
+.cassa-row-input input {
+    width: 100%;
 }
 
 .cassa-totale {

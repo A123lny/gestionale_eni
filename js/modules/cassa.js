@@ -144,6 +144,7 @@ ENI.Modules.Cassa = (function() {
                     '</div>' +
                     '<div>' + badgeHtml + '</div>' +
                 '</div>' +
+                _hint('ℹ️ <strong>Data conteggio:</strong> inserisci il <strong>giorno precedente</strong> (la chiusura si fa il giorno dopo).') +
             '</div>' +
 
             bannerHtml +
@@ -166,6 +167,8 @@ ENI.Modules.Cassa = (function() {
 
                         // Venduto Carburante
                         _section('\u26FD Venduto Carburante',
+                            _hint('\u2139\uFE0F Inserisci solo il venduto della <strong>giornata precedente</strong> (NON comprensiva della notte).<br>' +
+                                'Il dato <strong>comprensivo della notte</strong> va invece sul <strong>portale PA</strong> e in <strong>Marginalit\u00E0 Carburante \u2192 Registra vendita</strong>.') +
                             _renderCarburanteTable(c) +
                             '<div class="cassa-subtotal text-right mt-3">Totale Carburante: <span id="tot-carburante">\u20AC 0,00</span></div>'
                         ) +
@@ -444,6 +447,13 @@ ENI.Modules.Cassa = (function() {
             '<div class="cassa-section-title">' + title + '</div>' +
             content +
         '</div>';
+    }
+
+    // Box promemoria (nota informativa)
+    function _hint(html) {
+        return '<div class="cassa-hint" style="background:#EFF6FF; border-left:3px solid #3B82F6; ' +
+            'border-radius:6px; padding:8px 10px; font-size:0.8rem; line-height:1.4; ' +
+            'color:#1E3A5F; margin:6px 0;">' + html + '</div>';
     }
 
     function _cassaInput(label, name, value, type) {
