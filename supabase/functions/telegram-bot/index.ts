@@ -190,7 +190,10 @@ Deno.serve(async (req) => {
     if (!WH_SECRET || got !== WH_SECRET) return new Response("unauthorized", { status: 401 });
 
     const TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
+    // Autorizzati a /stato: TELEGRAM_CHAT_ID (titolare) + lista TELEGRAM_ALLOWED_CHATS (id separati da virgola)
     const OWNER = Deno.env.get("TELEGRAM_CHAT_ID") || "";
+    const EXTRA = (Deno.env.get("TELEGRAM_ALLOWED_CHATS") || "").split(",").map((s) => s.trim()).filter(Boolean);
+    const allowed = new Set([OWNER, ...EXTRA].filter(Boolean).map(String));
 
     const update = await req.json().catch(() => ({}));
     const msg = update.message || update.edited_message;
@@ -208,10 +211,17 @@ Deno.serve(async (req) => {
       return new Response("ok");
     }
 
+    if (cmd === "/id") {
+      await sendMessage(TOKEN, chatId, "Il tuo ID Telegram è: <b>" + chatId + "</b>");
+      return new Response("ok");
+    }
+
     if (cmd === "/stato" || cmd === "/giacenza") {
-      // Solo il titolare può vedere i dati aziendali
-      if (OWNER && String(chatId) !== String(OWNER)) {
-        await sendMessage(TOKEN, chatId, "⛔ Non autorizzato.");
+      // Solo gli autorizzati possono vedere i dati aziendali
+      if (allowed.size && !allowed.has(String(chatId))) {
+        await sendMessage(TOKEN, chatId,
+          "⛔ Non sei autorizzato a vedere questi dati.\n" +
+          "Il tuo ID è: <b>" + chatId + "</b>\nChiedi al titolare di abilitarti.");
         return new Response("ok");
       }
       const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
