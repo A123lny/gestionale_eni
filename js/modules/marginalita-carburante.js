@@ -1088,7 +1088,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
         if (!_venditeMese) _venditeMese = { anno: oggi.getFullYear(), mese: oggi.getMonth() + 1 };
 
         var html =
-            '<div style="display:flex; gap:var(--space-2); align-items:center; margin-bottom:var(--space-3);">' +
+            '<div style="display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap; margin-bottom:var(--space-3);">' +
                 '<select id="mc-vend-mese" class="form-select" style="min-width:130px;">';
         for (var m = 0; m < 12; m++) {
             html += '<option value="' + (m+1) + '"' + (m+1 === _venditeMese.mese ? ' selected' : '') + '>' + MESI[m] + '</option>';
@@ -1101,7 +1101,7 @@ ENI.Modules.MarginalitaCarburante = (function() {
         html += '</select>' +
                 '<button class="btn btn-sm btn-outline" id="mc-vend-load">Carica</button>' +
                 '<div style="flex:1;"></div>' +
-                '<button class="btn btn-primary btn-sm" id="mc-vend-add">+ Registra Vendita</button>' +
+                '<button class="btn btn-primary btn-sm" id="mc-vend-add" style="white-space:nowrap; flex-shrink:0;">+ Registra Vendita</button>' +
             '</div>' +
             '<div id="mc-vend-table"></div>';
 
