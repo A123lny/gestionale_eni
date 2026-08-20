@@ -928,8 +928,9 @@ ENI.Modules.MarginalitaCarburante = (function() {
                         '<span style="font-size:0.75rem; color:var(--text-secondary);">(lascia vuoto se non presente nel carico)</span>' +
                     '</div>' +
                     '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:var(--space-2);">' +
+                        (opts.senzaPrezzo ? '' :
                         '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.7rem;">Lt. ordinati</label>' +
-                            '<input type="number" class="form-input mc-car-field" id="mc-car-ord-' + prod.id + '" step="0.01" data-prod="' + prod.id + '" data-field="ord"></div>' +
+                            '<input type="number" class="form-input mc-car-field" id="mc-car-ord-' + prod.id + '" step="0.01" data-prod="' + prod.id + '" data-field="ord"></div>') +
                         '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.7rem;">Lt. commerciali</label>' +
                             '<input type="number" class="form-input mc-car-field" id="mc-car-comm-' + prod.id + '" step="0.01" data-prod="' + prod.id + '" data-field="comm"></div>' +
                         '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.7rem;">Lt. fiscali</label>' +
@@ -1018,7 +1019,8 @@ ENI.Modules.MarginalitaCarburante = (function() {
                 var accEl = document.getElementById('mc-car-acc-' + prod.id);
                 var mp = mpEl ? parseFloat(mpEl.value) || 0 : 0;
                 var acc = accEl ? parseFloat(accEl.value) || 0 : 0;
-                var ord = parseFloat(document.getElementById('mc-car-ord-' + prod.id).value) || 0;
+                var ordEl = document.getElementById('mc-car-ord-' + prod.id);
+                var ord = ordEl ? parseFloat(ordEl.value) || 0 : 0;
 
                 // Senza prezzo (carico arrivato): bastano litri commerciali e fiscali.
                 var valido = opts.senzaPrezzo ? (comm > 0 && fisc > 0) : (comm > 0 && fisc > 0 && mp > 0);
