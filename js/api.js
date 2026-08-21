@@ -714,10 +714,15 @@ ENI.API = (function() {
         if (vg.error) throw new Error(vg.error.message);
         var ids = (vg.data || []).map(function(r) { return r.id; });
         if (!ids.length) return { totale: 0, giorni_con_dati: 0 };
-        var vp = await client.from('vendite_per_prodotto').select('litri').eq('prodotto_id', prodottoId).in('vendita_id', ids);
+        var vp = await client.from('vendite_per_prodotto').select('litri, vendita_id').eq('prodotto_id', prodottoId).in('vendita_id', ids);
         if (vp.error) throw new Error(vp.error.message);
-        var totale = (vp.data || []).reduce(function(s, r) { return s + (Number(r.litri) || 0); }, 0);
-        return { totale: Math.round(totale), giorni_con_dati: (vp.data || []).length };
+        var totale = 0;
+        var giorniSet = {};
+        (vp.data || []).forEach(function(r) {
+            totale += Number(r.litri) || 0;
+            if (r.vendita_id) giorniSet[r.vendita_id] = true; // conta i giorni distinti con vendita registrata
+        });
+        return { totale: Math.round(totale), giorni_con_dati: Object.keys(giorniSet).length };
     }
 
     // Giacenza fisica calcolata a oggi (riferimento + carichi − venduto), coerente col motore Marginalità. SOLO LETTURA.

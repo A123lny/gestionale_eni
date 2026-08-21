@@ -121,6 +121,38 @@ ENI.Modules.OrdineCarburante = (function() {
     // Stato dell'ultimo calcolo (per export)
     var _ultimo = null;
 
+    // Stima la giacenza di partenza per OGGI a partire dall'ultima lettura.
+    // Per ogni giorno trascorso toglie il venduto REALE registrato in Marginalità
+    // (erogatoGiorn), e solo per i giorni non ancora registrati usa la media × fattore.
+    // Aggiunge i carichi previsti nei giorni del periodo. Se la lettura è già di oggi
+    // (o futura) non tocca nulla. Restituisce base + info per l'etichetta.
+    function _stimaBaseOggi(giac, media, carichi, erogatoGiorn) {
+        var oggi = _oggi();
+        var lit0 = giac ? Number(giac.litri) || 0 : 0;
+        if (!giac || giac.data == null) return { base: lit0, stimato: false, letturaData: giac ? giac.data : null, letturaLitri: lit0, giorniStimati: 0, giorniReali: 0 };
+        var letturaData = giac.data;
+        if (letturaData >= oggi) return { base: lit0, stimato: false, letturaData: letturaData, letturaLitri: lit0, giorniStimati: 0, giorniReali: 0 };
+
+        // venduto reale per data (dalle vendite di Marginalità)
+        var vendReale = {};
+        (erogatoGiorn || []).forEach(function(r) { vendReale[r.data] = (vendReale[r.data] || 0) + (Number(r.litri) || 0); });
+        // carichi previsti per data
+        var carPerData = {};
+        (carichi || []).forEach(function(c) { carPerData[c.data_prevista] = (carPerData[c.data_prevista] || 0) + (Number(c.litri) || 0); });
+
+        var val = lit0, giorniStimati = 0, giorniReali = 0;
+        var d = letturaData;
+        while (d < oggi) {
+            var cons;
+            if (vendReale[d] != null) { cons = vendReale[d]; giorniReali++; }
+            else { cons = Math.round(media * ENI.PrevisioneCarburante.fattoreGiorno(d, _parametri.fattori_giorno)); giorniStimati++; }
+            val = val + (carPerData[d] || 0) - cons;
+            d = _addGiorni(d, 1);
+        }
+        if (val < 0) val = 0;
+        return { base: Math.round(val), stimato: true, letturaData: letturaData, letturaLitri: lit0, giorniStimati: giorniStimati, giorniReali: giorniReali };
+    }
+
     async function _renderProdotto() {
         var content = document.getElementById('oc-content');
         if (!content) return;
@@ -128,18 +160,22 @@ ENI.Modules.OrdineCarburante = (function() {
 
         var prod = _prodById(_prodSel);
         var serb = _serbatoiMap[_prodSel] || {};
-        var giac, carichi, mediaInfo;
+        var giac, carichi, mediaInfo, erogGap = [];
         try {
             giac = await ENI.API.getGiacenzaRilevata(_prodSel);
             carichi = await ENI.API.getCarichiPrevisti(_prodSel);
             mediaInfo = await _calcMedia(_prodSel);
+            if (giac && giac.data && giac.data < _oggi()) {
+                erogGap = await ENI.API.getErogatoGiornaliero(_prodSel, giac.data, _addGiorni(_oggi(), -1));
+            }
         } catch (e) {
             content.innerHTML = '<div class="empty-state"><p class="empty-state-text">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p></div>';
             return;
         }
 
         var oggi = _oggi();
-        var base = giac ? Number(giac.litri) : 0;
+        var st = _stimaBaseOggi(giac, mediaInfo.media, carichi, erogGap);
+        var base = st.base;
         var gridStart = _mondayOf(oggi);
         var gridEnd = _addGiorni(gridStart, 20);
         var orizz = _daysBetween(oggi, gridEnd) + 1;
@@ -158,9 +194,9 @@ ENI.Modules.OrdineCarburante = (function() {
             carichiPrevisti: carichi.map(function(c) { return { data: c.data_prevista, litri: c.litri }; })
         });
 
-        _ultimo = { prod: prod, serb: serb, giac: giac, carichi: carichi, mediaInfo: mediaInfo, res: res, gridStart: gridStart };
+        _ultimo = { prod: prod, serb: serb, giac: giac, mediaInfo: mediaInfo, res: res, gridStart: gridStart, stima: st };
 
-        content.innerHTML = _riepilogoHtml(prod, serb, giac, mediaInfo, res) + _grigliaHtml(gridStart, res);
+        content.innerHTML = _riepilogoHtml(prod, serb, giac, mediaInfo, res, st) + _grigliaHtml(gridStart, res);
         _wireProdotto(content, carichi);
     }
 
@@ -190,8 +226,13 @@ ENI.Modules.OrdineCarburante = (function() {
                 _calcMedia(prod.id)
             ]);
             var giac = r[0], carichi = r[1] || [], mediaInfo = r[2];
+            var erogGap = [];
+            if (giac && giac.data && giac.data < oggi) {
+                try { erogGap = await ENI.API.getErogatoGiornaliero(prod.id, giac.data, _addGiorni(oggi, -1)); } catch (e) { erogGap = []; }
+            }
+            var st = _stimaBaseOggi(giac, mediaInfo.media, carichi, erogGap);
             var res = ENI.PrevisioneCarburante.calcola({
-                giacenzaIniziale: giac ? Number(giac.litri) : 0,
+                giacenzaIniziale: st.base,
                 dataInizio: oggi, orizzonte: orizz,
                 mediaParams: mediaInfo.params, fattori: _parametri.fattori_giorno,
                 scortaMinima: Number(serb.scorta_minima) || 0,
@@ -200,7 +241,8 @@ ENI.Modules.OrdineCarburante = (function() {
                 giorniConsegna: [1, 2, 3, 4, 5],
                 carichiPrevisti: carichi.map(function(c) { return { data: c.data_prevista, litri: c.litri }; })
             });
-            return { prod: prod, serb: serb, giac: giac, media: mediaInfo.media, res: res };
+            // Per la card Dashboard: giac.litri usato come "giacenza" mostrata; passiamo la base stimata
+            return { prod: prod, serb: serb, giac: st.stimato ? { litri: st.base, data: oggi, stimato: true } : giac, media: mediaInfo.media, res: res };
         }));
     }
 
@@ -213,14 +255,30 @@ ENI.Modules.OrdineCarburante = (function() {
         var finestra = Number(_parametri.finestra_giorni) || 12;
         var oggi = _oggi();
         var erog = await ENI.API.getErogatoPeriodo(prodId, _addGiorni(oggi, -finestra), _addGiorni(oggi, -1));
-        var media = finestra > 0 ? erog.totale / finestra : 0;
-        return { params: { modalita: 'auto', erogatoFinestra: erog.totale, giorniFinestra: finestra }, media: media, descr: 'Automatica (' + _fmtL(erog.totale) + ' L / ' + finestra + ' gg)' };
+        // Divide per i giorni EFFETTIVAMENTE registrati (non per la finestra fissa),
+        // così la media non si "diluisce" quando mancano vendite in alcuni giorni. Fallback alla finestra.
+        var giorniEff = erog.giorni_con_dati > 0 ? erog.giorni_con_dati : finestra;
+        var media = giorniEff > 0 ? erog.totale / giorniEff : 0;
+        return { params: { modalita: 'auto', erogatoFinestra: erog.totale, giorniFinestra: giorniEff }, media: media, descr: 'Automatica (' + _fmtL(erog.totale) + ' L / ' + giorniEff + ' gg registrati)' };
     }
 
-    function _riepilogoHtml(prod, serb, giac, mediaInfo, res) {
+    function _riepilogoHtml(prod, serb, giac, mediaInfo, res, st) {
         var ind = res.indicatori, prop = res.proposta;
-        var giacTxt = giac ? _fmtL(giac.litri) + ' L' : '— da inserire';
-        var giacData = giac ? '<div class="text-xs text-muted">lettura del ' + _fmtData(giac.data) + '</div>' : '';
+        var giacTxt, giacData;
+        if (st && st.stimato) {
+            var soloReale = st.giorniStimati === 0;
+            giacTxt = _fmtL(st.base) + ' L <span class="badge ' + (soloReale ? 'badge-success' : 'badge-gray') + '" style="font-size:0.65rem;">' + (soloReale ? 'aggiornata' : 'stimata') + '</span>';
+            var dett = soloReale
+                ? 'ultima lettura ' + _fmtL(st.letturaLitri) + ' L del ' + _fmtData(st.letturaData) + '<br>al netto del venduto reale registrato'
+                : 'ultima lettura reale ' + _fmtL(st.letturaLitri) + ' L del ' + _fmtData(st.letturaData) + '<br>venduto reale per ' + st.giorniReali + ' gg, media per ' + st.giorniStimati + ' gg';
+            giacData = '<div class="text-xs text-muted">' + dett + '</div>';
+        } else if (giac) {
+            giacTxt = _fmtL(giac.litri) + ' L';
+            giacData = '<div class="text-xs text-muted">lettura del ' + _fmtData(giac.data) + '</div>';
+        } else {
+            giacTxt = '— da inserire';
+            giacData = '';
+        }
         var autonomia = ind.giorniAutonomia != null ? ind.giorniAutonomia + ' giorni' : 'oltre orizzonte';
         var esaur = ind.dataEsaurimento ? _fmtData(ind.dataEsaurimento) : '—';
         var ordineTxt = prop.serve ? _fmtL(prop.quantita) + ' L' : 'Non necessario';
