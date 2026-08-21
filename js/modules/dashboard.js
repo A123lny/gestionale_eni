@@ -144,15 +144,21 @@ ENI.Modules.Dashboard = (function() {
 
     async function _carburantePeriodo(r) {
         if (r.singleDay) {
-            var rows = await ENI.API.getCarburanteRange(_addDays(r.a, -10), r.a);
-            var info = _ultimoCarburante(rows);
-            info.modo = 'ultimo';
-            return info;
+            // Mostra il carburante di QUEL preciso giorno (non ripiega su giorni diversi).
+            var rows = await ENI.API.getCarburanteRange(r.a, r.a);
+            var litri = 0, importo = 0, trovato = false;
+            rows.forEach(function(c) { litri += Number(c.litri_totali || 0); importo += Number(c.importo_totale || 0); trovato = true; });
+            var deltaPct = null;
+            if (trovato) {
+                var prev = _ultimoCarburante(await ENI.API.getCarburanteRange(_addDays(r.a, -10), _addDays(r.a, -1)));
+                if (prev.litri > 0) deltaPct = (litri - prev.litri) / prev.litri * 100;
+            }
+            return { modo: 'giorno', data: trovato ? r.a : null, litri: litri, importo: importo, deltaPct: deltaPct };
         }
         var rows2 = await ENI.API.getCarburanteRange(r.da, r.a);
-        var litri = 0, importo = 0;
-        rows2.forEach(function(c) { litri += Number(c.litri_totali || 0); importo += Number(c.importo_totale || 0); });
-        return { modo: 'periodo', litri: litri, importo: importo, data: null, deltaPct: null };
+        var litri2 = 0, importo2 = 0;
+        rows2.forEach(function(c) { litri2 += Number(c.litri_totali || 0); importo2 += Number(c.importo_totale || 0); });
+        return { modo: 'periodo', litri: litri2, importo: importo2, data: null, deltaPct: null };
     }
 
     function _ultimoCarburante(rows) {
@@ -183,7 +189,7 @@ ENI.Modules.Dashboard = (function() {
         var pdfKpi = [];
 
         if (vedeCarburante && carb) {
-            if (carb.modo === 'ultimo') {
+            if (carb.modo === 'giorno') {
                 if (carb.data) {
                     var trend = '';
                     if (carb.deltaPct !== null) {
@@ -193,7 +199,7 @@ ENI.Modules.Dashboard = (function() {
                     html += _card('⛽ Carburante · ' + _labelGiorno(carb.data), ENI.UI.formatValuta(carb.importo), _num(carb.litri) + ' litri' + trend, 'marginalita-carburante');
                     pdfKpi.push({ label: 'Carburante (' + _labelGiorno(carb.data) + ')', valore: ENI.UI.formatValuta(carb.importo) + ' · ' + _num(carb.litri) + ' litri' });
                 } else {
-                    html += _card('⛽ Carburante', '—', '<span class="text-muted">nessun dato</span>', 'marginalita-carburante');
+                    html += _card('⛽ Carburante' + suff, '—', '<span class="text-muted">in attesa · si carica domani</span>', 'marginalita-carburante');
                 }
             } else {
                 html += _card('⛽ Carburante' + suff, ENI.UI.formatValuta(carb.importo), _num(carb.litri) + ' litri', 'marginalita-carburante');
