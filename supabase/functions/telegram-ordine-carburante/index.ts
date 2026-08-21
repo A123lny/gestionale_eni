@@ -158,11 +158,14 @@ Deno.serve(async (req) => {
         const vg = await supabase.from("vendite_giornaliere").select("id").gte("data_inizio", da).lte("data_inizio", a);
         const ids = (vg.data || []).map((r: any) => r.id);
         let tot = 0;
+        const giorniSet = new Set<string>();
         if (ids.length) {
-          const vp = await supabase.from("vendite_per_prodotto").select("litri").eq("prodotto_id", prod.id).in("vendita_id", ids);
-          tot = (vp.data || []).reduce((s: number, r: any) => s + (Number(r.litri) || 0), 0);
+          const vp = await supabase.from("vendite_per_prodotto").select("litri, vendita_id").eq("prodotto_id", prod.id).in("vendita_id", ids);
+          (vp.data || []).forEach((r: any) => { tot += Number(r.litri) || 0; if (r.vendita_id) giorniSet.add(String(r.vendita_id)); });
         }
-        mediaParams = { modalita: "auto", erogatoFinestra: tot, giorniFinestra: finestra };
+        // Divide per i giorni EFFETTIVAMENTE registrati (non per la finestra fissa)
+        const giorniEff = giorniSet.size > 0 ? giorniSet.size : finestra;
+        mediaParams = { modalita: "auto", erogatoFinestra: tot, giorniFinestra: giorniEff };
       }
 
       const media = mediaParams.modalita === "manuale"
