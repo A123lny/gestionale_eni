@@ -287,7 +287,7 @@ ENI.Modules.Cassa = (function() {
                     '<div class="cassa-grid">' +
                         _cassaInput('Pagher\u00F2 Spese Cassa', 'crediti_paghero', c.crediti_paghero, 'number') +
                         _cassaInput('Mobile Payment', 'crediti_mobile_payment', c.crediti_mobile_payment, 'number') +
-                        _cassaInput('Buoni ENI Carburante', 'crediti_buoni_eni', c.crediti_buoni_eni, 'number') +
+                        _cassaInputHint('Buoni ENI Carburante', 'crediti_buoni_eni', c.crediti_buoni_eni, 'Inserisci qui i voucher carburante.') +
                         '<div class="cassa-row" style="grid-column: 1 / -1;">' +
                             '<span class="cassa-row-label">Desc. Buoni ENI</span>' +
                             '<div class="cassa-row-input" style="max-width:280px;">' +
@@ -297,7 +297,7 @@ ENI.Modules.Cassa = (function() {
                             '</div>' +
                         '</div>' +
                         _cassaInput('Voucher', 'crediti_voucher', c.crediti_voucher, 'number') +
-                        _cassaInput('Bollette/Green Money', 'crediti_bollette', c.crediti_bollette, 'number') +
+                        _cassaInputHint('Bollette/Green Money', 'crediti_bollette', c.crediti_bollette, 'Clienti che non pagano subito (es. Lenny).') +
                     '</div>' +
                     '<div class="cassa-subtotal text-right mt-2">Totale Crediti (senza 4TSCARD): <span id="tot-crediti-base">\u20AC 0,00</span></div>'
                 ) +
@@ -465,6 +465,20 @@ ENI.Modules.Cassa = (function() {
                 '<input type="' + type + '" step="0.01" min="0" class="form-input cassa-field" ' +
                     'data-field="' + name + '" value="' + value + '">' +
             '</div>' +
+        '</div>';
+    }
+
+    // Cerchietto "i" di info con testo esplicativo sotto il campo (leggibile anche da tablet).
+    function _cassaInputHint(label, name, value, hint) {
+        value = (value !== null && value !== undefined && value !== 0) ? value : '';
+        var iBadge = '<span title="' + hint.replace(/"/g, '&quot;') + '" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--color-primary);color:#fff;font-size:11px;font-weight:700;line-height:1;font-family:Georgia,\'Times New Roman\',serif;margin-left:6px;flex:0 0 auto;vertical-align:middle;cursor:help;">i</span>';
+        return '<div class="cassa-row">' +
+            '<span class="cassa-row-label">' + label + iBadge + '</span>' +
+            '<div class="cassa-row-input">' +
+                '<input type="number" step="0.01" min="0" class="form-input cassa-field" ' +
+                    'data-field="' + name + '" value="' + value + '">' +
+            '</div>' +
+            '<div class="text-xs text-muted" style="margin-top:2px;">' + hint + '</div>' +
         '</div>';
     }
 
