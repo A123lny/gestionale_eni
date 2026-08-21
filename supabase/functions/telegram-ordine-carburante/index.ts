@@ -143,6 +143,7 @@ Deno.serve(async (req) => {
       // Giacenza rilevata più recente
       const giacRes = await supabase.from("giacenze_rilevate").select("litri,data").eq("prodotto_id", prod.id).order("data", { ascending: false }).limit(1).maybeSingle();
       const giac = giacRes.data ? Number((giacRes.data as any).litri) : 0;
+      const letturaData = giacRes.data ? (giacRes.data as any).data : null;
 
       // Carichi previsti
       const carRes = await supabase.from("carichi_previsti").select("data_prevista,litri").eq("prodotto_id", prod.id);
@@ -172,8 +173,31 @@ Deno.serve(async (req) => {
         ? (mediaParams.manualeGiorni > 0 ? mediaParams.manualeTotale / mediaParams.manualeGiorni : 0)
         : (mediaParams.giorniFinestra > 0 ? mediaParams.erogatoFinestra / mediaParams.giorniFinestra : 0);
 
+      // Stima giacenza di oggi: parte dall'ultima lettura e per ogni giorno trascorso toglie
+      // il venduto REALE registrato in Marginalità (media solo per i giorni non ancora inseriti).
+      let base = giac;
+      if (letturaData && letturaData < oggi) {
+        const vgGap = await supabase.from("vendite_giornaliere").select("id, data_inizio").gte("data_inizio", letturaData).lte("data_inizio", addGiorni(oggi, -1));
+        const dateById: Record<string, string> = {};
+        const idsGap = (vgGap.data || []).map((r: any) => { dateById[r.id] = r.data_inizio; return r.id; });
+        const vendPerData: Record<string, number> = {};
+        if (idsGap.length) {
+          const vpGap = await supabase.from("vendite_per_prodotto").select("litri, vendita_id").eq("prodotto_id", prod.id).in("vendita_id", idsGap);
+          (vpGap.data || []).forEach((r: any) => { const d = dateById[r.vendita_id]; if (d) vendPerData[d] = (vendPerData[d] || 0) + (Number(r.litri) || 0); });
+        }
+        const carPerData: Record<string, number> = {};
+        carichiPrevisti.forEach((c: any) => { carPerData[c.data] = (carPerData[c.data] || 0) + (Number(c.litri) || 0); });
+        let val = giac, d = letturaData;
+        while (d < oggi) {
+          const cons = (vendPerData[d] != null) ? vendPerData[d] : Math.round(media * fattoreGiorno(d, parametri.fattori_giorno));
+          val = val + (carPerData[d] || 0) - cons;
+          d = addGiorni(d, 1);
+        }
+        base = Math.max(0, Math.round(val));
+      }
+
       const cascata = costruisciCascata({
-        giacenzaIniziale: giac, dataInizio: oggi, orizzonte: orizz, media,
+        giacenzaIniziale: base, dataInizio: oggi, orizzonte: orizz, media,
         fattori: parametri.fattori_giorno, scortaMinima: Number(serb.scorta_minima) || 0, carichiPrevisti,
       });
       const ind = indicatori(cascata, Number(serb.scorta_minima) || 0);
@@ -187,7 +211,7 @@ Deno.serve(async (req) => {
       const gg = daysBetween(oggi, prop.dataOrdine);
       if (gg > 2) continue; // solo imminenti (giallo/rosso), come la campanellina
 
-      daInclusi.push({ nome: prod.nome, prop, ind, urgente: gg <= 0, giac });
+      daInclusi.push({ nome: prod.nome, prop, ind, urgente: gg <= 0, giac: base });
     }
 
     // Componi messaggio

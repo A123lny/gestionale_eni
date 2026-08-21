@@ -115,6 +115,7 @@ async function computeStato(supabase: any, oggi: string) {
     const serb = serbMap[prod.id] || {};
     const giacRes = await supabase.from("giacenze_rilevate").select("litri,data").eq("prodotto_id", prod.id).order("data", { ascending: false }).limit(1).maybeSingle();
     const giac = giacRes.data ? Number((giacRes.data as any).litri) : 0;
+    const letturaData = giacRes.data ? (giacRes.data as any).data : null;
     const carRes = await supabase.from("carichi_previsti").select("data_prevista,litri").eq("prodotto_id", prod.id);
     const carichiPrevisti = (carRes.data || []).map((c: any) => ({ data: c.data_prevista, litri: c.litri }));
 
@@ -138,8 +139,31 @@ async function computeStato(supabase: any, oggi: string) {
       media = giorniEff > 0 ? tot / giorniEff : 0;
     }
 
+    // Stima giacenza di oggi: parte dall'ultima lettura, toglie il venduto REALE per i giorni
+    // registrati in Marginalità (media solo per i giorni non ancora inseriti).
+    let base = giac;
+    if (letturaData && letturaData < oggi) {
+      const vgGap = await supabase.from("vendite_giornaliere").select("id, data_inizio").gte("data_inizio", letturaData).lte("data_inizio", addGiorni(oggi, -1));
+      const dateById: Record<string, string> = {};
+      const idsGap = (vgGap.data || []).map((r: any) => { dateById[r.id] = r.data_inizio; return r.id; });
+      const vendPerData: Record<string, number> = {};
+      if (idsGap.length) {
+        const vpGap = await supabase.from("vendite_per_prodotto").select("litri, vendita_id").eq("prodotto_id", prod.id).in("vendita_id", idsGap);
+        (vpGap.data || []).forEach((r: any) => { const dd = dateById[r.vendita_id]; if (dd) vendPerData[dd] = (vendPerData[dd] || 0) + (Number(r.litri) || 0); });
+      }
+      const carPerData: Record<string, number> = {};
+      carichiPrevisti.forEach((c: any) => { carPerData[c.data] = (carPerData[c.data] || 0) + (Number(c.litri) || 0); });
+      let val = giac, d = letturaData;
+      while (d < oggi) {
+        const cons = (vendPerData[d] != null) ? vendPerData[d] : Math.round(media * fattoreGiorno(d, parametri.fattori_giorno));
+        val = val + (carPerData[d] || 0) - cons;
+        d = addGiorni(d, 1);
+      }
+      base = Math.max(0, Math.round(val));
+    }
+
     const cascata = costruisciCascata({
-      giacenzaIniziale: giac, dataInizio: oggi, orizzonte: orizz, media,
+      giacenzaIniziale: base, dataInizio: oggi, orizzonte: orizz, media,
       fattori: parametri.fattori_giorno, scortaMinima: Number(serb.scorta_minima) || 0, carichiPrevisti,
     });
     const ind = indicatori(cascata, Number(serb.scorta_minima) || 0);
@@ -153,7 +177,7 @@ async function computeStato(supabase: any, oggi: string) {
       const gg = daysBetween(oggi, prop.dataOrdine);
       livello = gg <= 0 ? "rosso" : (gg <= 2 ? "giallo" : "ok");
     }
-    out.push({ nome: prod.nome, giac, media, ind, prop, livello });
+    out.push({ nome: prod.nome, giac: base, media, ind, prop, livello });
   }
   return out;
 }
