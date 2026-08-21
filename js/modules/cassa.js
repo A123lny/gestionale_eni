@@ -209,6 +209,7 @@ ENI.Modules.Cassa = (function() {
 
                         // Contanti con banconote per taglio
                         _section('\u{1F4B5} Contanti',
+                            _hint('\u2139\uFE0F <strong>Banconote:</strong> inserisci il <strong>numero di pezzi</strong> per ogni taglio. &nbsp;<strong>Monete:</strong> inserisci il <strong>totale in \u20AC</strong>.') +
                             '<div class="banconote-grid">' +
                                 '<div class="banconote-header">Taglio</div>' +
                                 '<div class="banconote-header">Qt\u00E0</div>' +
