@@ -59,6 +59,7 @@ ENI.Modules.Cassa = (function() {
 
     async function _loadAndRenderCassa() {
         _modalitaModifica = false;
+        if (_bozzaTimer) { clearTimeout(_bozzaTimer); _bozzaTimer = null; } // evita bozze "a cavallo" fra date diverse
         var contentEl = document.getElementById('cassa-tab-content');
         if (contentEl) {
             contentEl.innerHTML = '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>';
@@ -108,9 +109,14 @@ ENI.Modules.Cassa = (function() {
             badgeHtml = '<span class="badge badge-warning">\u{1F513} In modifica</span>';
         } else if (isChiusa) {
             badgeHtml = '<span class="badge badge-danger">\uD83D\uDD12 Chiusa</span>';
+        } else if (c.stato === 'aperta') {
+            badgeHtml = '<span class="badge badge-gray">\u{1F4DD} Bozza</span>';
         } else {
             badgeHtml = '<span class="badge badge-success">\u2705 Aperta</span>';
         }
+        // Indicatore autosalvataggio (solo quando la cassa \u00E8 editabile)
+        var statusHtml = !isChiusa ? '<div id="cassa-bozza-status" class="text-xs text-muted" style="margin-top:2px;">' +
+            (c.stato === 'aperta' ? '\uD83D\uDCDD Bozza salvata' : '') + '</div>' : '';
 
         var bannerHtml = '';
         if (isChiusaReale && _modalitaModifica) {
@@ -142,7 +148,7 @@ ENI.Modules.Cassa = (function() {
                         '<input type="date" class="form-input" id="cassa-data" ' +
                             'value="' + _dataSelezionata + '" max="' + ENI.UI.oggiISO() + '">' +
                     '</div>' +
-                    '<div>' + badgeHtml + '</div>' +
+                    '<div>' + badgeHtml + statusHtml + '</div>' +
                 '</div>' +
                 _hint('ℹ️ <strong>Data conteggio:</strong> inserisci il <strong>giorno precedente</strong> (la chiusura si fa il giorno dopo).') +
             '</div>' +
@@ -692,6 +698,8 @@ ENI.Modules.Cassa = (function() {
                 e.target.classList.contains('banconota-qty')) {
                 _ricalcola(totSpese);
             }
+            // Qualsiasi modifica programma un autosalvataggio bozza (anche la nota)
+            _scheduleBozza();
         });
     }
 
@@ -830,6 +838,7 @@ ENI.Modules.Cassa = (function() {
                 _ricalcola(_spese.reduce(function(s, sp) {
                     return s + Number(sp.importo || 0);
                 }, 0));
+                _scheduleBozza();
                 return;
             }
             // Aggiungi 3 righe (con debounce)
@@ -882,23 +891,12 @@ ENI.Modules.Cassa = (function() {
     // SALVATAGGIO
     // ============================================================
 
-    async function _salvaCassa() {
-        var ok = await ENI.UI.confirm({
-            title: '\u{1F4BE} Conferma Chiusura Cassa',
-            message: 'Vuoi salvare la chiusura cassa del ' + ENI.UI.formatDataCompleta(_dataSelezionata) + '?',
-            confirmText: 'Salva',
-            cancelText: 'Annulla'
-        });
-
-        if (!ok) return;
-
+    // Raccoglie tutti i valori del form in un oggetto dati pronto per il DB.
+    function _raccogliDati(stato) {
         var val = _getFieldValue;
-        var totSpese = _spese.reduce(function(s, sp) {
-            return s + Number(sp.importo || 0);
-        }, 0);
+        var totSpese = _spese.reduce(function(s, sp) { return s + Number(sp.importo || 0); }, 0);
 
-        var totCarburante =
-            val('super_sp_euro') + val('diesel_euro') + val('diesel_plus_euro');
+        var totCarburante = val('super_sp_euro') + val('diesel_euro') + val('diesel_plus_euro');
         var totAltro =
             val('venduto_bar') + val('venduto_olio') + val('venduto_accessori') +
             val('venduto_adblue') + val('venduto_lavaggi') + val('venduto_buoni') +
@@ -906,12 +904,9 @@ ENI.Modules.Cassa = (function() {
             val('venduto_detailing') + val('venduto_uso_interno');
         var totVenduto = totCarburante + totAltro;
 
-        // Banconote per taglio
         var tagli = [5, 10, 20, 50, 100, 200, 500];
         var totBanconote = 0;
-        tagli.forEach(function(t) {
-            totBanconote += val('banconote_' + t) * t;
-        });
+        tagli.forEach(function(t) { totBanconote += val('banconote_' + t) * t; });
 
         var contantiBruti = totBanconote + val('contanti_monete');
         var contantiNetti = contantiBruti + totSpese;
@@ -932,32 +927,26 @@ ENI.Modules.Cassa = (function() {
             val('crediti_buoni_eni') + val('crediti_voucher') + val('crediti_bollette') +
             tot4tscard;
 
-        // Raccogli righe POS (solo importo, senza nome)
         function collectPosGroup(groupId) {
             var group = document.getElementById(groupId);
             if (!group) return [];
             var rows = [];
             group.querySelectorAll('.pos-row').forEach(function(row) {
                 var importo = parseFloat((row.querySelector('.pos-importo') || {}).value) || 0;
-                if (importo > 0) {
-                    rows.push({ importo: importo });
-                }
+                if (importo > 0) { rows.push({ importo: importo }); }
             });
             return rows;
         }
 
-        var dati = {
+        return {
             data: _dataSelezionata,
             fondo_cassa: val('fondo_cassa'),
-            // Carburante
             super_sp_litri:    val('super_sp_litri'),    super_sp_euro:    val('super_sp_euro'),
             diesel_litri:      val('diesel_litri'),      diesel_euro:      val('diesel_euro'),
             diesel_plus_litri: val('diesel_plus_litri'), diesel_plus_euro: val('diesel_plus_euro'),
-            // Self Notturno (tracciamento separato)
             self_notturno_litri: val('self_notturno_litri'),
             self_notturno_euro: val('self_notturno_euro'),
             self_notturno_contanti: val('self_notturno_contanti'),
-            // Venduto altro
             venduto_bar:            val('venduto_bar'),
             venduto_olio:           val('venduto_olio'),
             venduto_accessori:      val('venduto_accessori'),
@@ -969,7 +958,6 @@ ENI.Modules.Cassa = (function() {
             venduto_profumatori:    val('venduto_profumatori'),
             venduto_detailing:      val('venduto_detailing'),
             venduto_uso_interno:    val('venduto_uso_interno'),
-            // Contanti - banconote per taglio
             banconote_5:   val('banconote_5'),
             banconote_10:  val('banconote_10'),
             banconote_20:  val('banconote_20'),
@@ -977,20 +965,17 @@ ENI.Modules.Cassa = (function() {
             banconote_100: val('banconote_100'),
             banconote_200: val('banconote_200'),
             banconote_500: val('banconote_500'),
-            contanti_banconote: totBanconote, // backward compat
+            contanti_banconote: totBanconote,
             contanti_monete:    val('contanti_monete'),
-            // POS
             pos_bsi_carburante:    collectPosGroup('pos-bsi-carburante'),
             pos_bsi_lavaggi:       collectPosGroup('pos-bsi-lavaggi'),
             pos_bsi_accessori:     collectPosGroup('pos-bsi-accessori'),
             pos_carisp:            collectPosGroup('pos-carisp'),
             carta_azzurra:         collectPosGroup('carta-azzurra'),
-            // Altro incassato
             assegni:  val('assegni'),
             bonifici: val('bonifici'),
             incasso_buoni_cartacei:  val('incasso_buoni_cartacei'),
             incasso_wallet_digitale: val('incasso_wallet_digitale'),
-            // Crediti
             crediti_paghero:         val('crediti_paghero'),
             crediti_mobile_payment:  val('crediti_mobile_payment'),
             crediti_buoni_eni:       val('crediti_buoni_eni'),
@@ -998,17 +983,73 @@ ENI.Modules.Cassa = (function() {
             crediti_voucher:         val('crediti_voucher'),
             crediti_bollette:        val('crediti_bollette'),
             crediti_4tscard:         collectPosGroup('crediti-4tscard'),
-            // Totali
             totale_venduto:   totVenduto,
             totale_incassato: totIncassato,
             totale_crediti:   totCrediti,
             totale_spese:     totSpese,
             differenza:       totVenduto - totIncassato - totCrediti,
             note:             (document.getElementById('cassa-note') || {}).value || null,
-            stato:            'chiusa',
+            stato:            stato,
             utente_chiusura:  ENI.State.getUserId(),
             formula_versione: 2
         };
+    }
+
+    // --- Autosalvataggio BOZZA ---
+    var _bozzaTimer = null;
+    var _bozzaInFlight = false;
+
+    function _scheduleBozza() {
+        // Non salvare bozze su una cassa già CHIUSA (anche se in modifica): quella si salva a mano.
+        if (_cassa && _cassa.stato === 'chiusa') return;
+        if (_bozzaTimer) clearTimeout(_bozzaTimer);
+        _bozzaTimer = setTimeout(_autoSalvaBozza, 1500);
+    }
+
+    async function _autoSalvaBozza() {
+        if (_bozzaInFlight) return;
+        if (_cassa && _cassa.stato === 'chiusa') return;
+        var dati;
+        try { dati = _raccogliDati('bozza'); } catch (e) { return; }
+        // Salva solo se l'utente ha inserito almeno un valore (escluso il fondo cassa, prefillato).
+        var haQualcosa = !!dati.note;
+        if (!haQualcosa) {
+            var inputs = document.querySelectorAll('#form-cassa .cassa-field, #form-cassa .pos-importo, #form-cassa .banconota-qty');
+            for (var i = 0; i < inputs.length; i++) {
+                if (inputs[i].getAttribute('data-field') === 'fondo_cassa') continue;
+                var v = String(inputs[i].value || '').trim();
+                if (v !== '' && parseFloat(v) !== 0) { haQualcosa = true; break; }
+            }
+        }
+        if (!haQualcosa) return;
+        if (!ENI.API.salvaBozzaCassa) return;
+        _bozzaInFlight = true;
+        try {
+            var rec = await ENI.API.salvaBozzaCassa(dati);
+            if (rec && rec.stato === 'aperta') _cassa = rec; // così sappiamo che esiste una bozza
+            _mostraStatoBozza('📝 Bozza salvata ' + ENI.UI.oraCorrente());
+        } catch (e) { /* silenzioso: non disturbare chi sta compilando */ }
+        finally { _bozzaInFlight = false; }
+    }
+
+    function _mostraStatoBozza(txt) {
+        var el = document.getElementById('cassa-bozza-status');
+        if (el) el.textContent = txt;
+    }
+
+    async function _salvaCassa() {
+        // Ferma un eventuale autosalvataggio bozza in coda
+        if (_bozzaTimer) { clearTimeout(_bozzaTimer); _bozzaTimer = null; }
+        var ok = await ENI.UI.confirm({
+            title: '\u{1F4BE} Conferma Chiusura Cassa',
+            message: 'Vuoi salvare la chiusura cassa del ' + ENI.UI.formatDataCompleta(_dataSelezionata) + '?',
+            confirmText: 'Salva',
+            cancelText: 'Annulla'
+        });
+
+        if (!ok) return;
+
+        var dati = _raccogliDati('chiusa');
 
         try {
             ENI.UI.showLoading();
@@ -1102,12 +1143,15 @@ ENI.Modules.Cassa = (function() {
                 return;
             }
 
-            var totVendutoMese = 0, totIncassatoMese = 0, totDiffMese = 0, totSpeseMese = 0;
+            // I totali del mese sommano solo le casse CHIUSE (le bozze sono parziali)
+            var totVendutoMese = 0, totIncassatoMese = 0, totDiffMese = 0, totSpeseMese = 0, nChiuse = 0;
             records.forEach(function(r) {
+                if (r.stato !== 'chiusa') return;
                 totVendutoMese   += Number(r.totale_venduto || 0);
                 totIncassatoMese += Number(r.totale_incassato || 0);
                 totDiffMese      += Number(r.differenza || 0);
                 totSpeseMese     += Number(r.totale_spese || 0);
+                nChiuse++;
             });
 
             var html =
@@ -1122,30 +1166,33 @@ ENI.Modules.Cassa = (function() {
                 '</tr></thead><tbody>';
 
             records.forEach(function(r) {
+                var isBozza = r.stato !== 'chiusa';
                 var diff = Number(r.differenza || 0);
                 var diffStyle = Math.abs(diff) < 0.01
                     ? 'color:#166534;'
                     : Math.abs(diff) <= 50
                         ? 'color:#92400E;'
                         : 'color:#991B1B;';
+                var badge = isBozza
+                    ? '<span class="badge badge-gray">\u{1F4DD} Bozza</span>'
+                    : '<span class="badge ' + (r.stato === 'chiusa' ? 'badge-scaduto' : 'badge-incassato') + '">' + r.stato + '</span>';
+                var diffCell = isBozza
+                    ? '<span class="text-muted">—</span>'
+                    : '<span style="' + diffStyle + ' font-weight:600;">' + ENI.UI.formatValuta(r.differenza) + '</span>';
 
-                html += '<tr class="storico-row" data-data="' + r.data + '" style="cursor:pointer;" title="Clicca per aprire">' +
+                html += '<tr class="storico-row" data-data="' + r.data + '" style="cursor:pointer;' + (isBozza ? 'opacity:0.7;' : '') + '" title="Clicca per aprire">' +
                     '<td>' + ENI.UI.formatDataCompleta(r.data) + '</td>' +
                     '<td>' + ENI.UI.formatValuta(r.totale_venduto) + '</td>' +
                     '<td>' + ENI.UI.formatValuta(r.totale_incassato) + '</td>' +
                     '<td style="color:var(--color-danger);">' + ENI.UI.formatValuta(r.totale_spese) + '</td>' +
-                    '<td style="' + diffStyle + ' font-weight:600;">' + ENI.UI.formatValuta(r.differenza) + '</td>' +
-                    '<td>' +
-                        '<span class="badge ' + (r.stato === 'chiusa' ? 'badge-scaduto' : 'badge-incassato') + '">' +
-                            r.stato +
-                        '</span>' +
-                    '</td>' +
+                    '<td>' + diffCell + '</td>' +
+                    '<td>' + badge + '</td>' +
                 '</tr>';
             });
 
             html +=
                 '</tbody><tfoot><tr>' +
-                    '<td><strong>TOTALE MESE (' + records.length + ' giorni)</strong></td>' +
+                    '<td><strong>TOTALE MESE (' + nChiuse + ' chiuse)</strong></td>' +
                     '<td><strong>' + ENI.UI.formatValuta(totVendutoMese) + '</strong></td>' +
                     '<td><strong>' + ENI.UI.formatValuta(totIncassatoMese) + '</strong></td>' +
                     '<td style="color:var(--color-danger);"><strong>' + ENI.UI.formatValuta(totSpeseMese) + '</strong></td>' +

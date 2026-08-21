@@ -475,6 +475,18 @@ ENI.API = (function() {
         return record;
     }
 
+    // Salvataggio BOZZA cassa (autosalvataggio): upsert per data, senza log di chiusura.
+    async function salvaBozzaCassa(dati) {
+        var data = dati.data || ENI.UI.oggiISO();
+        var existing = await getCassaPerData(data);
+        // Non sovrascrivere mai una cassa gia' CHIUSA con una bozza.
+        if (existing && existing.stato === 'chiusa') return existing;
+        dati.stato = 'aperta'; // stato "in corso" (il vincolo DB ammette solo aperta/chiusa)
+        if (existing) return await update('cassa', existing.id, dati);
+        dati.data = data;
+        return await insert('cassa', dati);
+    }
+
     async function eliminaCassa(id, data) {
         await remove('cassa', id);
         await scriviLog('Eliminata_Cassa', 'Cassa', 'Data: ' + data);
@@ -2555,6 +2567,7 @@ ENI.API = (function() {
         getCassaOggi: getCassaOggi,
         getCassaMese: getCassaMese,
         salvaCassa: salvaCassa,
+        salvaBozzaCassa: salvaBozzaCassa,
         spostaCassa: spostaCassa,
         eliminaCassa: eliminaCassa,
         getSpeseCassa: getSpeseCassa,
