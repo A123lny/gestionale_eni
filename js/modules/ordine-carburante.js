@@ -650,18 +650,19 @@ ENI.Modules.OrdineCarburante = (function() {
         var sett = [];
         for (var w = 0; w < n; w++) {
             var ws = _addGiorni(da, w * 7);
-            sett.push({ start: ws, end: _addGiorni(ws, 6), erogato: 0, consegnato: 0, nConsegne: 0 });
+            sett.push({ start: ws, end: _addGiorni(ws, 6), erogato: 0, consegnato: 0, nConsegne: 0, giorniSet: {} });
         }
         function idxOf(d) { var diff = _daysBetween(da, d); return Math.floor(diff / 7); }
-        erog.forEach(function(r) { var k = idxOf(r.data); if (k >= 0 && k < n) sett[k].erogato += r.litri; });
+        erog.forEach(function(r) { var k = idxOf(r.data); if (k >= 0 && k < n) { sett[k].erogato += r.litri; sett[k].giorniSet[r.data] = true; } });
         consegne.forEach(function(r) { var k = idxOf(r.data); if (k >= 0 && k < n) { sett[k].consegnato += r.litri; sett[k].nConsegne += 1; } });
+        sett.forEach(function(s) { s.giorni = Object.keys(s.giorniSet).length; });
 
-        var totErog = 0, totCons = 0, totNCons = 0;
-        sett.forEach(function(s) { totErog += s.erogato; totCons += s.consegnato; totNCons += s.nConsegne; });
-        var giorniTot = n * 7;
-        var mediaGiorno = giorniTot > 0 ? totErog / giorniTot : 0;
+        var totErog = 0, totCons = 0, totNCons = 0, totGiorni = 0;
+        sett.forEach(function(s) { totErog += s.erogato; totCons += s.consegnato; totNCons += s.nConsegne; totGiorni += s.giorni; });
+        var giorniCal = n * 7; // giorni di calendario (per la frequenza ordini)
+        var mediaGiorno = totGiorni > 0 ? totErog / totGiorni : 0; // media sui soli giorni con vendite registrate
         var mediaPerConsegna = totNCons > 0 ? totCons / totNCons : 0;
-        var freq = totNCons > 0 ? giorniTot / totNCons : 0;
+        var freq = totNCons > 0 ? giorniCal / totNCons : 0;
 
         _ultimoStorico = { prod: prod, sett: sett };
 
@@ -672,7 +673,7 @@ ENI.Modules.OrdineCarburante = (function() {
             '<div style="flex:1;"></div><button class="btn btn-outline btn-sm" id="oc-st-xlsx">📊 Excel</button></div>';
 
         var kpiHtml = '<div class="oc-kpi-grid">' +
-            kpi('Consumo medio/giorno', _fmtL(mediaGiorno) + ' L', '<div class="text-xs text-muted">su ' + n + ' settimane</div>') +
+            kpi('Consumo medio/giorno', _fmtL(mediaGiorno) + ' L', '<div class="text-xs text-muted">su ' + totGiorni + ' giorni con vendite</div>') +
             kpi('Media per consegna', _fmtL(mediaPerConsegna) + ' L', '') +
             kpi('Frequenza ordini', (freq ? Math.round(freq) : '—') + ' gg', '<div class="text-xs text-muted">' + totNCons + ' consegne') +
             kpi('Erogato totale', _fmtL(totErog) + ' L', '') +
@@ -685,15 +686,17 @@ ENI.Modules.OrdineCarburante = (function() {
         var rows = sett.map(function(s) {
             return '<tr><td>' + _fmtData(s.start) + '–' + _fmtData(s.end) + '</td>' +
                 '<td class="text-right">' + _fmtL(s.erogato) + '</td>' +
-                '<td class="text-right">' + _fmtL(s.erogato / 7) + '</td>' +
+                '<td class="text-right">' + (s.giorni > 0 ? _fmtL(s.erogato / s.giorni) : '—') + '</td>' +
+                '<td class="text-right">' + s.giorni + '</td>' +
                 '<td class="text-right">' + _fmtL(s.consegnato) + '</td>' +
                 '<td class="text-right">' + s.nConsegne + '</td></tr>';
         }).join('');
         var tableHtml = '<div class="table-wrapper"><table class="table"><thead><tr>' +
-            '<th>Settimana</th><th class="text-right">Erogato</th><th class="text-right">Media/gg</th><th class="text-right">Consegnato</th><th class="text-right">N° consegne</th>' +
+            '<th>Settimana</th><th class="text-right">Erogato</th><th class="text-right">Media/gg</th><th class="text-right">Giorni</th><th class="text-right">Consegnato</th><th class="text-right">N° consegne</th>' +
             '</tr></thead><tbody>' + rows + '</tbody>' +
             '<tfoot><tr><td><strong>Totale</strong></td><td class="text-right"><strong>' + _fmtL(totErog) + '</strong></td>' +
-                '<td class="text-right">' + _fmtL(mediaGiorno) + '</td><td class="text-right"><strong>' + _fmtL(totCons) + '</strong></td>' +
+                '<td class="text-right">' + _fmtL(mediaGiorno) + '</td><td class="text-right"><strong>' + totGiorni + '</strong></td>' +
+                '<td class="text-right"><strong>' + _fmtL(totCons) + '</strong></td>' +
                 '<td class="text-right"><strong>' + totNCons + '</strong></td></tr></tfoot></table></div>';
 
         content.innerHTML = selHtml + kpiHtml + chartHtml + tableHtml;
@@ -725,7 +728,7 @@ ENI.Modules.OrdineCarburante = (function() {
     function _esportaStoricoExcel() {
         if (!_ultimoStorico) { ENI.UI.warning('Nessun dato'); return; }
         var righe = _ultimoStorico.sett.map(function(s) {
-            return { 'Settimana': _fmtData(s.start) + '–' + _fmtData(s.end), 'Erogato': s.erogato, 'Media/giorno': Math.round(s.erogato / 7), 'Consegnato': s.consegnato, 'N consegne': s.nConsegne };
+            return { 'Settimana': _fmtData(s.start) + '–' + _fmtData(s.end), 'Erogato': s.erogato, 'Giorni': s.giorni || 0, 'Media/giorno': (s.giorni > 0 ? Math.round(s.erogato / s.giorni) : 0), 'Consegnato': s.consegnato, 'N consegne': s.nConsegne };
         });
         try {
             var ws = XLSX.utils.json_to_sheet(righe);
