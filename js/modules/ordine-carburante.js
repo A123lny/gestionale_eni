@@ -547,35 +547,31 @@ ENI.Modules.OrdineCarburante = (function() {
 
         var serbHtml = _prodotti.map(function(prod) {
             var s = _serbatoiMap[prod.id] || {};
-            var mm = (p.media_manuale && p.media_manuale[prod.id]) || {};
-            return '<div style="border:1px solid var(--color-gray-200);border-radius:var(--radius-md);padding:10px;margin-bottom:8px;">' +
-                '<div style="font-weight:600;margin-bottom:6px;">' + ENI.UI.escapeHtml(prod.nome) + '</div>' +
-                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
-                    _num('Capacità nominale', 'oc-s-nom-' + prod.id, s.capacita_nominale) +
-                    _num('Capacità utile', 'oc-s-uti-' + prod.id, s.capacita_utile) +
-                    _num('Scorta minima', 'oc-s-sco-' + prod.id, s.scorta_minima) +
-                    _num('Lotto minimo', 'oc-s-lot-' + prod.id, s.lotto_minimo) +
-                    _num('Media manuale: totale L', 'oc-m-tot-' + prod.id, mm.totale || '') +
-                    _num('Media manuale: n° giorni', 'oc-m-gg-' + prod.id, mm.giorni || '') +
+            return '<div style="border:1px solid var(--color-gray-200);border-radius:var(--radius-md);padding:12px;margin-bottom:10px;">' +
+                '<div style="font-weight:600;margin-bottom:8px;">⛽ ' + ENI.UI.escapeHtml(prod.nome) + '</div>' +
+                '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;">' +
+                    _numHint('Capacità (L)', 'oc-s-uti-' + prod.id, s.capacita_utile, 'quanto ci sta nel serbatoio') +
+                    _numHint('Scorta minima (L)', 'oc-s-sco-' + prod.id, s.scorta_minima, 'sotto questo livello scatta l\'ordine') +
+                    _numHint('Lotto minimo (L)', 'oc-s-lot-' + prod.id, s.lotto_minimo, 'passo dell\'ordine (es. 1.000)') +
                 '</div>' +
             '</div>';
         }).join('');
 
         var body =
-            '<div class="section-title">Parametri generali</div>' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">' +
-                _num('Finestra storica (giorni)', 'oc-p-finestra', p.finestra_giorni) +
-                _num('Orizzonte proiezione (giorni)', 'oc-p-orizzonte', p.orizzonte) +
-            '</div>' +
-            '<div class="form-group"><label class="form-label">Modalità media consumo</label>' +
-                '<select class="form-select" id="oc-p-modalita">' +
-                    '<option value="auto"' + (p.modalita_media === 'auto' ? ' selected' : '') + '>Automatica (da erogato storico)</option>' +
-                    '<option value="manuale"' + (p.modalita_media === 'manuale' ? ' selected' : '') + '>Manuale (totale ÷ giorni)</option>' +
-                '</select></div>' +
-            '<div class="section-title">Fattori per giorno (moltiplicatore, 1 = normale)</div>' +
-            '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;">' + fattoriHtml + '</div>' +
-            '<div class="section-title">Serbatoi e media manuale (per prodotto)</div>' +
-            serbHtml;
+            '<div class="text-sm text-muted" style="margin-bottom:10px;">Per ogni serbatoio imposta i valori principali. Il resto è già configurato in “Avanzate”.</div>' +
+            serbHtml +
+            '<details style="margin-top:4px;border-top:1px solid var(--color-gray-200);padding-top:8px;">' +
+                '<summary style="cursor:pointer;font-weight:600;padding:4px 0;">⚙️ Impostazioni avanzate</summary>' +
+                '<div style="padding-top:12px;">' +
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">' +
+                        _numHint('Finestra storica (giorni)', 'oc-p-finestra', p.finestra_giorni, 'giorni di vendite usati per la media') +
+                        _numHint('Orizzonte proiezione (giorni)', 'oc-p-orizzonte', p.orizzonte, 'quanti giorni guarda in avanti') +
+                    '</div>' +
+                    '<div class="form-label" style="margin-bottom:2px;">Fattori per giorno</div>' +
+                    '<div class="text-xs text-muted" style="margin-bottom:8px;">Quanto vendi rispetto a una giornata normale: 1 = normale, 0,8 = un po\' meno, 0,5 = metà.</div>' +
+                    '<div style="display:flex;flex-wrap:wrap;gap:10px;">' + fattoriHtml + '</div>' +
+                '</div>' +
+            '</details>';
 
         var modal = ENI.UI.showModal({
             title: '⚙️ Parametri Ordine Carburante', body: body, size: 'lg',
@@ -584,28 +580,23 @@ ENI.Modules.OrdineCarburante = (function() {
 
         modal.querySelector('#oc-p-salva').addEventListener('click', async function() {
             try {
-                // Parametri
+                // Parametri (fattori editabili in Avanzate; media manuale preservata, modalità sempre automatica)
                 var fattori = {};
                 modal.querySelectorAll('.oc-fatt').forEach(function(inp) { fattori[inp.getAttribute('data-dow')] = parseFloat(inp.value) || 0; });
-                var mediaManuale = {};
-                _prodotti.forEach(function(prod) {
-                    var tot = parseFloat(_v(modal, 'oc-m-tot-' + prod.id));
-                    var gg = parseFloat(_v(modal, 'oc-m-gg-' + prod.id));
-                    if (!isNaN(tot) || !isNaN(gg)) mediaManuale[prod.id] = { totale: isNaN(tot) ? 0 : tot, giorni: isNaN(gg) ? 0 : gg };
-                });
                 await ENI.API.salvaParametriPrevisione({
                     finestra_giorni: parseInt(_v(modal, 'oc-p-finestra'), 10) || 12,
                     orizzonte: parseInt(_v(modal, 'oc-p-orizzonte'), 10) || 21,
-                    modalita_media: modal.querySelector('#oc-p-modalita').value,
+                    modalita_media: 'auto',
                     fattori_giorno: fattori,
-                    media_manuale: mediaManuale
+                    media_manuale: p.media_manuale || {}
                 });
-                // Serbatoi
+                // Serbatoi: capacità nominale = capacità utile (rispetta il vincolo utile ≤ nominale)
                 for (var i = 0; i < _prodotti.length; i++) {
                     var prod = _prodotti[i];
+                    var utile = parseFloat(_v(modal, 'oc-s-uti-' + prod.id)) || 0;
                     await ENI.API.salvaSerbatoio(prod.id, {
-                        capacita_nominale: parseFloat(_v(modal, 'oc-s-nom-' + prod.id)) || 0,
-                        capacita_utile: parseFloat(_v(modal, 'oc-s-uti-' + prod.id)) || 0,
+                        capacita_nominale: utile,
+                        capacita_utile: utile,
                         scorta_minima: parseFloat(_v(modal, 'oc-s-sco-' + prod.id)) || 0,
                         lotto_minimo: parseFloat(_v(modal, 'oc-s-lot-' + prod.id)) || 0
                     });
@@ -624,6 +615,11 @@ ENI.Modules.OrdineCarburante = (function() {
     function _num(label, id, val) {
         return '<div class="form-group"><label class="form-label" style="font-size:0.75rem;">' + label + '</label>' +
             '<input type="number" step="1" class="form-input" id="' + id + '" value="' + (val != null && val !== '' ? val : '') + '"></div>';
+    }
+    function _numHint(label, id, val, hint) {
+        return '<div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.75rem;">' + label + '</label>' +
+            '<input type="number" step="1" min="0" class="form-input" id="' + id + '" value="' + (val != null && val !== '' ? val : '') + '">' +
+            (hint ? '<div class="text-xs text-muted" style="margin-top:2px;">' + hint + '</div>' : '') + '</div>';
     }
     function _v(modal, id) { var el = modal.querySelector('#' + id); return el ? el.value : ''; }
 
