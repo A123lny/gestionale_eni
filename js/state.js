@@ -78,6 +78,8 @@ ENI.State = (function() {
         if (!ruolo) return false;
         // La dashboard e' riservata al Super Admin
         if (moduloId === 'dashboard') return isSuperAdmin();
+        // Moduli riservati al Super Admin (Gestione Personale): solo lui, anche via URL diretto
+        if ((ENI.Config.MODULI_SUPER_ADMIN || []).indexOf(moduloId) !== -1) return isSuperAdmin();
         // Moduli disattivati dal Super Admin: nascosti a tutti (menu + accesso diretto)
         if (_moduliDisabilitati.indexOf(moduloId) !== -1) return false;
         var config = ENI.Config.RUOLI[ruolo];

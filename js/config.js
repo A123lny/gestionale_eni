@@ -44,18 +44,18 @@ ENI.Config = {
     RUOLI: {
         Admin: {
             label: 'Amministratore',
-            moduli: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'ordine-carburante', 'tesoreria', 'fatturazione', 'smac', 'personale', 'manutenzioni', 'log', 'impostazioni'],
-            scrivere: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'ordine-carburante', 'tesoreria', 'fatturazione', 'smac', 'personale', 'manutenzioni', 'impostazioni']
+            moduli: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'ordine-carburante', 'tesoreria', 'fatturazione', 'smac', 'personale', 'mie-richieste', 'manutenzioni', 'log', 'impostazioni'],
+            scrivere: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'ordine-carburante', 'tesoreria', 'fatturazione', 'smac', 'personale', 'mie-richieste', 'manutenzioni', 'impostazioni']
         },
         Cassiere: {
             label: 'Cassiere',
-            moduli: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni'],
-            scrivere: ['cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni']
+            moduli: ['clienti', 'cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'mie-richieste'],
+            scrivere: ['cassa', 'spese', 'crediti', 'lavaggi', 'vendita', 'magazzino', 'buoni', 'mie-richieste']
         },
         Lavaggi: {
             label: 'Operatore Lavaggi',
-            moduli: ['clienti', 'lavaggi'],
-            scrivere: ['lavaggi']
+            moduli: ['clienti', 'lavaggi', 'mie-richieste'],
+            scrivere: ['lavaggi', 'mie-richieste']
         }
     },
 
@@ -68,6 +68,7 @@ ENI.Config = {
         { id: 'lavaggi', label: 'Lavaggi', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14"/><path d="M6 17l1-5h10l1 5"/><circle cx="8" cy="17" r="1"/><circle cx="16" cy="17" r="1"/><path d="M7 12l1-3h8l1 3"/><path d="M8 5v2M12 4v3M16 5v2"/></svg>', route: '#/lavaggi' },
         { id: 'vendita', label: 'Vendita', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', route: '#/vendita' },
         { id: 'magazzino', label: 'Magazzino', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>', route: '#/magazzino' },
+        { id: 'mie-richieste', label: 'Le mie richieste', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', route: '#/mie-richieste' },
         { id: 'personale', label: 'Personale', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', route: '#/personale' },
         { id: 'manutenzioni', label: 'Manutenzioni', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>', route: '#/manutenzioni' },
         { id: 'log', label: 'Log', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></svg>', route: '#/log' },
@@ -82,6 +83,14 @@ ENI.Config = {
             icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
             children: ['cassa', 'buoni', 'coefficiente-monofase', 'marginalita-carburante', 'ordine-carburante', 'tesoreria', 'fatturazione', 'smac'],
             dividerBefore: true
+        },
+        {
+            id: 'gestione-personale',
+            label: 'Gestione Personale',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
+            children: ['ferie', 'timbrature', 'turni', 'buste-paga'],
+            superAdminOnly: true,
+            dividerBefore: true
         }
     ],
 
@@ -94,7 +103,11 @@ ENI.Config = {
         { id: 'ordine-carburante', label: 'Ordine Carburante', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22V12a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v10"/><path d="M2 22h12"/><path d="M13 10h2.5a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3"/><path d="M6 14h4"/></svg>', route: '#/ordine-carburante' },
         { id: 'tesoreria', label: 'Tesoreria', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 17a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5s-5 2.24-5 5z"/><path d="M12 17a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5s-5 2.24-5 5z"/><path d="M7 7a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5S7 4.24 7 7z"/><line x1="12" y1="12" x2="12" y2="2"/></svg>', route: '#/tesoreria' },
         { id: 'fatturazione', label: 'Fatturazione', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', route: '#/fatturazione' },
-        { id: 'smac', label: 'SMAC', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>', route: '#/smac' }
+        { id: 'smac', label: 'SMAC', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>', route: '#/smac' },
+        { id: 'ferie', label: 'Ferie e Permessi', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>', route: '#/ferie' },
+        { id: 'timbrature', label: 'Timbratura', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', route: '#/timbrature' },
+        { id: 'turni', label: 'Turni', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>', route: '#/turni' },
+        { id: 'buste-paga', label: 'Buste Paga', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="18" x2="13" y2="18"/></svg>', route: '#/buste-paga' }
     ],
 
     // Bottom nav mobile (max 5 items, il resto in "Altro")
@@ -102,6 +115,9 @@ ENI.Config = {
 
     // Moduli opzionali che il Super Admin puo' nascondere/mostrare da Impostazioni
     MODULI_OPZIONALI: ['crediti'],
+
+    // Moduli accessibili SOLO al Super Admin (menu + accesso diretto)
+    MODULI_SUPER_ADMIN: ['ferie', 'timbrature', 'turni', 'buste-paga'],
 
     // Modalita pagamento
     MODALITA_PAGAMENTO: [

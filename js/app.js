@@ -134,9 +134,14 @@ ENI.App = (function() {
     function _getSectionItemsForRole(ruolo) {
         var config = ENI.Config.RUOLI[ruolo];
         if (!config) return [];
+        var superOnly = ENI.Config.MODULI_SUPER_ADMIN || [];
+        var isSA = ENI.State.isSuperAdmin();
 
         return (ENI.Config.NAV_SECTION_ITEMS || []).filter(function(item) {
-            return config.moduli.indexOf(item.id) !== -1 && ENI.State.isModuloAttivo(item.id);
+            if (!ENI.State.isModuloAttivo(item.id)) return false;
+            // Moduli riservati al Super Admin: visibili solo a lui (a prescindere dal ruolo)
+            if (superOnly.indexOf(item.id) !== -1) return isSA;
+            return config.moduli.indexOf(item.id) !== -1;
         });
     }
 
@@ -188,6 +193,7 @@ ENI.App = (function() {
     // --- Render Nav Section (collapsible) ---
 
     function _renderNavSection(section, sectionItemMap) {
+        if (section.superAdminOnly && !ENI.State.isSuperAdmin()) return '';
         var visibleChildren = section.children.filter(function(id) { return sectionItemMap[id]; });
         if (visibleChildren.length === 0) return '';
 

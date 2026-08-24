@@ -970,6 +970,137 @@ ENI.API = (function() {
         return record;
     }
 
+    // Crea un dipendente CON login (utente Auth + riga personale) via Edge Function admin.
+    async function creaStaffConLogin(dati) {
+        var res = await getClient().functions.invoke('gestione-staff', { body: Object.assign({ azione: 'crea' }, dati) });
+        if (res.error) throw new Error('Servizio non raggiungibile: ' + res.error.message);
+        if (!res.data || !res.data.ok) throw new Error((res.data && res.data.error) || 'Errore creazione dipendente');
+        await scriviLog('Creato_Staff', 'Personale', dati.nome_completo + ' (' + dati.ruolo + ')');
+        return res.data.personale;
+    }
+
+    // Cambia il PIN (password Auth) di un dipendente via Edge Function admin.
+    async function cambiaPinStaff(authUserId, pin) {
+        var res = await getClient().functions.invoke('gestione-staff', { body: { azione: 'pin', auth_user_id: authUserId, pin: pin } });
+        if (res.error) throw new Error('Servizio non raggiungibile: ' + res.error.message);
+        if (!res.data || !res.data.ok) throw new Error((res.data && res.data.error) || 'Errore cambio PIN');
+        await scriviLog('Cambio_PIN_Staff', 'Personale', 'auth ' + authUserId);
+        return true;
+    }
+
+    // --- Richieste Ferie / Permessi ---
+
+    async function getRichiesteFerie(filtri) {
+        filtri = filtri || {};
+        var q = getClient().from('richieste_ferie')
+            .select('*, personale:personale_id(nome_completo, ruolo)')
+            .order('data_inizio', { ascending: false });
+        if (filtri.stato) q = q.eq('stato', filtri.stato);
+        var result = await q;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function salvaRichiestaFerie(dati) {
+        var result = await getClient().from('richieste_ferie')
+            .insert(dati).select('*, personale:personale_id(nome_completo, ruolo)').single();
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Nuova_Richiesta_Ferie', 'Ferie', (dati.tipo || 'ferie') + ' ' + dati.data_inizio + ' → ' + dati.data_fine);
+        return result.data;
+    }
+
+    async function aggiornaStatoRichiestaFerie(id, stato, note) {
+        var payload = {
+            stato: stato,
+            note_risposta: note || null,
+            gestita_da: ENI.State.getUserId(),
+            gestita_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        };
+        var result = await getClient().from('richieste_ferie')
+            .update(payload).eq('id', id).select('*, personale:personale_id(nome_completo, ruolo)').single();
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Gestione_Richiesta_Ferie', 'Ferie', 'id ' + id + ' → ' + stato);
+        return result.data;
+    }
+
+    async function eliminaRichiestaFerie(id) {
+        var result = await getClient().from('richieste_ferie').delete().eq('id', id);
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Elimina_Richiesta_Ferie', 'Ferie', 'id ' + id);
+        return true;
+    }
+
+    // --- Turni ---
+
+    async function getTurni(da, a) {
+        var result = await getClient().from('turni')
+            .select('*, personale:personale_id(nome_completo)')
+            .gte('data', da).lte('data', a)
+            .order('data', { ascending: true });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // Upsert per (personale_id, data): un turno per persona al giorno
+    async function salvaTurno(dati) {
+        var payload = {
+            personale_id: dati.personale_id,
+            data: dati.data,
+            tipo: dati.tipo || 'turno',
+            ora_inizio: dati.ora_inizio || null,
+            ora_fine: dati.ora_fine || null,
+            ora_inizio_2: dati.ora_inizio_2 || null,
+            ora_fine_2: dati.ora_fine_2 || null,
+            note: dati.note || null,
+            updated_at: new Date().toISOString()
+        };
+        var result = await getClient().from('turni')
+            .upsert(payload, { onConflict: 'personale_id,data' }).select().single();
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    async function eliminaTurno(personaleId, data) {
+        var result = await getClient().from('turni').delete()
+            .eq('personale_id', personaleId).eq('data', data);
+        if (result.error) throw new Error(result.error.message);
+        return true;
+    }
+
+    // --- Disponibilità (lato dipendente) ---
+
+    async function getDisponibilita(da, a) {
+        var result = await getClient().from('disponibilita')
+            .select('*, personale:personale_id(nome_completo)')
+            .gte('data', da).lte('data', a)
+            .order('data', { ascending: true });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function salvaDisponibilita(dati) {
+        var payload = {
+            personale_id: dati.personale_id,
+            data: dati.data,
+            disponibile: dati.disponibile !== false,
+            fascia: dati.fascia || 'indifferente',
+            note: dati.note || null,
+            updated_at: new Date().toISOString()
+        };
+        var result = await getClient().from('disponibilita')
+            .upsert(payload, { onConflict: 'personale_id,data' }).select().single();
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    async function eliminaDisponibilita(personaleId, data) {
+        var result = await getClient().from('disponibilita').delete()
+            .eq('personale_id', personaleId).eq('data', data);
+        if (result.error) throw new Error(result.error.message);
+        return true;
+    }
+
     // --- Log ---
 
     async function getLog(options) {
@@ -2599,6 +2730,18 @@ ENI.API = (function() {
         salvaManutenzione: salvaManutenzione,
         getPersonale: getPersonale,
         salvaPersonale: salvaPersonale,
+        creaStaffConLogin: creaStaffConLogin,
+        cambiaPinStaff: cambiaPinStaff,
+        getRichiesteFerie: getRichiesteFerie,
+        salvaRichiestaFerie: salvaRichiestaFerie,
+        aggiornaStatoRichiestaFerie: aggiornaStatoRichiestaFerie,
+        eliminaRichiestaFerie: eliminaRichiestaFerie,
+        getTurni: getTurni,
+        salvaTurno: salvaTurno,
+        eliminaTurno: eliminaTurno,
+        getDisponibilita: getDisponibilita,
+        salvaDisponibilita: salvaDisponibilita,
+        eliminaDisponibilita: eliminaDisponibilita,
         aggiornaPersonale: aggiornaPersonale,
         getLog: getLog,
         getDashboardData: getDashboardData,

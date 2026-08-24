@@ -21,6 +21,7 @@ ENI.Router = (function() {
         'lavaggi':      { module: 'Lavaggi',      id: 'lavaggi' },
         'vendita':      { module: 'Vendita',      id: 'vendita' },
         'magazzino':    { module: 'Magazzino',    id: 'magazzino' },
+        'mie-richieste':{ module: 'MieRichieste', id: 'mie-richieste' },
         'buoni':        { module: 'Buoni',        id: 'buoni' },
         'coefficiente-monofase': { module: 'CoefficienteMonofase', id: 'coefficiente-monofase' },
         'marginalita-carburante': { module: 'MarginalitaCarburante', id: 'marginalita-carburante' },
@@ -29,6 +30,10 @@ ENI.Router = (function() {
         'fatturazione': { module: 'Fatturazione', id: 'fatturazione' },
         'smac':         { module: 'Smac',         id: 'smac' },
         'personale':    { module: 'Personale',    id: 'personale' },
+        'ferie':        { module: 'Ferie',        id: 'ferie' },
+        'timbrature':   { module: 'Timbrature',   id: 'timbrature' },
+        'turni':        { module: 'Turni',        id: 'turni' },
+        'buste-paga':   { module: 'BustePaga',    id: 'buste-paga' },
         'manutenzioni': { module: 'Manutenzioni', id: 'manutenzioni' },
         'log':          { module: 'Log',          id: 'log' },
         'impostazioni': { module: 'Impostazioni', id: 'impostazioni' }

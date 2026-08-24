@@ -180,8 +180,8 @@ ENI.Modules.Personale = (function() {
                         '</select>' +
                     '</div>' +
                     '<div class="form-group">' +
-                        '<label class="form-label form-label-required">PIN (4 cifre)</label>' +
-                        '<input type="text" class="form-input" id="pers-pin" maxlength="4" pattern="[0-9]{4}" inputmode="numeric">' +
+                        '<label class="form-label form-label-required">PIN (6 cifre)</label>' +
+                        '<input type="text" class="form-input" id="pers-pin" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" placeholder="es. 123456">' +
                     '</div>' +
                 '</div>' +
                 '<div class="form-row">' +
@@ -209,25 +209,28 @@ ENI.Modules.Personale = (function() {
             var nome = modal.querySelector('#pers-nome').value.trim();
             var pin = modal.querySelector('#pers-pin').value.trim();
 
-            if (!username || !nome || !pin || pin.length !== 4) {
-                ENI.UI.warning('Compila tutti i campi obbligatori. PIN deve essere 4 cifre.');
+            if (!username || !nome || !/^[0-9]{6}$/.test(pin)) {
+                ENI.UI.warning('Compila i campi obbligatori. Il PIN deve essere di 6 cifre.');
                 return;
             }
 
+            var btn = modal.querySelector('#btn-salva-pers');
+            btn.disabled = true;
             try {
-                await ENI.API.salvaPersonale({
+                // Crea utente Auth + riga personale (via Edge Function admin)
+                await ENI.API.creaStaffConLogin({
                     username: username.toLowerCase(),
                     nome_completo: nome,
                     ruolo: modal.querySelector('#pers-ruolo').value,
                     pin: pin,
                     email: modal.querySelector('#pers-email').value.trim() || null,
-                    telefono: modal.querySelector('#pers-telefono').value.trim() || null,
-                    attivo: true
+                    telefono: modal.querySelector('#pers-telefono').value.trim() || null
                 });
                 ENI.UI.closeModal(modal);
-                ENI.UI.success('Dipendente "' + nome + '" aggiunto');
+                ENI.UI.success('Dipendente "' + nome + '" creato con login');
                 await _loadPersonale();
             } catch(e) {
+                btn.disabled = false;
                 ENI.UI.error('Errore: ' + e.message);
             }
         });
@@ -255,8 +258,8 @@ ENI.Modules.Personale = (function() {
                 '</div>' +
                 '<div class="form-row">' +
                     '<div class="form-group">' +
-                        '<label class="form-label">Nuovo PIN (lascia vuoto per non cambiare)</label>' +
-                        '<input type="text" class="form-input" id="edit-pin" maxlength="4" inputmode="numeric" placeholder="****">' +
+                        '<label class="form-label">Nuovo PIN (6 cifre, vuoto = non cambia)</label>' +
+                        '<input type="text" class="form-input" id="edit-pin" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" placeholder="******">' +
                     '</div>' +
                     '<div class="form-group">' +
                         '<label class="form-label">Attivo</label>' +
@@ -281,20 +284,26 @@ ENI.Modules.Personale = (function() {
             };
 
             var newPin = modal.querySelector('#edit-pin').value.trim();
-            if (newPin) {
-                if (newPin.length !== 4) {
-                    ENI.UI.warning('PIN deve essere 4 cifre');
-                    return;
-                }
-                dati.pin = newPin;
+            if (newPin && !/^[0-9]{6}$/.test(newPin)) {
+                ENI.UI.warning('Il PIN deve essere di 6 cifre');
+                return;
             }
 
+            var btn = modal.querySelector('#btn-update-pers');
+            btn.disabled = true;
             try {
+                // Dati anagrafici (client)
                 await ENI.API.aggiornaPersonale(id, dati);
+                // Cambio PIN (Edge Function admin) se inserito
+                if (newPin) {
+                    if (!persona.auth_user_id) throw new Error('Questo dipendente non ha un login collegato: ricrealo dal pulsante "Nuovo Dipendente".');
+                    await ENI.API.cambiaPinStaff(persona.auth_user_id, newPin);
+                }
                 ENI.UI.closeModal(modal);
                 ENI.UI.success('Dipendente aggiornato');
                 await _loadPersonale();
             } catch(e) {
+                btn.disabled = false;
                 ENI.UI.error('Errore: ' + e.message);
             }
         });
