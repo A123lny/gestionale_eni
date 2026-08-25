@@ -139,6 +139,10 @@ ENI.Config = {
     // Categorie magazzino
     CATEGORIE_MAGAZZINO: ['Lavaggi', 'Accessori', 'Tergicristalli', 'Catene', 'Profumatori', 'Uso interno', 'Oli e lubrificanti', 'Bar', 'Detailing', 'AdBlue', 'Altro'],
 
+    // Categoria speciale: incasso di un credito pregresso (NON è una vendita).
+    // La cassa la esclude dal venduto e la sottrae dai crediti (rientri).
+    CATEGORIA_INCASSO_CREDITO: 'Incasso Credito',
+
     // Metodi pagamento POS
     METODI_PAGAMENTO_POS: [
         { value: 'contanti', label: 'Contanti' },

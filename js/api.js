@@ -1421,7 +1421,7 @@ ENI.API = (function() {
         var vendite = await getVendite({ data: data, stato: 'completata', limit: 500 });
 
         if (!vendite || vendite.length === 0) {
-            return { totaleVendite: 0, numVendite: 0, perCategoria: {}, perMetodo: { contanti: 0, pos: 0, buono: 0, wallet: 0 } };
+            return { totaleVendite: 0, numVendite: 0, perCategoria: {}, perMetodo: { contanti: 0, pos: 0, buono: 0, wallet: 0 }, incassoCrediti: 0 };
         }
 
         var totaleVendite = 0;
@@ -1445,11 +1445,18 @@ ENI.API = (function() {
             });
         }
 
+        // Categoria speciale "Incasso Credito": è un rientro di credito, non un venduto.
+        // Va escluso dal totale venduto e dalle categorie, e restituito a parte.
+        var CAT_INC = (ENI.Config && ENI.Config.CATEGORIA_INCASSO_CREDITO) || 'Incasso Credito';
+        var incassoCrediti = Number(perCategoria[CAT_INC] || 0);
+        if (perCategoria[CAT_INC]) delete perCategoria[CAT_INC];
+
         return {
-            totaleVendite: totaleVendite,
+            totaleVendite: totaleVendite - incassoCrediti,
             numVendite: vendite.length,
             perCategoria: perCategoria,
-            perMetodo: perMetodo
+            perMetodo: perMetodo,
+            incassoCrediti: incassoCrediti
         };
     }
 

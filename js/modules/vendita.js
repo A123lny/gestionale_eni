@@ -111,6 +111,7 @@ ENI.Modules.Vendita = (function() {
                     '</div>' +
                     '<div style="margin-bottom: var(--space-3); display: flex; gap: var(--space-2);">' +
                         '<button class="btn btn-sm btn-outline" id="btn-manuale">\u270F\uFE0F Aggiungi manuale</button>' +
+                        '<button class="btn btn-sm btn-outline" id="btn-incasso-credito">\u{1F4B0} Incasso Credito</button>' +
                         '<button class="btn btn-sm btn-outline" id="btn-svuota" style="margin-left: auto;">\u{1F5D1}\uFE0F Svuota carrello</button>' +
                     '</div>' +
 
@@ -174,6 +175,12 @@ ENI.Modules.Vendita = (function() {
         var btnManuale = document.getElementById('btn-manuale');
         if (btnManuale) {
             btnManuale.addEventListener('click', _showFormManuale);
+        }
+
+        // Incasso Credito (rientro di un credito pregresso, NON una vendita)
+        var btnIncCred = document.getElementById('btn-incasso-credito');
+        if (btnIncCred) {
+            btnIncCred.addEventListener('click', _showFormIncassoCredito);
         }
 
         // Svuota carrello
@@ -602,6 +609,64 @@ ENI.Modules.Vendita = (function() {
                 sconto: 0,
                 sconto_tipo: 'fisso',
                 totale_riga: prezzo * qty
+            });
+
+            ENI.UI.closeModal(modal);
+            _renderCarrello();
+            _renderRiepilogo();
+            _refocusBarcode();
+        });
+    }
+
+    // --- Incasso Credito (rientro di un credito pregresso) ---
+    // Aggiunge una riga con categoria speciale che la Cassa tratta come "rientro":
+    // esclusa dal venduto e sottratta dai crediti. Il pagamento (contanti/POS) si
+    // completa poi col normale flusso di cassa.
+    function _showFormIncassoCredito() {
+        var body =
+            '<form id="form-incasso-credito">' +
+                '<div class="text-sm text-muted mb-2">Registra i soldi che un cliente ti restituisce per un credito pregresso (es. Lenny). ' +
+                    '<strong>Non è una vendita</strong>: in cassa verrà scalato dai crediti.</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Cliente / causale</label>' +
+                    '<input type="text" class="form-input" id="inc-cliente" placeholder="es. Lenny">' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label form-label-required">Importo incassato (€)</label>' +
+                    '<input type="number" step="0.01" min="0.01" class="form-input" id="inc-importo" placeholder="es. 40.00">' +
+                '</div>' +
+            '</form>';
+
+        var modal = ENI.UI.showModal({
+            title: '\u{1F4B0} Incasso Credito',
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-primary" id="btn-add-incasso">Aggiungi</button>'
+        });
+
+        modal.querySelector('#inc-importo').focus();
+
+        modal.querySelector('#btn-add-incasso').addEventListener('click', function() {
+            var cliente = modal.querySelector('#inc-cliente').value.trim();
+            var importo = parseFloat(modal.querySelector('#inc-importo').value);
+
+            if (isNaN(importo) || importo <= 0) {
+                ENI.UI.warning('Inserisci un importo valido');
+                return;
+            }
+
+            _carrello.push({
+                prodotto_id: null,
+                codice_prodotto: null,
+                barcode: null,
+                nome_prodotto: 'Incasso credito' + (cliente ? ' - ' + cliente : ''),
+                categoria: ENI.Config.CATEGORIA_INCASSO_CREDITO,
+                quantita: 1,
+                prezzo_unitario: importo,
+                sconto: 0,
+                sconto_tipo: 'fisso',
+                totale_riga: importo
             });
 
             ENI.UI.closeModal(modal);

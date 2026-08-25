@@ -109,7 +109,8 @@ ENI.Modules.Cassa = (function() {
             blocco('⏳', 'Crediti Generati Oggi',
                 voce('Buoni ENI Carburante', 'I <strong>voucher carburante ENI</strong> usati dai clienti.') +
                 voce('Bollette/Green Money', '<strong>Clienti che non pagano subito</strong> e vanno in credito (es. Lenny).') +
-                voce('4TSCARD', 'Addebiti dei clienti con <strong>tessera fidelity</strong>.')
+                voce('4TSCARD', 'Addebiti dei clienti con <strong>tessera fidelity</strong>.') +
+                voce('Incasso Crediti (rientri)', 'Quando un cliente <strong>ti ripaga</strong> un credito passato, registralo nel modulo <strong>Vendite → 💰 Incasso Credito</strong>: compare qui in automatico e viene <strong>scalato dai crediti</strong> (non è una vendita). Conti comunque i contanti/POS nel cassetto come sempre.')
             ) +
 
             '<div style="background:var(--bg-secondary); border-radius:8px; padding:10px; font-size:0.85rem;">' +
@@ -353,6 +354,7 @@ ENI.Modules.Cassa = (function() {
                     '<div class="cassa-grid">' +
                         _cassaInputHint('Buoni ENI Carburante', 'crediti_buoni_eni', c.crediti_buoni_eni, 'Inserisci qui i voucher carburante.') +
                         _cassaInputHint('Bollette/Green Money', 'crediti_bollette', c.crediti_bollette, 'Clienti che non pagano subito (es. Lenny).') +
+                        _incassoCreditiRO(c) +
                     '</div>' +
                     '<div class="cassa-subtotal text-right mt-2">Totale Crediti (senza 4TSCARD): <span id="tot-crediti-base">\u20AC 0,00</span></div>'
                 ) +
@@ -587,6 +589,29 @@ ENI.Modules.Cassa = (function() {
                     'title="Dato dal modulo Vendite — non modificabile qui" ' +
                     'style="background:var(--bg-secondary); cursor:not-allowed;" ' +
                     'data-field="' + name + '" value="' + vStr + '">' +
+            '</div>' +
+        '</div>';
+    }
+
+    // Incasso Crediti (rientri) in sola lettura: dal modulo Vendite (categoria "Incasso Credito").
+    // Viene SOTTRATTO dai crediti: è un credito pregresso che rientra, non una vendita.
+    function _incassoCreditiRO(c) {
+        var v;
+        if (_posTotals && _posTotals.numVendite > 0) {
+            v = Number(_posTotals.incassoCrediti || 0);
+        } else {
+            v = Number((c && c.incasso_crediti) || 0);
+        }
+        var vStr = v ? v.toFixed(2) : '0';
+        return '<div class="cassa-row" style="grid-column: 1 / -1;">' +
+            '<span class="cassa-row-label">Incasso Crediti (rientri) −' +
+                '<span class="text-xs" style="display:block; color:var(--color-gray-500); font-weight:400;">Dalle Vendite (categoria "Incasso Credito"): scalato dai crediti</span>' +
+            '</span>' +
+            '<div class="cassa-row-input">' +
+                '<input type="number" step="0.01" class="form-input cassa-field" readonly ' +
+                    'title="Rientri di crediti dal modulo Vendite — non modificabile qui" ' +
+                    'style="background:var(--bg-secondary); cursor:not-allowed;" ' +
+                    'data-field="incasso_crediti" value="' + vStr + '">' +
             '</div>' +
         '</div>';
     }
@@ -856,10 +881,9 @@ ENI.Modules.Cassa = (function() {
         // Totale incassato
         var totIncassato = contantiNetti + totPosAll + totAltroInc + totBuoniInc;
 
-        // Crediti (base + 4TSCARD)
+        // Crediti (base − rientri + 4TSCARD). I rientri (Incasso Credito dalle Vendite) si sottraggono.
         var totCreditiBase =
-            val('crediti_paghero') + val('crediti_mobile_payment') +
-            val('crediti_buoni_eni') + val('crediti_voucher') + val('crediti_bollette');
+            val('crediti_buoni_eni') + val('crediti_bollette') - val('incasso_crediti');
         var tot4tscard = _getPosGroupTotal('crediti-4tscard');
         var totCrediti = totCreditiBase + tot4tscard;
 
@@ -1025,8 +1049,7 @@ ENI.Modules.Cassa = (function() {
 
         var tot4tscard = _getPosGroupTotal('crediti-4tscard');
         var totCrediti =
-            val('crediti_paghero') + val('crediti_mobile_payment') +
-            val('crediti_buoni_eni') + val('crediti_voucher') + val('crediti_bollette') +
+            val('crediti_buoni_eni') + val('crediti_bollette') - val('incasso_crediti') +
             tot4tscard;
 
         function collectPosGroup(groupId) {
@@ -1085,6 +1108,7 @@ ENI.Modules.Cassa = (function() {
             crediti_buoni_eni_desc:  (document.querySelector('[data-field="crediti_buoni_eni_desc"]') || {}).value || null,
             crediti_voucher:         val('crediti_voucher'),
             crediti_bollette:        val('crediti_bollette'),
+            incasso_crediti:         val('incasso_crediti'),
             crediti_4tscard:         collectPosGroup('crediti-4tscard'),
             totale_venduto:   totVenduto,
             totale_incassato: totIncassato,
