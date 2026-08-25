@@ -117,7 +117,11 @@ ENI.App = (function() {
         var config = ENI.Config.RUOLI[ruolo];
         if (!config) return [];
 
+        var isSA = ENI.State.isSuperAdmin();
         var items = ENI.Config.NAV_ITEMS.filter(function(item) {
+            // "Le mie richieste" è il portale del dipendente: inutile al super admin,
+            // che gestisce ferie/permessi dei dipendenti in Gestione Personale.
+            if (item.id === 'mie-richieste' && isSA) return false;
             return config.moduli.indexOf(item.id) !== -1 && ENI.State.isModuloAttivo(item.id);
         });
 
