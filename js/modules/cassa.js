@@ -179,27 +179,29 @@ ENI.Modules.Cassa = (function() {
                             '<div class="cassa-subtotal text-right mt-3">Totale Carburante: <span id="tot-carburante">\u20AC 0,00</span></div>'
                         ) +
 
-                        // Venduto Altro
-                        _section('\u{1F6D2} Venduto Altro' +
+                        // Venduto Negozio (fonte unica: modulo Vendite)
+                        _section('\u{1F6D2} Venduto Negozio' +
                             (_posTotals && _posTotals.numVendite > 0
                                 ? ' <span class="badge badge-success" style="font-size:0.75rem; margin-left:8px;">' +
-                                    _posTotals.numVendite + ' vendite POS: ' + ENI.UI.formatValuta(_posTotals.totaleVendite) +
+                                    _posTotals.numVendite + ' vendite: ' + ENI.UI.formatValuta(_posTotals.totaleVendite) +
                                   '</span>'
                                 : ''),
+                            _hint('\u2139\uFE0F Importi presi <strong>automaticamente dal modulo Vendite</strong> del giorno (sola lettura). Per correggere una vendita, aprila nel modulo Vendite.') +
                             '<div class="cassa-grid">' +
-                                _cassaInputPOS('Bar', 'venduto_bar', c.venduto_bar, 'Bar') +
-                                _cassaInputPOS('Oli e lubrificanti', 'venduto_olio', c.venduto_olio, 'Oli e lubrificanti') +
-                                _cassaInputPOS('Accessori', 'venduto_accessori', c.venduto_accessori, 'Accessori') +
-                                _cassaInputPOS('AdBlue', 'venduto_adblue', c.venduto_adblue, 'AdBlue') +
-                                _cassaInputPOS('Lavaggi', 'venduto_lavaggi', c.venduto_lavaggi, 'Lavaggi') +
-                                _cassaInput('Buoni', 'venduto_buoni', c.venduto_buoni, 'number') +
-                                _cassaInputPOS('Tergicristalli', 'venduto_tergicristalli', c.venduto_tergicristalli, 'Tergicristalli') +
-                                _cassaInputPOS('Catene', 'venduto_catene', c.venduto_catene, 'Catene') +
-                                _cassaInputPOS('Profumatori', 'venduto_profumatori', c.venduto_profumatori, 'Profumatori') +
-                                _cassaInputPOS('Detailing', 'venduto_detailing', c.venduto_detailing, 'Detailing') +
-                                _cassaInputPOS('Uso interno', 'venduto_uso_interno', c.venduto_uso_interno, 'Uso interno') +
+                                _vendutoRO('Bar', 'venduto_bar', 'Bar', c) +
+                                _vendutoRO('Oli e lubrificanti', 'venduto_olio', 'Oli e lubrificanti', c) +
+                                _vendutoRO('Accessori', 'venduto_accessori', 'Accessori', c) +
+                                _vendutoRO('AdBlue', 'venduto_adblue', 'AdBlue', c) +
+                                _vendutoRO('Lavaggi', 'venduto_lavaggi', 'Lavaggi', c) +
+                                _vendutoRO('Tergicristalli', 'venduto_tergicristalli', 'Tergicristalli', c) +
+                                _vendutoRO('Catene', 'venduto_catene', 'Catene', c) +
+                                _vendutoRO('Profumatori', 'venduto_profumatori', 'Profumatori', c) +
+                                _vendutoRO('Detailing', 'venduto_detailing', 'Detailing', c) +
+                                _vendutoRO('Uso interno', 'venduto_uso_interno', 'Uso interno', c) +
+                                _vendutoRO('Altro / Varie', 'venduto_altro', '__ALTRO__', c) +
                             '</div>' +
-                            '<div class="cassa-subtotal text-right mt-2">Totale Altro: <span id="tot-altro">\u20AC 0,00</span></div>'
+                            '<div class="text-right mt-2"><a href="#/vendita" class="text-xs" style="color:var(--color-primary);">Vai alle Vendite \u2192</a></div>' +
+                            '<div class="cassa-subtotal text-right mt-2">Totale Negozio: <span id="tot-altro">\u20AC 0,00</span></div>'
                         ) +
 
                         // TOTALE VENDUTO
@@ -237,6 +239,9 @@ ENI.Modules.Cassa = (function() {
                                 '<div class="cassa-subtotal text-right" style="color:var(--color-danger);">(+) Spese: <span id="sub-spese">' + ENI.UI.formatValuta(totSpese) + '</span></div>' +
                                 '<div class="cassa-subtotal text-right" style="font-weight:700; color:var(--color-secondary);">= Contanti netti: <span id="tot-contanti">\u20AC 0,00</span></div>' +
                                 '<div class="cassa-subtotal text-right mt-2" style="color:var(--color-gray-500); font-style:italic;">Verifica fondo: Lordi &minus; Fondo = <span id="verifica-fondo">\u20AC 0,00</span></div>' +
+                                (_posTotals && _posTotals.perMetodo && _posTotals.perMetodo.contanti > 0
+                                    ? '<div class="cassa-subtotal text-right" style="color:var(--color-gray-500); font-style:italic;">Promemoria \u2014 vendite in contanti oggi: ' + ENI.UI.formatValuta(_posTotals.perMetodo.contanti) + '</div>'
+                                    : '') +
                             '</div>'
                         ) +
 
@@ -388,8 +393,12 @@ ENI.Modules.Cassa = (function() {
         // Sblocca cassa chiusa per modifica (re-render con isChiusa=false)
         var btnSblocca = contentEl.querySelector('#btn-sblocca-cassa');
         if (btnSblocca) {
-            btnSblocca.addEventListener('click', function() {
+            btnSblocca.addEventListener('click', async function() {
                 _modalitaModifica = true;
+                // Ricarica le vendite del giorno: così il Venduto Negozio si riallinea
+                // al modulo Vendite anche su una cassa già chiusa (permette di correggerla).
+                try { _posTotals = await ENI.API.getVenditeTotaliPerData(_dataSelezionata); }
+                catch (e) { _posTotals = null; }
                 _renderForm();
             });
         }
@@ -486,6 +495,56 @@ ENI.Modules.Cassa = (function() {
                     'data-field="' + name + '" value="' + value + '">' +
             '</div>' +
             '<div class="text-xs text-muted" style="margin-top:2px;">' + hint + '</div>' +
+        '</div>';
+    }
+
+    // Mappa campo cassa -> categoria del modulo Vendite (venduto negozio, sola lettura)
+    var _VENDUTO_CAT = {
+        'venduto_bar': 'Bar',
+        'venduto_olio': 'Oli e lubrificanti',
+        'venduto_accessori': 'Accessori',
+        'venduto_adblue': 'AdBlue',
+        'venduto_lavaggi': 'Lavaggi',
+        'venduto_tergicristalli': 'Tergicristalli',
+        'venduto_catene': 'Catene',
+        'venduto_profumatori': 'Profumatori',
+        'venduto_detailing': 'Detailing',
+        'venduto_uso_interno': 'Uso interno'
+    };
+
+    // "Altro / Varie" = totale vendite del giorno − categorie mappate.
+    // Cattura la categoria "Altro" e ogni categoria senza campo dedicato: nulla va perso.
+    function _altroVarieValue() {
+        if (!_posTotals || !_posTotals.perCategoria) return 0;
+        var mapped = 0;
+        for (var campo in _VENDUTO_CAT) {
+            if (_VENDUTO_CAT.hasOwnProperty(campo)) {
+                mapped += Number(_posTotals.perCategoria[_VENDUTO_CAT[campo]] || 0);
+            }
+        }
+        var altro = Number(_posTotals.totaleVendite || 0) - mapped;
+        return altro > 0 ? Math.round(altro * 100) / 100 : 0;
+    }
+
+    // Campo venduto negozio in SOLA LETTURA, alimentato dal modulo Vendite.
+    // Con vendite del giorno usa quelle; altrimenti (cassa chiusa/storica) il valore salvato.
+    function _vendutoRO(label, name, catKey, c) {
+        var v;
+        if (_posTotals && _posTotals.numVendite > 0) {
+            v = (catKey === '__ALTRO__') ? _altroVarieValue()
+                : Number((_posTotals.perCategoria && _posTotals.perCategoria[catKey]) || 0);
+        } else {
+            v = Number((c && c[name]) || 0);
+        }
+        var vStr = v ? v.toFixed(2) : '0';
+        return '<div class="cassa-row">' +
+            '<span class="cassa-row-label">' + label + '</span>' +
+            '<div class="cassa-row-input">' +
+                '<input type="number" step="0.01" class="form-input cassa-field" readonly ' +
+                    'title="Dato dal modulo Vendite — non modificabile qui" ' +
+                    'style="background:var(--bg-secondary); cursor:not-allowed;" ' +
+                    'data-field="' + name + '" value="' + vStr + '">' +
+            '</div>' +
         '</div>';
     }
 
@@ -711,12 +770,12 @@ ENI.Modules.Cassa = (function() {
         var totCarburante =
             val('super_sp_euro') + val('diesel_euro') + val('diesel_plus_euro');
 
-        // Altro venduto
+        // Venduto negozio (dal modulo Vendite, incl. Altro/Varie)
         var totAltro =
             val('venduto_bar') + val('venduto_olio') + val('venduto_accessori') +
-            val('venduto_adblue') + val('venduto_lavaggi') + val('venduto_buoni') +
+            val('venduto_adblue') + val('venduto_lavaggi') +
             val('venduto_tergicristalli') + val('venduto_catene') + val('venduto_profumatori') +
-            val('venduto_detailing') + val('venduto_uso_interno');
+            val('venduto_detailing') + val('venduto_uso_interno') + val('venduto_altro');
 
         var totVenduto = totCarburante + totAltro;
 
@@ -899,9 +958,9 @@ ENI.Modules.Cassa = (function() {
         var totCarburante = val('super_sp_euro') + val('diesel_euro') + val('diesel_plus_euro');
         var totAltro =
             val('venduto_bar') + val('venduto_olio') + val('venduto_accessori') +
-            val('venduto_adblue') + val('venduto_lavaggi') + val('venduto_buoni') +
+            val('venduto_adblue') + val('venduto_lavaggi') +
             val('venduto_tergicristalli') + val('venduto_catene') + val('venduto_profumatori') +
-            val('venduto_detailing') + val('venduto_uso_interno');
+            val('venduto_detailing') + val('venduto_uso_interno') + val('venduto_altro');
         var totVenduto = totCarburante + totAltro;
 
         var tagli = [5, 10, 20, 50, 100, 200, 500];
@@ -952,12 +1011,13 @@ ENI.Modules.Cassa = (function() {
             venduto_accessori:      val('venduto_accessori'),
             venduto_adblue:         val('venduto_adblue'),
             venduto_lavaggi:        val('venduto_lavaggi'),
-            venduto_buoni:          val('venduto_buoni'),
+            venduto_buoni:          0,
             venduto_tergicristalli: val('venduto_tergicristalli'),
             venduto_catene:         val('venduto_catene'),
             venduto_profumatori:    val('venduto_profumatori'),
             venduto_detailing:      val('venduto_detailing'),
             venduto_uso_interno:    val('venduto_uso_interno'),
+            venduto_altro:          val('venduto_altro'),
             banconote_5:   val('banconote_5'),
             banconote_10:  val('banconote_10'),
             banconote_20:  val('banconote_20'),
