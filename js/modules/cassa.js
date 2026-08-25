@@ -107,7 +107,6 @@ ENI.Modules.Cassa = (function() {
             ) +
 
             blocco('⏳', 'Crediti Generati Oggi',
-                voce('Pagherò Spese Cassa', 'Un <strong>debito</strong> generato (es. verso un fornitore): soldi da sistemare in seguito.') +
                 voce('Buoni ENI Carburante', 'I <strong>voucher carburante ENI</strong> usati dai clienti.') +
                 voce('Bollette/Green Money', '<strong>Clienti che non pagano subito</strong> e vanno in credito (es. Lenny).') +
                 voce('4TSCARD', 'Addebiti dei clienti con <strong>tessera fidelity</strong>.')
@@ -352,7 +351,6 @@ ENI.Modules.Cassa = (function() {
                 // Crediti Generati
                 _section('\u23F3 Crediti Generati Oggi',
                     '<div class="cassa-grid">' +
-                        _cassaInput('Pagher\u00F2 Spese Cassa', 'crediti_paghero', c.crediti_paghero, 'number') +
                         _cassaInputHint('Buoni ENI Carburante', 'crediti_buoni_eni', c.crediti_buoni_eni, 'Inserisci qui i voucher carburante.') +
                         _cassaInputHint('Bollette/Green Money', 'crediti_bollette', c.crediti_bollette, 'Clienti che non pagano subito (es. Lenny).') +
                     '</div>' +
