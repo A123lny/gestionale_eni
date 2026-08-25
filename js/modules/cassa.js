@@ -23,8 +23,12 @@ ENI.Modules.Cassa = (function() {
         _dataSelezionata = ENI.UI.oggiISO();
 
         container.innerHTML =
-            '<div class="page-header">' +
-                '<h1 class="page-title">\u{1F4B0} Cassa</h1>' +
+            '<div class="page-header" style="display:flex; align-items:center; gap:10px;">' +
+                '<h1 class="page-title" style="margin:0;">\u{1F4B0} Cassa</h1>' +
+                '<button type="button" id="btn-guida-cassa" title="Guida: cosa inserire in ogni campo" ' +
+                    'style="background:none; border:1.5px solid var(--color-primary); color:var(--color-primary); ' +
+                    'border-radius:50%; width:30px; height:30px; padding:0; font-weight:700; cursor:pointer; ' +
+                    'font-size:1rem; line-height:1; flex:0 0 auto;">?</button>' +
             '</div>' +
             '<div class="cassa-tabs">' +
                 '<button class="cassa-tab active" data-tab="chiusura">\u{1F4CB} Chiusura Giornaliera</button>' +
@@ -50,7 +54,77 @@ ENI.Modules.Cassa = (function() {
             });
         });
 
+        // Guida: cosa inserire in ogni campo
+        var btnGuida = container.querySelector('#btn-guida-cassa');
+        if (btnGuida) btnGuida.addEventListener('click', _mostraGuidaCassa);
+
         await _loadAndRenderCassa();
+    }
+
+    // Guida contestuale: spiega ogni campo/sezione della chiusura
+    function _mostraGuidaCassa() {
+        var voce = function(titolo, testo) {
+            return '<div style="margin-bottom:10px;">' +
+                '<div style="font-weight:600; color:var(--color-secondary);">' + titolo + '</div>' +
+                '<div class="text-sm text-muted">' + testo + '</div>' +
+            '</div>';
+        };
+        var blocco = function(icona, titolo, contenuto) {
+            return '<div style="margin-bottom:18px;">' +
+                '<div style="font-weight:700; font-size:1.05rem; margin-bottom:8px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">' + icona + ' ' + titolo + '</div>' +
+                contenuto +
+            '</div>';
+        };
+
+        var body =
+            '<div style="max-height:65vh; overflow-y:auto; padding-right:6px;">' +
+            '<div class="text-sm text-muted" style="margin-bottom:16px;">La <strong>Data conteggio</strong> è il <strong>giorno precedente</strong> (la chiusura si fa il giorno dopo). Alla fine, <strong>Differenza = Venduto − Incassato − Crediti</strong>: vicino a 0 significa che la cassa quadra.</div>' +
+
+            blocco('⛽', 'Venduto Carburante',
+                voce('Super SP / Diesel / Diesel+', 'Litri ed euro venduti nella <strong>giornata precedente</strong>, <strong>SENZA la notte</strong>. Il dato comprensivo della notte va sul portale PA e in Marginalità Carburante.')
+            ) +
+
+            blocco('\u{1F6D2}', 'Venduto Negozio',
+                voce('Tutte le voci (Bar, AdBlue, Lavaggi, Altro/Varie…)', 'Compilate <strong>in automatico dal modulo Vendite</strong> del giorno: sono in sola lettura. Per correggere un importo, apri la vendita nel modulo Vendite. "Altro / Varie" raccoglie tutto ciò che non ha una categoria dedicata.')
+            ) +
+
+            blocco('\u{1F4B5}', 'Contanti',
+                voce('Banconote', 'Inserisci il <strong>numero di pezzi</strong> per ogni taglio (non l\'importo).') +
+                voce('Monete', 'Inserisci il <strong>totale in €</strong> delle monete.') +
+                voce('Fondo Cassa Fisso', 'Solo informativo: <strong>non</strong> incide sul calcolo.')
+            ) +
+
+            blocco('\u{1F4B3}', 'POS',
+                voce('BSI Carburante / Lavaggi / Accessori, Carisp, Carta Azzurra', 'Gli importi dei vari terminali/circuiti. Puoi aggiungere più righe per lo stesso terminale.')
+            ) +
+
+            blocco('\u{1F3AB}', 'Buoni Incassati (nostri)',
+                voce('Buoni Cartacei / Wallet Digitale', 'Buoni emessi <strong>da noi</strong> e usati oggi dai clienti come pagamento.')
+            ) +
+
+            blocco('\u{1F4B8}', 'Spese in Contanti',
+                voce('Spese del giorno', 'Soldi <strong>usciti dal cassetto</strong> per spese già pagate in contanti. Si registrano nel modulo Spese e vengono <strong>riaggiunte</strong> all\'incassato (perché quei contanti mancano fisicamente ma erano incasso).')
+            ) +
+
+            blocco('⏳', 'Crediti Generati Oggi',
+                voce('Pagherò Spese Cassa', 'Un <strong>debito</strong> generato (es. verso un fornitore): soldi da sistemare in seguito.') +
+                voce('Buoni ENI Carburante', 'I <strong>voucher carburante ENI</strong> usati dai clienti.') +
+                voce('Bollette/Green Money', '<strong>Clienti che non pagano subito</strong> e vanno in credito (es. Lenny).') +
+                voce('4TSCARD', 'Addebiti dei clienti con <strong>tessera fidelity</strong>.')
+            ) +
+
+            '<div style="background:var(--bg-secondary); border-radius:8px; padding:10px; font-size:0.85rem;">' +
+                '💡 <strong>In breve:</strong> il carburante lo scrivi a mano, il negozio arriva da solo dalle Vendite. ' +
+                'Nell\'incassato metti come hai preso i soldi (contanti + POS + buoni). Nei crediti solo ciò che <strong>non</strong> è stato incassato oggi.' +
+            '</div>' +
+            '</div>';
+
+        ENI.UI.showModal({
+            title: '❓ Guida alla Chiusura Cassa',
+            body: body,
+            size: 'lg',
+            footer: '<button class="btn btn-primary" data-modal-close>Ho capito</button>'
+        });
     }
 
     // ============================================================
@@ -261,14 +335,6 @@ ENI.Modules.Cassa = (function() {
                             '<div class="cassa-subtotal text-right mt-2">Totale Buoni Incassati: <span id="tot-buoni-incassati">\u20AC 0,00</span></div>'
                         ) +
 
-                        // Altro Incassato
-                        _section('\u{1F3E6} Altro Incassato',
-                            '<div class="cassa-grid">' +
-                                _cassaInput('Assegni', 'assegni', c.assegni, 'number') +
-                                _cassaInput('Bonifici', 'bonifici', c.bonifici, 'number') +
-                            '</div>'
-                        ) +
-
                         // TOTALE INCASSATO
                         '<div class="cassa-totale">' +
                             '<div class="cassa-totale-label">\u{1F4B5} TOTALE INCASSATO</div>' +
@@ -280,17 +346,6 @@ ENI.Modules.Cassa = (function() {
                 '</div>' +
                 // ════════ FINE 2 COLONNE ════════
 
-                // Self Notturno — solo tracciamento, NON nel calcolo
-                '<div class="cassa-info-box mb-4">' +
-                    '<div class="cassa-section-title">\u{1F315} Self Notturno <span class="badge badge-gray" style="margin-left:8px;">Solo tracciamento</span></div>' +
-                    '<div class="cassa-grid">' +
-                        _cassaInput('Litri', 'self_notturno_litri', c.self_notturno_litri, 'number') +
-                        _cassaInput('Euro', 'self_notturno_euro', c.self_notturno_euro, 'number') +
-                        _cassaInput('Contanti', 'self_notturno_contanti', c.self_notturno_contanti, 'number') +
-                    '</div>' +
-                    '<div class="text-sm text-muted mt-2">\u26A0\uFE0F Tracciato per rendiconto mensile, <strong>non incluso</strong> nei totali venduto/incassato</div>' +
-                '</div>' +
-
                 // Spese in contanti (caricate da modulo Spese)
                 _renderSpeseSection(totSpese) +
 
@@ -298,17 +353,7 @@ ENI.Modules.Cassa = (function() {
                 _section('\u23F3 Crediti Generati Oggi',
                     '<div class="cassa-grid">' +
                         _cassaInput('Pagher\u00F2 Spese Cassa', 'crediti_paghero', c.crediti_paghero, 'number') +
-                        _cassaInput('Mobile Payment', 'crediti_mobile_payment', c.crediti_mobile_payment, 'number') +
                         _cassaInputHint('Buoni ENI Carburante', 'crediti_buoni_eni', c.crediti_buoni_eni, 'Inserisci qui i voucher carburante.') +
-                        '<div class="cassa-row" style="grid-column: 1 / -1;">' +
-                            '<span class="cassa-row-label">Desc. Buoni ENI</span>' +
-                            '<div class="cassa-row-input" style="max-width:280px;">' +
-                                '<input type="text" class="form-input cassa-field" ' +
-                                    'data-field="crediti_buoni_eni_desc" value="' + ENI.UI.escapeHtml(c.crediti_buoni_eni_desc || '') + '" ' +
-                                    'placeholder="es. Buono carburante cliente X">' +
-                            '</div>' +
-                        '</div>' +
-                        _cassaInput('Voucher', 'crediti_voucher', c.crediti_voucher, 'number') +
                         _cassaInputHint('Bollette/Green Money', 'crediti_bollette', c.crediti_bollette, 'Clienti che non pagano subito (es. Lenny).') +
                     '</div>' +
                     '<div class="cassa-subtotal text-right mt-2">Totale Crediti (senza 4TSCARD): <span id="tot-crediti-base">\u20AC 0,00</span></div>'
