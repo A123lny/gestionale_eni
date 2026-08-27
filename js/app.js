@@ -239,8 +239,9 @@ ENI.App = (function() {
             return bottomIds.indexOf(item.id) !== -1;
         });
 
-        // Ci sono altri moduli non nel bottom nav?
-        var hasMore = items.length > bottomItems.length;
+        // Ci sono altri moduli non nel bottom nav? (voci top-level extra OPPURE voci di sezione)
+        var sectionCount = _getSectionItemsForRole(ruolo).length;
+        var hasMore = (items.length > bottomItems.length) || sectionCount > 0;
 
         var html = '<nav class="app-bottom-nav">';
 
@@ -274,18 +275,35 @@ ENI.App = (function() {
             return bottomIds.indexOf(item.id) === -1;
         });
 
-        if (moreItems.length === 0) return '';
+        // Voci dentro le sezioni collassabili (Amministrazione, Gestione Personale):
+        // sulla sidebar desktop stanno nelle sezioni; su mobile vanno qui nel menu "Altro".
+        var ruolo = ENI.State.getUser() ? ENI.State.getUser().ruolo : '';
+        var sectionItems = _getSectionItemsForRole(ruolo);
+        var sectionItemMap = {};
+        sectionItems.forEach(function(it) { sectionItemMap[it.id] = it; });
+        var sections = ENI.Config.NAV_SECTIONS || [];
+
+        if (moreItems.length === 0 && sectionItems.length === 0) return '';
+
+        function _voce(item) {
+            return '<a class="more-menu-item" data-route="' + item.id + '" href="' + item.route + '">' +
+                '<span>' + item.icon + '</span>' +
+                '<span>' + item.label + '</span>' +
+            '</a>';
+        }
 
         var html = '<div class="bottom-nav-more-menu" id="more-menu">';
-        moreItems.forEach(function(item) {
-            html +=
-                '<a class="more-menu-item" data-route="' + item.id + '" href="' + item.route + '">' +
-                    '<span>' + item.icon + '</span>' +
-                    '<span>' + item.label + '</span>' +
-                '</a>';
-        });
-        html += '</div>';
+        moreItems.forEach(function(item) { html += _voce(item); });
 
+        sections.forEach(function(section) {
+            if (section.superAdminOnly && !ENI.State.isSuperAdmin()) return;
+            var visibleChildren = section.children.filter(function(id) { return sectionItemMap[id]; });
+            if (!visibleChildren.length) return;
+            html += '<div style="padding:10px 16px 4px; font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--color-gray-500);">' + section.label + '</div>';
+            visibleChildren.forEach(function(childId) { html += _voce(sectionItemMap[childId]); });
+        });
+
+        html += '</div>';
         return html;
     }
 
