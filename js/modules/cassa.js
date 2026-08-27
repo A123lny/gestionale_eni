@@ -78,7 +78,11 @@ ENI.Modules.Cassa = (function() {
 
         var body =
             '<div style="max-height:65vh; overflow-y:auto; padding-right:6px;">' +
-            '<div class="text-sm text-muted" style="margin-bottom:16px;">La <strong>Data conteggio</strong> è il <strong>giorno precedente</strong> (la chiusura si fa il giorno dopo). Alla fine, <strong>Differenza = Venduto − Incassato − Crediti</strong>: vicino a 0 significa che la cassa quadra.</div>' +
+            '<div class="text-sm text-muted" style="margin-bottom:16px;">La <strong>Data conteggio</strong> è il <strong>giorno precedente</strong> (la chiusura si fa il giorno dopo). Alla fine, <strong>Differenza = Venduto − Incassato − Crediti</strong>:<br>' +
+                '• <strong style="color:#166534;">Quadra</strong> (≈ 0) → tutto a posto.<br>' +
+                '• <strong style="color:#991B1B;">Ammanco</strong> (positivo) → <strong>mancano soldi</strong>: hai venduto ma il denaro non risulta.<br>' +
+                '• <strong style="color:#92400E;">Eccedenza</strong> (negativo) → soldi in più del venduto: di solito <strong>manca una vendita da registrare</strong>.' +
+            '</div>' +
 
             blocco('⛽', 'Venduto Carburante',
                 voce('Super SP / Diesel / Diesel+', 'Litri ed euro venduti nella <strong>giornata precedente</strong>, <strong>SENZA la notte</strong>. Il dato comprensivo della notte va sul portale PA e in Marginalità Carburante.')
@@ -375,6 +379,7 @@ ENI.Modules.Cassa = (function() {
                 '<div class="cassa-differenza ok cassa-totale-sticky" id="cassa-diff-box">' +
                     '<div style="font-size:0.875rem; opacity:0.8;">\u2696\uFE0F DIFFERENZA CASSA</div>' +
                     '<div style="font-size:2rem; font-weight:700;" id="tot-differenza">\u20AC 0,00</div>' +
+                    '<div style="font-size:1rem; font-weight:700; margin-top:2px;" id="diff-stato"></div>' +
                     '<div class="text-sm" id="diff-formula">Venduto \u2212 Incassato \u2212 Crediti</div>' +
                 '</div>' +
 
@@ -909,17 +914,20 @@ ENI.Modules.Cassa = (function() {
         _setText('tot-crediti-base',  ENI.UI.formatValuta(totCreditiBase));
         _setText('tot-4tscard',       ENI.UI.formatValuta(tot4tscard));
         _setText('tot-crediti',       ENI.UI.formatValuta(totCrediti));
-        _setText('tot-differenza',    ENI.UI.formatValuta(differenza));
+        _setText('tot-differenza', ENI.UI.formatValuta(differenza));
 
-        // Colore differenza
+        // Stato + colore differenza:
+        //  ~0        = Quadra      (verde)
+        //  positivo  = Ammanco     (rosso)   -> mancano soldi
+        //  negativo  = Eccedenza   (arancio) -> controlla le vendite
         var diffBox = document.getElementById('cassa-diff-box');
-        if (diffBox) {
-            diffBox.className = 'cassa-differenza';
-            var absDiff = Math.abs(differenza);
-            if (absDiff < 0.01)      diffBox.classList.add('ok');
-            else if (absDiff <= 50)  diffBox.classList.add('warning');
-            else                     diffBox.classList.add('danger');
-        }
+        var statoEl = document.getElementById('diff-stato');
+        var diffStato, diffCls;
+        if (Math.abs(differenza) < 0.01)      { diffStato = 'Quadra ✓';                        diffCls = 'ok'; }
+        else if (differenza > 0)              { diffStato = 'Ammanco — mancano soldi';          diffCls = 'danger'; }
+        else                                  { diffStato = 'Eccedenza — controlla le vendite'; diffCls = 'warning'; }
+        if (diffBox) diffBox.className = 'cassa-differenza cassa-totale-sticky ' + diffCls;
+        if (statoEl) statoEl.textContent = diffStato;
 
         var formulaEl = document.getElementById('diff-formula');
         if (formulaEl) {
@@ -1295,11 +1303,10 @@ ENI.Modules.Cassa = (function() {
             records.forEach(function(r) {
                 var isBozza = r.stato !== 'chiusa';
                 var diff = Number(r.differenza || 0);
-                var diffStyle = Math.abs(diff) < 0.01
-                    ? 'color:#166534;'
-                    : Math.abs(diff) <= 50
-                        ? 'color:#92400E;'
-                        : 'color:#991B1B;';
+                // Coerente con la chiusura: quadra=verde, ammanco(+)=rosso, eccedenza(-)=arancio
+                var diffStyle = Math.abs(diff) < 0.01 ? 'color:#166534;'
+                    : diff > 0 ? 'color:#991B1B;'
+                    : 'color:#92400E;';
                 var badge = isBozza
                     ? '<span class="badge badge-gray">\u{1F4DD} Bozza</span>'
                     : '<span class="badge ' + (r.stato === 'chiusa' ? 'badge-scaduto' : 'badge-incassato') + '">' + r.stato + '</span>';

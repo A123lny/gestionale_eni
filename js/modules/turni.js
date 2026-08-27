@@ -198,9 +198,30 @@ ENI.Modules.Turni = (function() {
         _renderGrid(gridEl, _storicoLunedi, true);
     }
 
+    // CSS responsive della griglia (iniettato una sola volta)
+    function _ensureCss() {
+        if (document.getElementById('turni-css')) return;
+        var s = document.createElement('style');
+        s.id = 'turni-css';
+        s.textContent =
+            '.turni-grid-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}' +
+            '.turni-grid{min-width:700px;}' +
+            '.turni-grid td{min-width:78px;}' +
+            '.turni-grid th:first-child,.turni-grid td:first-child{position:sticky;left:0;z-index:2;box-shadow:2px 0 5px -2px rgba(0,0,0,.25);}' +
+            '@media(max-width:768px){' +
+                '.turni-grid{min-width:520px;font-size:.78rem;}' +
+                '.turni-grid th,.turni-grid td{padding:4px 3px;}' +
+                '.turni-grid td{min-width:70px;}' +
+                '.turni-grid th:first-child,.turni-grid td:first-child{min-width:74px;max-width:96px;white-space:normal!important;line-height:1.15;font-size:.74rem;}' +
+                '.turni-grid .text-xs{font-size:.7rem;line-height:1.2;}' +
+            '}';
+        document.head.appendChild(s);
+    }
+
     // ---- Griglia (condivisa) ----
     function _renderGrid(gridEl, lunedi, readonly) {
         if (!gridEl) return;
+        _ensureCss();
         if (!_personale.length) {
             gridEl.innerHTML = '<div class="empty-state"><p class="empty-state-text">Nessun dipendente attivo</p></div>';
             return;
@@ -214,12 +235,12 @@ ENI.Modules.Turni = (function() {
         var rows = _personale.map(function(p) {
             var cells = '';
             for (var i = 0; i < N_GIORNI; i++) cells += _cellHtml(p, _addG(lunedi, i), readonly);
-            return '<tr><td style="text-align:left;font-weight:600;white-space:nowrap;position:sticky;left:0;background:var(--bg-card);z-index:1;">' + ENI.UI.escapeHtml(p.nome_completo) + '</td>' + cells + '</tr>';
+            return '<tr><td style="text-align:left;font-weight:600;position:sticky;left:0;background:var(--bg-card);z-index:1;">' + ENI.UI.escapeHtml(p.nome_completo) + '</td>' + cells + '</tr>';
         }).join('');
 
         gridEl.innerHTML =
-            '<div class="table-wrapper" style="overflow-x:auto;">' +
-                '<table class="table" style="min-width:720px;text-align:center;">' +
+            '<div class="table-wrapper turni-grid-wrap">' +
+                '<table class="table turni-grid" style="text-align:center;">' +
                     '<thead><tr>' + th + '</tr></thead><tbody>' + rows + '</tbody>' +
                 '</table>' +
             '</div>' +
@@ -277,7 +298,7 @@ ENI.Modules.Turni = (function() {
         }
 
         return '<td ' + (readonly ? '' : 'data-cell data-pid="' + p.id + '" data-data="' + dt + '"') +
-            ' style="' + (readonly ? '' : 'cursor:pointer;') + 'background:' + bg + ';min-width:78px;">' + contenuto + '</td>';
+            ' style="' + (readonly ? '' : 'cursor:pointer;') + 'background:' + bg + ';">' + contenuto + '</td>';
     }
 
     // ---- Modale cella (solo Pianificazione) ----
