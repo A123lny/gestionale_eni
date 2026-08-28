@@ -22,6 +22,7 @@ ENI.Router = (function() {
         'vendita':      { module: 'Vendita',      id: 'vendita' },
         'magazzino':    { module: 'Magazzino',    id: 'magazzino' },
         'mie-richieste':{ module: 'MieRichieste', id: 'mie-richieste' },
+        'timbra':       { module: 'Timbra',       id: 'timbra' },
         'buoni':        { module: 'Buoni',        id: 'buoni' },
         'coefficiente-monofase': { module: 'CoefficienteMonofase', id: 'coefficiente-monofase' },
         'marginalita-carburante': { module: 'MarginalitaCarburante', id: 'marginalita-carburante' },

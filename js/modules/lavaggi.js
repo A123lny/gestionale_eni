@@ -347,7 +347,9 @@ ENI.Modules.Lavaggi = (function() {
             : ((l.priorita === 'ASPETTA' && l.stato === 'Prenotato') ? 'lav-row-aspetta' : '');
         return '<tr' + (trClass ? ' class="' + trClass + '"' : '') + '>' +
             '<td class="text-sm">' + _orarioLabel(l) + '</td>' +
-            '<td><strong>' + ENI.UI.escapeHtml(l.veicolo || '-') + '</strong>' + _notaIcona(l) + '</td>' +
+            '<td><strong>' + ENI.UI.escapeHtml(l.veicolo || '-') + '</strong>' +
+                (l.note && String(l.note).trim() ? '<div class="text-xs text-muted" style="white-space:pre-wrap;margin-top:2px;">\u{1F4DD} ' + ENI.UI.escapeHtml(String(l.note).trim()) + '</div>' : '') +
+            '</td>' +
             '<td class="text-sm">' +
                 _clienteIcona(l) + ENI.UI.escapeHtml(l.nome_cliente) +
                 (l.cellulare ? '<br><a href="tel:' + ENI.UI.escapeHtml(l.cellulare) + '" class="text-xs text-muted">\u{1F4F1} ' + ENI.UI.escapeHtml(l.cellulare) + '</a>' : '') +
@@ -368,13 +370,16 @@ ENI.Modules.Lavaggi = (function() {
                 '<span class="lav-card-orario">' + _orarioLabel(l) + '</span>' +
                 ENI.UI.badgeStato(l.stato) +
             '</div>' +
-            '<div class="lav-card-veicolo">' + ENI.UI.escapeHtml(l.veicolo || l.nome_cliente || '-') + _notaIcona(l) + '</div>' +
+            '<div class="lav-card-veicolo">' + ENI.UI.escapeHtml(l.veicolo || l.nome_cliente || '-') + '</div>' +
             '<div class="lav-card-meta">' + ENI.UI.escapeHtml(l.tipo_lavaggio) + ' \u00B7 <strong>' + ENI.UI.formatValuta(l.prezzo) + '</strong>' +
                 (l.priorita ? ' \u00B7 ' + _prioritaLabel(l) : '') + _extraBadge(l) +
             '</div>' +
             '<div class="lav-card-cliente text-sm text-muted">' + _clienteIcona(l) + ENI.UI.escapeHtml(l.nome_cliente || '') +
                 (l.cellulare ? ' \u00B7 <a href="tel:' + ENI.UI.escapeHtml(l.cellulare) + '">\u{1F4F1} ' + ENI.UI.escapeHtml(l.cellulare) + '</a>' : '') +
             '</div>' +
+            (l.note && String(l.note).trim()
+                ? '<div class="lav-card-nota text-sm" style="margin-top:6px; padding:6px 10px; background:var(--bg-secondary); border-left:3px solid var(--color-warning,#F5B301); border-radius:4px; white-space:pre-wrap; line-height:1.35;">\u{1F4DD} ' + ENI.UI.escapeHtml(String(l.note).trim()) + '</div>'
+                : '') +
             '<div class="lav-card-actions table-actions">' + _azioniHtml(l) + '</div>' +
         '</div>';
     }

@@ -1101,6 +1101,45 @@ ENI.API = (function() {
         return true;
     }
 
+    // --- Timbrature ---
+
+    // Ultima timbratura di un dipendente (per capire se è dentro o fuori).
+    async function getUltimaTimbratura(personaleId) {
+        var result = await getClient().from('timbrature')
+            .select('*')
+            .eq('personale_id', personaleId)
+            .order('ts', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    // Registra una timbratura per l'utente loggato (entrata/uscita).
+    async function salvaTimbratura(dati) {
+        var payload = {
+            personale_id: ENI.State.getUserId(),
+            tipo: dati.tipo,
+            ts: new Date().toISOString(),
+            data: ENI.UI.oggiISO(),
+            origine: dati.origine || 'qr'
+        };
+        var result = await getClient().from('timbrature')
+            .insert(payload).select().single();
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    // Tutte le timbrature in un intervallo di date (per la vista super admin).
+    async function getTimbrature(da, a) {
+        var result = await getClient().from('timbrature')
+            .select('*, personale:personale_id(nome_completo)')
+            .gte('data', da).lte('data', a)
+            .order('ts', { ascending: true });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
     // --- Log ---
 
     async function getLog(options) {
@@ -2749,6 +2788,9 @@ ENI.API = (function() {
         getDisponibilita: getDisponibilita,
         salvaDisponibilita: salvaDisponibilita,
         eliminaDisponibilita: eliminaDisponibilita,
+        getUltimaTimbratura: getUltimaTimbratura,
+        salvaTimbratura: salvaTimbratura,
+        getTimbrature: getTimbrature,
         aggiornaPersonale: aggiornaPersonale,
         getLog: getLog,
         getDashboardData: getDashboardData,

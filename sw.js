@@ -3,7 +3,7 @@
 // Network-first per JS/CSS, cache-first per assets statici
 // ============================================================
 
-const CACHE_NAME = 'titanwash-v115';
+const CACHE_NAME = 'titanwash-v119';
 const BASE = self.registration.scope;
 const STATIC_ASSETS = [
     BASE,
@@ -46,6 +46,7 @@ const STATIC_ASSETS = [
     BASE + 'js/modules/ferie.js',
     BASE + 'js/modules/turni.js',
     BASE + 'js/modules/mie-richieste.js',
+    BASE + 'js/modules/timbra.js',
     BASE + 'manifest.json'
 ];
 
