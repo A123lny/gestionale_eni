@@ -426,9 +426,9 @@ ENI.API = (function() {
             .from('cassa')
             .select('*')
             .eq('data', data)
-            .single();
+            .maybeSingle();
 
-        if (result.error && result.error.code !== 'PGRST116') {
+        if (result.error) {
             throw new Error(result.error.message);
         }
         return result.data;
@@ -457,13 +457,22 @@ ENI.API = (function() {
     async function salvaCassa(dati) {
         var record;
         var data = dati.data || ENI.UI.oggiISO();
+        dati.data = data;
         var existing = await getCassaPerData(data);
 
         if (existing) {
             record = await update('cassa', existing.id, dati);
         } else {
-            dati.data = data;
-            record = await insert('cassa', dati);
+            try {
+                record = await insert('cassa', dati);
+            } catch (e) {
+                // Race multi-PC: un altro dispositivo ha creato la cassa nel frattempo
+                // (l'inserimento è bloccato dal vincolo UNIQUE su data) → rileggi e aggiorna,
+                // invece di creare un doppione.
+                var again = await getCassaPerData(data);
+                if (!again) throw e;
+                record = await update('cassa', again.id, dati);
+            }
         }
 
         await scriviLog('Chiusura_Cassa', 'Cassa',
@@ -482,9 +491,18 @@ ENI.API = (function() {
         // Non sovrascrivere mai una cassa gia' CHIUSA con una bozza.
         if (existing && existing.stato === 'chiusa') return existing;
         dati.stato = 'aperta'; // stato "in corso" (il vincolo DB ammette solo aperta/chiusa)
-        if (existing) return await update('cassa', existing.id, dati);
         dati.data = data;
-        return await insert('cassa', dati);
+        if (existing) return await update('cassa', existing.id, dati);
+        try {
+            return await insert('cassa', dati);
+        } catch (e) {
+            // Race multi-PC: creata nel frattempo (bloccato dal vincolo UNIQUE su data)
+            // → rileggi e aggiorna, senza mai sovrascrivere una chiusa.
+            var again = await getCassaPerData(data);
+            if (!again) throw e;
+            if (again.stato === 'chiusa') return again;
+            return await update('cassa', again.id, dati);
+        }
     }
 
     async function eliminaCassa(id, data) {
