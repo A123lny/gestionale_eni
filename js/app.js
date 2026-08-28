@@ -122,6 +122,8 @@ ENI.App = (function() {
             // "Le mie richieste" è il portale del dipendente: inutile al super admin,
             // che gestisce ferie/permessi dei dipendenti in Gestione Personale.
             if (item.id === 'mie-richieste' && isSA) return false;
+            // "Timbratura" è per i dipendenti: il super admin usa Gestione Personale → Timbrature.
+            if (item.id === 'timbra' && isSA) return false;
             return config.moduli.indexOf(item.id) !== -1 && ENI.State.isModuloAttivo(item.id);
         });
 
