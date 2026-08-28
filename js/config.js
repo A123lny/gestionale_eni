@@ -115,7 +115,7 @@ ENI.Config = {
     BOTTOM_NAV_ITEMS: ['dashboard', 'vendita', 'cassa', 'lavaggi'],
 
     // Moduli opzionali che il Super Admin puo' nascondere/mostrare da Impostazioni
-    MODULI_OPZIONALI: ['crediti'],
+    MODULI_OPZIONALI: ['crediti', 'timbra'],
 
     // Moduli accessibili SOLO al Super Admin (menu + accesso diretto)
     MODULI_SUPER_ADMIN: ['ferie', 'timbrature', 'turni', 'buste-paga'],

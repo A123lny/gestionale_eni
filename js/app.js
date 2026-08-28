@@ -145,6 +145,8 @@ ENI.App = (function() {
 
         return (ENI.Config.NAV_SECTION_ITEMS || []).filter(function(item) {
             if (!ENI.State.isModuloAttivo(item.id)) return false;
+            // La pagina admin "Timbrature" segue l'interruttore della Timbratura ('timbra')
+            if (item.id === 'timbrature' && !ENI.State.isModuloAttivo('timbra')) return false;
             // Moduli riservati al Super Admin: visibili solo a lui (a prescindere dal ruolo)
             if (superOnly.indexOf(item.id) !== -1) return isSA;
             return config.moduli.indexOf(item.id) !== -1;

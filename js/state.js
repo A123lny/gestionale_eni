@@ -80,6 +80,8 @@ ENI.State = (function() {
         if (moduloId === 'dashboard') return isSuperAdmin();
         // "Le mie richieste" (portale dipendente) non serve al Super Admin: gestisce tutto in Gestione Personale
         if (moduloId === 'mie-richieste' && isSuperAdmin()) return false;
+        // La pagina admin "Timbrature" segue lo stesso interruttore della Timbratura ('timbra')
+        if (moduloId === 'timbrature' && _moduliDisabilitati.indexOf('timbra') !== -1) return false;
         // Moduli riservati al Super Admin (Gestione Personale): solo lui, anche via URL diretto
         if ((ENI.Config.MODULI_SUPER_ADMIN || []).indexOf(moduloId) !== -1) return isSuperAdmin();
         // Moduli disattivati dal Super Admin: nascosti a tutti (menu + accesso diretto)
