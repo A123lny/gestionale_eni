@@ -54,7 +54,7 @@ ENI.Config = {
         },
         Lavaggi: {
             label: 'Operatore Lavaggi',
-            moduli: ['clienti', 'lavaggi', 'mie-richieste', 'timbra'],
+            moduli: ['lavaggi', 'mie-richieste', 'timbra'],
             scrivere: ['lavaggi', 'mie-richieste']
         }
     },
