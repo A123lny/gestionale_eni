@@ -26,11 +26,15 @@ ENI.Modules.Timbra = (function() {
             return;
         }
 
-        container.innerHTML = _wrap('<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>');
+        container.innerHTML =
+            '<div id="timbra-azione"></div>' +
+            '<div id="timbra-storico" style="max-width:440px; margin:16px auto 0;"></div>';
+        var az = document.getElementById('timbra-azione');
+        az.innerHTML = _wrap('<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>');
 
         var ultima = null;
         try { ultima = await ENI.API.getUltimaTimbratura(pid); }
-        catch (e) { container.innerHTML = _wrap('<p class="text-danger">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p>'); return; }
+        catch (e) { az.innerHTML = _wrap('<p class="text-danger">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p>'); return; }
 
         var oggi = ENI.UI.oggiISO();
         var dentro = false, sospesa = false;
@@ -43,11 +47,12 @@ ENI.Modules.Timbra = (function() {
         // Anti doppia-scansione: se l'ultima timbratura è di pochi secondi fa
         var secFa = ultima ? Math.round((Date.now() - new Date(ultima.ts).getTime()) / 1000) : 999999;
         if (ultima && secFa < SOGLIA_DOPPIO) {
-            _renderDoppio(container, nome, ultima, secFa, azione, sospesa);
-            return;
+            _renderDoppio(az, nome, ultima, secFa, azione, sospesa);
+        } else {
+            _renderConferma(az, nome, azione, ultima, dentro, sospesa);
         }
 
-        _renderConferma(container, nome, azione, ultima, dentro, sospesa);
+        _renderStorico(pid);
     }
 
     function _renderConferma(container, nome, azione, ultima, dentro, sospesa) {
@@ -111,6 +116,7 @@ ENI.Modules.Timbra = (function() {
         try {
             var rec = await ENI.API.salvaTimbratura({ tipo: azione });
             _renderSuccesso(container, azione, rec);
+            _renderStorico(ENI.State.getUserId());
         } catch (e) {
             ENI.UI.error('Errore nel salvataggio: ' + e.message);
             _busy = false;
@@ -161,6 +167,80 @@ ENI.Modules.Timbra = (function() {
     function _dataLunga() {
         try { return new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }); }
         catch (e) { return ''; }
+    }
+
+    // --- Storico personale (questa settimana) ---
+    function _lunediCorrente() {
+        var d = new Date(ENI.UI.oggiISO() + 'T12:00:00');
+        var dow = (d.getDay() + 6) % 7; // 0 = lunedì
+        d.setDate(d.getDate() - dow);
+        return d.toISOString().slice(0, 10);
+    }
+
+    function _sessioni(eventi) {
+        var sorted = eventi.slice().sort(function(a, b) { return a.ts < b.ts ? -1 : (a.ts > b.ts ? 1 : 0); });
+        var sess = [], aperta = null;
+        sorted.forEach(function(e) {
+            if (e.tipo === 'entrata') { if (aperta) sess.push({ inizio: aperta, fine: null }); aperta = e.ts; }
+            else { if (aperta) { sess.push({ inizio: aperta, fine: e.ts }); aperta = null; } else sess.push({ inizio: null, fine: e.ts }); }
+        });
+        if (aperta) sess.push({ inizio: aperta, fine: null });
+        return sess;
+    }
+
+    function _minuti(sess) {
+        return sess.reduce(function(tot, s) {
+            if (s.inizio && s.fine) tot += (new Date(s.fine) - new Date(s.inizio)) / 60000;
+            return tot;
+        }, 0);
+    }
+
+    function _fmtOre(min) {
+        min = Math.round(min);
+        return Math.floor(min / 60) + 'h ' + _due(min % 60) + 'm';
+    }
+
+    function _fmtDataStorico(iso) {
+        try { return new Date(iso + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }); }
+        catch (e) { return iso; }
+    }
+
+    async function _renderStorico(pid) {
+        var el = document.getElementById('timbra-storico');
+        if (!el) return;
+        el.innerHTML = '<div class="card" style="padding:var(--space-4);"><div class="flex justify-center" style="padding:1rem;"><div class="spinner"></div></div></div>';
+
+        var da = _lunediCorrente(), a = ENI.UI.oggiISO();
+        var timb;
+        try { timb = await ENI.API.getTimbrature(da, a); }
+        catch (e) { el.innerHTML = ''; return; }
+        timb = (timb || []).filter(function(t) { return t.personale_id === pid; });
+
+        var perGiorno = {};
+        timb.forEach(function(t) { (perGiorno[t.data] = perGiorno[t.data] || []).push(t); });
+        var giorni = Object.keys(perGiorno).sort().reverse();
+        var totMin = 0;
+        var righe = giorni.map(function(g) {
+            var sess = _sessioni(perGiorno[g]);
+            var min = _minuti(sess);
+            totMin += min;
+            var pairs = sess.map(function(s) { return (s.inizio ? _oraDi(s.inizio) : '??') + '–' + (s.fine ? _oraDi(s.fine) : '??'); }).join(', ');
+            return '<div style="display:flex; justify-content:space-between; gap:8px; padding:5px 0; border-bottom:1px solid var(--border-color);">' +
+                '<div><div style="font-weight:600; font-size:0.85rem;">' + _fmtDataStorico(g) + '</div>' +
+                '<div class="text-xs text-muted">' + pairs + '</div></div>' +
+                '<div style="font-weight:700; white-space:nowrap;">' + _fmtOre(min) + '</div>' +
+            '</div>';
+        }).join('');
+
+        el.innerHTML =
+            '<div class="card" style="padding:var(--space-4);">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
+                    '<span style="font-weight:700;">📋 Le mie timbrature</span>' +
+                    '<span class="text-xs text-muted">questa settimana</span>' +
+                '</div>' +
+                (righe || '<div class="text-sm text-muted">Nessuna timbratura questa settimana.</div>') +
+                (giorni.length ? '<div style="display:flex; justify-content:space-between; margin-top:8px; font-weight:700;"><span>Totale settimana</span><span>' + _fmtOre(totMin) + '</span></div>' : '') +
+            '</div>';
     }
 
     return { render: render };
