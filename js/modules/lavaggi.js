@@ -205,35 +205,8 @@ ENI.Modules.Lavaggi = (function() {
     // --- Tabella (con riepilogo, filtri, evidenza priorit\u00E0 e vista mobile) ---
 
     function _ensureStyle() {
-        if (document.getElementById('lavaggi-enh-style')) return;
-        var st = document.createElement('style');
-        st.id = 'lavaggi-enh-style';
-        st.textContent =
-            '#lavaggi-content .lav-summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}' +
-            '#lavaggi-content .lav-kpi{flex:1;min-width:88px;background:var(--bg-card);border:1px solid var(--color-gray-200);border-radius:var(--radius-md);padding:8px 12px;text-align:center;}' +
-            '#lavaggi-content .lav-kpi-val{font-size:1.25rem;font-weight:700;line-height:1.1;}' +
-            '#lavaggi-content .lav-kpi-lbl{font-size:0.7rem;color:var(--color-gray-500);text-transform:uppercase;letter-spacing:.03em;margin-top:2px;}' +
-            '#lavaggi-content .lav-kpi.k-dafare .lav-kpi-val{color:var(--color-primary);}' +
-            '#lavaggi-content .lav-kpi.k-done .lav-kpi-val{color:#1baf7a;}' +
-            '#lavaggi-content .lav-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px;}' +
-            '#lavaggi-content .lav-search{max-width:280px;}' +
-            '#lavaggi-content tr.lav-row-aspetta>td{background:rgba(27,175,122,0.09);}' +
-            '#lavaggi-content tr.lav-row-aspetta>td:first-child{box-shadow:inset 3px 0 0 #1baf7a;}' +
-            '#lavaggi-content tr.lav-row-done{opacity:0.55;}' +
-            '#lavaggi-content .lav-cards{display:flex;flex-direction:column;gap:8px;}' +
-            '#lavaggi-content .lav-card{background:var(--bg-card);border:1px solid var(--color-gray-200);border-left:4px solid var(--color-gray-200);border-radius:var(--radius-md);padding:10px 12px;}' +
-            '#lavaggi-content .lav-card.lav-card-aspetta{border-left-color:#1baf7a;background:rgba(27,175,122,0.06);}' +
-            '#lavaggi-content .lav-card.lav-card-done{opacity:0.6;}' +
-            '#lavaggi-content .lav-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}' +
-            '#lavaggi-content .lav-card-orario{font-weight:600;font-size:0.85rem;}' +
-            '#lavaggi-content .lav-card-veicolo{font-weight:700;}' +
-            '#lavaggi-content .lav-card-meta{font-size:0.85rem;margin:2px 0;}' +
-            '#lavaggi-content .lav-card-actions{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;}' +
-            '#lavaggi-content .lav-desktop thead th{position:sticky;top:0;z-index:2;background:var(--bg-card);}' +
-            '#lavaggi-content .lav-cards-tot{padding:8px 12px;margin-top:4px;font-weight:600;text-align:right;color:var(--color-gray-600,#52514e);}' +
-            '@media (max-width:768px){#lavaggi-content .lav-desktop{display:none;}}' +
-            '@media (min-width:769px){#lavaggi-content .lav-mobile{display:none;}}';
-        document.head.appendChild(st);
+        // Stili lavaggi spostati in css/modules.css (caricato in <head>):
+        // così sono attivi dal primo paint ed evitano il flash (FOUC) su hard refresh.
     }
 
     function _riepilogoHtml() {
