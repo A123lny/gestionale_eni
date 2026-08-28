@@ -25,7 +25,7 @@ ENI.Modules = ENI.Modules || {};
     }
 
     // Ferie e Permessi ha un modulo dedicato (js/modules/ferie.js)
-    ENI.Modules.Timbrature = { render: _placeholder('Timbratura', '⏱️', 'Registrazione di entrata/uscita e conteggio delle ore lavorate.') };
+    // Timbrature ha un modulo dedicato (js/modules/timbrature.js)
     // Turni ha un modulo dedicato (js/modules/turni.js)
     ENI.Modules.BustePaga = { render: _placeholder('Buste Paga', '📄', 'Archivio e consultazione dei cedolini paga.') };
 })();

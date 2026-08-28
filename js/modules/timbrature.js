@@ -1,0 +1,249 @@
+// ============================================================
+// GESTIONALE ENI - Timbrature (lato Super Admin)
+// Chi c'è ora + ore lavorate per periodo + QR da stampare.
+// ============================================================
+
+var ENI = ENI || {};
+ENI.Modules = ENI.Modules || {};
+
+ENI.Modules.Timbrature = (function() {
+    'use strict';
+
+    var _da = '', _a = '', _timbrature = [];
+
+    // --- Date helper ---
+    function _oggi() { return ENI.UI.oggiISO(); }
+
+    function _lunediCorrente() {
+        var d = new Date(_oggi() + 'T12:00:00');
+        var dow = (d.getDay() + 6) % 7; // 0 = lunedì
+        d.setDate(d.getDate() - dow);
+        return d.toISOString().slice(0, 10);
+    }
+
+    function _due(n) { return (n < 10 ? '0' : '') + n; }
+    function _oraDi(ts) { var d = new Date(ts); return _due(d.getHours()) + ':' + _due(d.getMinutes()); }
+    function _fmtOre(min) {
+        min = Math.round(min);
+        var h = Math.floor(min / 60), m = min % 60;
+        return h + 'h ' + _due(m) + 'm';
+    }
+
+    async function render(container) {
+        if (!_da) { _da = _lunediCorrente(); _a = _oggi(); }
+
+        container.innerHTML =
+            '<div class="page-header"><h1 class="page-title">⏱️ Timbrature</h1></div>' +
+            '<div class="card" style="padding:var(--space-4); margin-bottom:var(--space-4);">' +
+                '<div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;">' +
+                    '<div><label class="form-label">Dal</label><input type="date" class="form-input" id="timb-da" value="' + _da + '"></div>' +
+                    '<div><label class="form-label">Al</label><input type="date" class="form-input" id="timb-a" value="' + _a + '"></div>' +
+                    '<button class="btn btn-primary btn-sm" id="timb-aggiorna">Aggiorna</button>' +
+                    '<div style="flex:1;"></div>' +
+                    '<button class="btn btn-outline btn-sm" id="timb-qr">\u{1F4F1} Genera QR timbratura</button>' +
+                '</div>' +
+                '<div class="text-xs text-muted" style="margin-top:6px;">Rapido: ' +
+                    '<a href="#" data-range="oggi">Oggi</a> · ' +
+                    '<a href="#" data-range="settimana">Questa settimana</a> · ' +
+                    '<a href="#" data-range="mese">Questo mese</a></div>' +
+            '</div>' +
+            '<div id="timb-content"><div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div></div>';
+
+        container.querySelector('#timb-aggiorna').addEventListener('click', function() {
+            _da = container.querySelector('#timb-da').value;
+            _a = container.querySelector('#timb-a').value;
+            _load(container);
+        });
+        container.querySelector('#timb-qr').addEventListener('click', _mostraQr);
+        container.querySelectorAll('[data-range]').forEach(function(a) {
+            a.addEventListener('click', function(e) {
+                e.preventDefault();
+                _applicaRange(a.getAttribute('data-range'), container);
+            });
+        });
+
+        await _load(container);
+    }
+
+    function _applicaRange(range, container) {
+        var oggi = _oggi();
+        if (range === 'oggi') { _da = oggi; _a = oggi; }
+        else if (range === 'settimana') { _da = _lunediCorrente(); _a = oggi; }
+        else if (range === 'mese') { _da = oggi.slice(0, 8) + '01'; _a = oggi; }
+        container.querySelector('#timb-da').value = _da;
+        container.querySelector('#timb-a').value = _a;
+        _load(container);
+    }
+
+    async function _load(container) {
+        var content = document.getElementById('timb-content');
+        if (content) content.innerHTML = '<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div>';
+        try {
+            _timbrature = await ENI.API.getTimbrature(_da, _a);
+        } catch (e) {
+            if (content) content.innerHTML = '<p class="text-danger">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p>';
+            return;
+        }
+        _renderContenuto();
+    }
+
+    // Raggruppa gli eventi in coppie entrata->uscita (per giorno)
+    function _sessioni(eventi) {
+        var sorted = eventi.slice().sort(function(a, b) { return a.ts < b.ts ? -1 : (a.ts > b.ts ? 1 : 0); });
+        var sess = [], aperta = null;
+        sorted.forEach(function(e) {
+            if (e.tipo === 'entrata') {
+                if (aperta) sess.push({ inizio: aperta, fine: null });
+                aperta = e.ts;
+            } else {
+                if (aperta) { sess.push({ inizio: aperta, fine: e.ts }); aperta = null; }
+                else sess.push({ inizio: null, fine: e.ts });
+            }
+        });
+        if (aperta) sess.push({ inizio: aperta, fine: null });
+        return sess;
+    }
+
+    function _minuti(sess) {
+        return sess.reduce(function(tot, s) {
+            if (s.inizio && s.fine) tot += (new Date(s.fine) - new Date(s.inizio)) / 60000;
+            return tot;
+        }, 0);
+    }
+
+    function _renderContenuto() {
+        var content = document.getElementById('timb-content');
+        if (!content) return;
+
+        // Raggruppa per persona
+        var perPersona = {};
+        _timbrature.forEach(function(t) {
+            var nome = (t.personale && t.personale.nome_completo) || '—';
+            if (!perPersona[t.personale_id]) perPersona[t.personale_id] = { nome: nome, eventi: [] };
+            perPersona[t.personale_id].eventi.push(t);
+        });
+
+        // Chi c'è ora (in base a oggi: ultimo evento di oggi = entrata)
+        var oggi = _oggi();
+        var dentro = [];
+        Object.keys(perPersona).forEach(function(pid) {
+            var oggiEv = perPersona[pid].eventi.filter(function(e) { return e.data === oggi; })
+                .sort(function(a, b) { return a.ts < b.ts ? -1 : 1; });
+            var last = oggiEv[oggiEv.length - 1];
+            if (last && last.tipo === 'entrata') dentro.push({ nome: perPersona[pid].nome, ora: _oraDi(last.ts) });
+        });
+
+        var chiCeHtml =
+            '<div class="card" style="padding:var(--space-4); margin-bottom:var(--space-4);">' +
+                '<div style="font-weight:700; margin-bottom:8px;">\u{1F7E2} In servizio ora</div>' +
+                (dentro.length
+                    ? '<div style="display:flex; flex-wrap:wrap; gap:8px;">' + dentro.map(function(p) {
+                        return '<span class="badge badge-success" style="padding:6px 12px;">' + ENI.UI.escapeHtml(p.nome) + ' · da ' + p.ora + '</span>';
+                      }).join('') + '</div>'
+                    : '<div class="text-sm text-muted">Nessuno in servizio in questo momento.</div>') +
+            '</div>';
+
+        // Tabella ore per persona (nel periodo)
+        var righe = Object.keys(perPersona).map(function(pid) {
+            var p = perPersona[pid];
+            // ore totali = somma per ogni giorno
+            var perGiorno = {};
+            p.eventi.forEach(function(e) { (perGiorno[e.data] = perGiorno[e.data] || []).push(e); });
+            var totMin = 0, dettaglio = [], sospese = 0;
+            Object.keys(perGiorno).sort().forEach(function(g) {
+                var sess = _sessioni(perGiorno[g]);
+                totMin += _minuti(sess);
+                sess.forEach(function(s) { if (!s.inizio || !s.fine) sospese++; });
+                var righeGiorno = sess.map(function(s) {
+                    return (s.inizio ? _oraDi(s.inizio) : '??') + '–' + (s.fine ? _oraDi(s.fine) : '??');
+                }).join(', ');
+                dettaglio.push('<div class="text-xs" style="color:var(--color-gray-600);">' + _fmtData(g) + ': ' + righeGiorno + '</div>');
+            });
+            return '<tr class="timb-row" style="cursor:pointer;" data-pid="' + pid + '">' +
+                    '<td><strong>' + ENI.UI.escapeHtml(p.nome) + '</strong>' + (sospese ? ' <span class="badge badge-warning" title="Timbrate incomplete (entrata o uscita mancante)">⚠️ ' + sospese + '</span>' : '') + '</td>' +
+                    '<td style="text-align:right; font-weight:700;">' + _fmtOre(totMin) + '</td>' +
+                '</tr>' +
+                '<tr class="timb-dett" data-dett="' + pid + '" style="display:none;"><td colspan="2" style="background:var(--bg-secondary);">' + dettaglio.join('') + '</td></tr>';
+        }).join('');
+
+        var tabella = righe
+            ? '<div class="card" style="padding:0;">' +
+                '<div class="table-wrapper"><table class="table"><thead><tr><th>Dipendente</th><th style="text-align:right;">Ore nel periodo</th></tr></thead>' +
+                '<tbody>' + righe + '</tbody></table></div>' +
+                '<div class="text-xs text-muted" style="padding:8px 12px;">Clicca un dipendente per vedere il dettaglio giornaliero. ⚠️ = timbrate incomplete da correggere.</div>' +
+              '</div>'
+            : '<div class="empty-state"><p class="empty-state-text">Nessuna timbratura nel periodo selezionato.</p></div>';
+
+        content.innerHTML = chiCeHtml + tabella;
+
+        content.querySelectorAll('.timb-row').forEach(function(row) {
+            row.addEventListener('click', function() {
+                var dett = content.querySelector('.timb-dett[data-dett="' + row.getAttribute('data-pid') + '"]');
+                if (dett) dett.style.display = dett.style.display === 'none' ? '' : 'none';
+            });
+        });
+    }
+
+    function _fmtData(iso) {
+        try { return new Date(iso + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }); }
+        catch (e) { return iso; }
+    }
+
+    // --- QR da stampare ---
+    function _urlTimbra() {
+        return location.href.split('#')[0] + '#/timbra';
+    }
+
+    function _loadQrLib() {
+        return new Promise(function(resolve, reject) {
+            if (window.qrcode) return resolve();
+            var s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
+            s.onload = function() { resolve(); };
+            s.onerror = function() { reject(new Error('Impossibile caricare la libreria QR')); };
+            document.head.appendChild(s);
+        });
+    }
+
+    async function _mostraQr() {
+        var url = _urlTimbra();
+        var modal = ENI.UI.showModal({
+            title: '\u{1F4F1} QR Timbratura',
+            body: '<div id="timb-qr-box" style="text-align:center; padding:10px;"><div class="spinner"></div></div>',
+            footer: '<button class="btn btn-outline" data-modal-close>Chiudi</button>' +
+                    '<button class="btn btn-primary" id="timb-qr-stampa">\u{1F5A8}️ Stampa</button>'
+        });
+        var box = modal.querySelector('#timb-qr-box');
+        try { await _loadQrLib(); } catch (e) { box.innerHTML = '<p class="text-danger">' + ENI.UI.escapeHtml(e.message) + '</p>'; return; }
+
+        var qr = window.qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+        var imgTag = qr.createImgTag(6, 8);
+        box.innerHTML =
+            imgTag +
+            '<div style="font-weight:700; margin-top:6px;">Timbratura Titanwash</div>' +
+            '<div class="text-sm text-muted">Inquadra col telefono per timbrare entrata/uscita</div>' +
+            '<div class="text-xs text-muted" style="margin-top:6px; word-break:break-all;">' + ENI.UI.escapeHtml(url) + '</div>';
+
+        modal.querySelector('#timb-qr-stampa').addEventListener('click', function() { _stampaQr(imgTag, url); });
+    }
+
+    function _stampaQr(imgTag, url) {
+        var w = window.open('', '_blank');
+        if (!w) { ENI.UI.warning('Consenti i popup per stampare il QR'); return; }
+        w.document.write(
+            '<html><head><title>QR Timbratura Titanwash</title></head>' +
+            '<body style="text-align:center; font-family:sans-serif; padding:40px;">' +
+                '<h1 style="margin-bottom:4px;">Timbratura Titanwash</h1>' +
+                '<p style="color:#555; margin-top:0;">Inquadra questo QR col telefono per timbrare entrata/uscita</p>' +
+                '<div style="margin:24px 0;">' + imgTag + '</div>' +
+                '<p style="font-size:12px; color:#999; word-break:break-all;">' + url + '</p>' +
+            '</body></html>'
+        );
+        w.document.close();
+        setTimeout(function() { w.focus(); w.print(); }, 300);
+    }
+
+    return { render: render };
+})();
