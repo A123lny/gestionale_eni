@@ -111,6 +111,43 @@ ENI.App = (function() {
         _setupNotifiche();
     }
 
+    // Aggiorna SOLO il menu laterale (es. dopo un toggle moduli nelle Impostazioni),
+    // senza ricostruire la pagina: così l'utente resta dov'è.
+    function refreshSidebar() {
+        var user = ENI.State.getUser();
+        var ruolo = user ? user.ruolo : '';
+        var navItems = _getNavItemsForRole(ruolo);
+        var sidebar = document.querySelector('.app-sidebar');
+        if (!sidebar) return;
+        sidebar.innerHTML = _renderSidebarNav(navItems);
+
+        // Ri-aggancia i toggle delle sezioni collassabili
+        sidebar.querySelectorAll('.nav-section-toggle').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                var sectionId = btn.dataset.sectionToggle;
+                var children = btn.parentElement.querySelector('.nav-section-children');
+                var isOpen = btn.classList.toggle('open');
+                if (children) children.classList.toggle('open', isOpen);
+                localStorage.setItem('nav-section-' + sectionId, isOpen ? 'open' : 'closed');
+            });
+        });
+
+        // Ripristina lo stato "attivo" della rotta corrente
+        var cur = (ENI.Router && ENI.Router.getCurrentRoute && ENI.Router.getCurrentRoute()) || '';
+        sidebar.querySelectorAll('.nav-item').forEach(function(el) {
+            el.classList.toggle('active', el.dataset.route === cur);
+        });
+        sidebar.querySelectorAll('.nav-section').forEach(function(section) {
+            if (section.querySelector('.nav-item.active')) {
+                var t = section.querySelector('.nav-section-toggle');
+                var c = section.querySelector('.nav-section-children');
+                if (t) t.classList.add('open');
+                if (c) c.classList.add('open');
+            }
+        });
+    }
+
     // --- Get Nav Items for Role ---
 
     function _getNavItemsForRole(ruolo) {
@@ -585,6 +622,7 @@ ENI.App = (function() {
     return {
         init: init,
         renderShell: renderShell,
+        refreshSidebar: refreshSidebar,
         updateBadge: _updateBadge
     };
 })();

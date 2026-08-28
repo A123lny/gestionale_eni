@@ -407,9 +407,12 @@ ENI.Modules.Impostazioni = (function() {
             await ENI.API.salvaModuliDisabilitati(disabled);
             ENI.State.setModuliDisabilitati(disabled);
             ENI.UI.toast(visibile ? 'Modulo mostrato nel menu' : 'Modulo nascosto dal menu', 'success');
-            // Rigenera menu e ri-renderizza la pagina corrente
-            ENI.App.renderShell();
-            ENI.Router.refresh();
+            // Aggiorna il testo del toggle e il menu laterale SENZA ricaricare la pagina:
+            // così resti nella sezione "Moduli" dov'eri.
+            var statoEl = document.querySelector('.toggle-modulo-stato[data-stato="' + id + '"]');
+            if (statoEl) statoEl.textContent = visibile ? 'Visibile nel menu' : 'Nascosto dal menu';
+            el.disabled = false;
+            if (ENI.App.refreshSidebar) ENI.App.refreshSidebar();
         } catch (err) {
             el.checked = !visibile;
             el.disabled = false;
