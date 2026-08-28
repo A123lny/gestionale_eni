@@ -41,6 +41,7 @@ ENI.Modules.Timbrature = (function() {
                     '<button class="btn btn-primary btn-sm" id="timb-aggiorna">Aggiorna</button>' +
                     '<div style="flex:1;"></div>' +
                     '<button class="btn btn-outline btn-sm" id="timb-pdf">\u{1F4C4} Esporta PDF</button>' +
+                    '<button class="btn btn-outline btn-sm" id="timb-xls">\u{1F4CA} Esporta Excel</button>' +
                     '<button class="btn btn-outline btn-sm" id="timb-qr">\u{1F4F1} Genera QR timbratura</button>' +
                 '</div>' +
                 '<div class="text-xs text-muted" style="margin-top:6px;">Rapido: ' +
@@ -57,6 +58,7 @@ ENI.Modules.Timbrature = (function() {
         });
         container.querySelector('#timb-qr').addEventListener('click', _mostraQr);
         container.querySelector('#timb-pdf').addEventListener('click', _esportaPdf);
+        container.querySelector('#timb-xls').addEventListener('click', _esportaExcel);
         container.querySelectorAll('[data-range]').forEach(function(a) {
             a.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -251,6 +253,50 @@ ENI.Modules.Timbrature = (function() {
         });
 
         doc.save('timbrature_' + _da + '_' + _a + '.pdf');
+    }
+
+    // --- Export Excel ---
+    function _esportaExcel() {
+        if (!window.XLSX) { ENI.UI.error('Libreria Excel non disponibile'); return; }
+        if (!_timbrature.length) { ENI.UI.warning('Nessuna timbratura nel periodo da esportare'); return; }
+
+        var perPersona = {};
+        _timbrature.forEach(function(t) {
+            var nome = (t.personale && t.personale.nome_completo) || '—';
+            (perPersona[t.personale_id] = perPersona[t.personale_id] || { nome: nome, eventi: [] }).eventi.push(t);
+        });
+
+        var dett = [['Dipendente', 'Data', 'Entrata', 'Uscita', 'Ore (decimali)', 'Stato']];
+        var riep = [['Dipendente', 'Totale ore (decimali)', 'Totale ore']];
+
+        Object.keys(perPersona).sort(function(a, b) { return perPersona[a].nome.localeCompare(perPersona[b].nome); }).forEach(function(pid) {
+            var p = perPersona[pid];
+            var perGiorno = {};
+            p.eventi.forEach(function(e) { (perGiorno[e.data] = perGiorno[e.data] || []).push(e); });
+            var totMin = 0;
+            Object.keys(perGiorno).sort().forEach(function(g) {
+                var sess = _sessioni(perGiorno[g]);
+                sess.forEach(function(s) {
+                    var completa = !!(s.inizio && s.fine);
+                    var min = completa ? (new Date(s.fine) - new Date(s.inizio)) / 60000 : 0;
+                    totMin += min;
+                    dett.push([
+                        p.nome,
+                        _fmtDataBreve(g),
+                        s.inizio ? _oraDi(s.inizio) : '',
+                        s.fine ? _oraDi(s.fine) : '',
+                        completa ? Math.round(min / 60 * 100) / 100 : '',
+                        completa ? 'completa' : 'INCOMPLETA'
+                    ]);
+                });
+            });
+            riep.push([p.nome, Math.round(totMin / 60 * 100) / 100, _fmtOre(totMin)]);
+        });
+
+        var wb = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(riep), 'Riepilogo');
+        window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(dett), 'Dettaglio');
+        window.XLSX.writeFile(wb, 'timbrature_' + _da + '_' + _a + '.xlsx');
     }
 
     // --- QR da stampare ---
