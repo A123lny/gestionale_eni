@@ -40,6 +40,7 @@ ENI.Modules.Timbrature = (function() {
                     '<div><label class="form-label">Al</label><input type="date" class="form-input" id="timb-a" value="' + _a + '"></div>' +
                     '<button class="btn btn-primary btn-sm" id="timb-aggiorna">Aggiorna</button>' +
                     '<div style="flex:1;"></div>' +
+                    '<button class="btn btn-outline btn-sm" id="timb-pdf">\u{1F4C4} Esporta PDF</button>' +
                     '<button class="btn btn-outline btn-sm" id="timb-qr">\u{1F4F1} Genera QR timbratura</button>' +
                 '</div>' +
                 '<div class="text-xs text-muted" style="margin-top:6px;">Rapido: ' +
@@ -55,6 +56,7 @@ ENI.Modules.Timbrature = (function() {
             _load(container);
         });
         container.querySelector('#timb-qr').addEventListener('click', _mostraQr);
+        container.querySelector('#timb-pdf').addEventListener('click', _esportaPdf);
         container.querySelectorAll('[data-range]').forEach(function(a) {
             a.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -187,6 +189,68 @@ ENI.Modules.Timbrature = (function() {
     function _fmtData(iso) {
         try { return new Date(iso + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }); }
         catch (e) { return iso; }
+    }
+
+    function _fmtDataBreve(iso) {
+        var p = String(iso || '').split('-');
+        return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+    }
+
+    // --- Export PDF ---
+    function _esportaPdf() {
+        if (!(window.jspdf && window.jspdf.jsPDF)) { ENI.UI.error('Libreria PDF non disponibile'); return; }
+        if (!_timbrature.length) { ENI.UI.warning('Nessuna timbratura nel periodo da esportare'); return; }
+
+        var doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        var pw = doc.internal.pageSize.getWidth();
+        var ph = doc.internal.pageSize.getHeight();
+        var m = 14, y = m;
+
+        doc.setFontSize(16); doc.setFont(undefined, 'bold');
+        doc.text('Timbrature — Titanwash', m, y); y += 7;
+        doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.setTextColor(90);
+        doc.text('Periodo: ' + _fmtDataBreve(_da) + '  –  ' + _fmtDataBreve(_a), m, y);
+        doc.text('Generato il ' + _fmtDataBreve(_oggi()), pw - m, y, { align: 'right' });
+        doc.setTextColor(0); y += 8;
+
+        var perPersona = {};
+        _timbrature.forEach(function(t) {
+            var nome = (t.personale && t.personale.nome_completo) || '—';
+            (perPersona[t.personale_id] = perPersona[t.personale_id] || { nome: nome, eventi: [] }).eventi.push(t);
+        });
+
+        Object.keys(perPersona).sort(function(a, b) { return perPersona[a].nome.localeCompare(perPersona[b].nome); }).forEach(function(pid) {
+            var p = perPersona[pid];
+            var perGiorno = {};
+            p.eventi.forEach(function(e) { (perGiorno[e.data] = perGiorno[e.data] || []).push(e); });
+            var totMin = 0;
+            var giorni = Object.keys(perGiorno).sort().map(function(g) {
+                var sess = _sessioni(perGiorno[g]);
+                var min = _minuti(sess);
+                totMin += min;
+                var incompleta = sess.some(function(s) { return !s.inizio || !s.fine; });
+                var righe = sess.map(function(s) { return (s.inizio ? _oraDi(s.inizio) : '??') + '–' + (s.fine ? _oraDi(s.fine) : '??'); }).join(', ');
+                return { label: _fmtDataBreve(g), righe: righe, min: min, incompleta: incompleta };
+            });
+
+            if (y > ph - 24) { doc.addPage(); y = m; }
+            doc.setFont(undefined, 'bold'); doc.setFontSize(12);
+            doc.text(p.nome, m, y);
+            doc.text('Totale: ' + _fmtOre(totMin), pw - m, y, { align: 'right' });
+            y += 3; doc.setDrawColor(210); doc.line(m, y, pw - m, y); y += 5;
+
+            doc.setFont(undefined, 'normal'); doc.setFontSize(9);
+            giorni.forEach(function(g) {
+                if (y > ph - 14) { doc.addPage(); y = m; }
+                doc.text(g.label, m + 2, y);
+                doc.text(g.righe + (g.incompleta ? '  (incompleta)' : ''), m + 32, y);
+                doc.text(_fmtOre(g.min), pw - m, y, { align: 'right' });
+                y += 5;
+            });
+            y += 5;
+        });
+
+        doc.save('timbrature_' + _da + '_' + _a + '.pdf');
     }
 
     // --- QR da stampare ---
