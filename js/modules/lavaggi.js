@@ -1495,6 +1495,13 @@ ENI.Modules.Lavaggi = (function() {
         var orarioInizio = lavaggio.orario_inizio ? lavaggio.orario_inizio.substring(0, 5) : '';
         var orarioFine = lavaggio.orario_fine ? lavaggio.orario_fine.substring(0, 5) : '';
 
+        // Nel DB 'prezzo' è il TOTALE (base + extra). Al salvataggio il form ricalcola
+        // 'totale = base + extra', quindi qui pre-carico la vera BASE (totale − extra salvati),
+        // altrimenti gli extra verrebbero ri-sommati ad ogni modifica e il prezzo si gonfierebbe.
+        var _extraSalvati = (lavaggio.servizi_extra || []).reduce(function(s, e) { return s + (Number(e.prezzo) || 0); }, 0);
+        var prezzoBaseIniziale = Math.round(((Number(lavaggio.prezzo) || 0) - _extraSalvati) * 100) / 100;
+        if (prezzoBaseIniziale < 0) prezzoBaseIniziale = 0;
+
         var body =
             '<form id="form-modifica-lavaggio">' +
                 '<div class="form-group">' +
@@ -1524,7 +1531,7 @@ ENI.Modules.Lavaggi = (function() {
                     '</div>' +
                     '<div class="form-group">' +
                         '<label class="form-label form-label-required">Prezzo Base \u20AC</label>' +
-                        '<input type="number" step="0.01" min="0" class="form-input" id="mod-prezzo" value="' + (lavaggio.prezzo || '') + '">' +
+                        '<input type="number" step="0.01" min="0" class="form-input" id="mod-prezzo" value="' + (prezzoBaseIniziale || '') + '">' +
                     '</div>' +
                 '</div>' +
                 // Servizi Extra (precompilati con quelli salvati)
