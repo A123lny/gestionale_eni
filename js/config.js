@@ -207,6 +207,6 @@ ENI.Config = {
         QUANTITA_MAX: 99999,
         SCORTA_MINIMA_DEFAULT: 5,     // giacenza minima proposta per i nuovi prodotti (sovrascrivibile da Impostazioni)
         SCADENZE_PREAVVISO_GIORNI: 7, // giorni di anticipo per l'avviso scadenze pagamenti (Tesoreria)
-        FONDO_CASSA_DEFAULT: 720      // fondo cassa fisso predefinito nella pagina Cassa
+        FONDO_CASSA_DEFAULT: 1500     // fondo cassa fisso predefinito nella pagina Cassa
     }
 };
