@@ -23,6 +23,7 @@ function toISO(d: Date) { const m = String(d.getMonth() + 1).padStart(2, "0"); c
 function addGiorni(iso: string, n: number) { const d = parseISO(iso); d.setDate(d.getDate() + n); return toISO(d); }
 function dow(iso: string) { return parseISO(iso).getDay(); }
 function daysBetween(a: string, b: string) { return Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000); }
+function giorniInclusi(dataInizio: string, dataFine: string) { if (!dataInizio || !dataFine) return 1; const diff = daysBetween(dataInizio, dataFine); return diff >= 0 ? diff + 1 : 1; }
 function mondayOf(iso: string) { const d = dow(iso); const off = (d === 0) ? 6 : (d - 1); return addGiorni(iso, -off); }
 function fmtData(iso: string) { const p = String(iso).split("-"); return p[2] + "/" + p[1]; }
 function fmtL(n: number) { return Math.round(Number(n) || 0).toLocaleString("it-IT"); }
@@ -156,16 +157,18 @@ Deno.serve(async (req) => {
         mediaParams = { modalita: "manuale", manualeTotale: Number(mm.totale) || 0, manualeGiorni: Number(mm.giorni) || 0 };
       } else {
         const da = addGiorni(oggi, -finestra), a = addGiorni(oggi, -1);
-        const vg = await supabase.from("vendite_giornaliere").select("id").gte("data_inizio", da).lte("data_inizio", a);
-        const ids = (vg.data || []).map((r: any) => r.id);
-        let tot = 0;
-        const giorniSet = new Set<string>();
+        const vg = await supabase.from("vendite_giornaliere").select("id, data_inizio, data_fine").gte("data_inizio", da).lte("data_inizio", a);
+        const giorniPerVendita: Record<string, number> = {};
+        const ids = (vg.data || []).map((r: any) => { giorniPerVendita[r.id] = giorniInclusi(r.data_inizio, r.data_fine); return r.id; });
+        let tot = 0, giorniTot = 0;
+        const visti = new Set<string>();
         if (ids.length) {
           const vp = await supabase.from("vendite_per_prodotto").select("litri, vendita_id").eq("prodotto_id", prod.id).in("vendita_id", ids);
-          (vp.data || []).forEach((r: any) => { tot += Number(r.litri) || 0; if (r.vendita_id) giorniSet.add(String(r.vendita_id)); });
+          (vp.data || []).forEach((r: any) => { tot += Number(r.litri) || 0; if (r.vendita_id && !visti.has(String(r.vendita_id))) { visti.add(String(r.vendita_id)); giorniTot += giorniPerVendita[r.vendita_id] || 1; } });
         }
-        // Divide per i giorni EFFETTIVAMENTE registrati (non per la finestra fissa)
-        const giorniEff = giorniSet.size > 0 ? giorniSet.size : finestra;
+        // Divide per i GIORNI REALI coperti: i record del weekend accorpano 2 giorni,
+        // contarli come 1 gonfiava la media (~+20%).
+        const giorniEff = giorniTot > 0 ? giorniTot : finestra;
         mediaParams = { modalita: "auto", erogatoFinestra: tot, giorniFinestra: giorniEff };
       }
 
