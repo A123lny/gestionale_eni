@@ -404,10 +404,17 @@
     max-height: calc(100dvh - var(--nav-bottom-height) - 16px);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .bottom-nav-more-menu.active {
     display: block;
+}
+
+/* Con il menu "Altro" aperto, la pagina sotto non deve scorrere */
+body.more-menu-open,
+body.more-menu-open .app-main {
+    overflow: hidden;
 }
 
 .more-menu-item {

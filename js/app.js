@@ -375,23 +375,32 @@ ENI.App = (function() {
         var btnMore = document.getElementById('btn-more-menu');
         var moreMenu = document.getElementById('more-menu');
 
+        function _closeMore() {
+            moreMenu.classList.remove('active');
+            document.body.classList.remove('more-menu-open');
+        }
+        function _openMore() {
+            moreMenu.classList.add('active');
+            document.body.classList.add('more-menu-open');
+        }
+
         if (btnMore && moreMenu) {
             btnMore.addEventListener('click', function(e) {
                 e.stopPropagation();
-                moreMenu.classList.toggle('active');
+                if (moreMenu.classList.contains('active')) _closeMore(); else _openMore();
             });
 
             // Chiudi cliccando fuori
             document.addEventListener('click', function(e) {
                 if (!moreMenu.contains(e.target) && e.target !== btnMore) {
-                    moreMenu.classList.remove('active');
+                    _closeMore();
                 }
             });
 
             // Chiudi quando clicca un item del more menu
             moreMenu.querySelectorAll('.more-menu-item').forEach(function(item) {
                 item.addEventListener('click', function() {
-                    moreMenu.classList.remove('active');
+                    _closeMore();
                 });
             });
         }
