@@ -348,7 +348,6 @@ ENI.Modules.Timbrature = (function() {
                 '<h1 style="margin-bottom:4px;">Timbratura Titanwash</h1>' +
                 '<p style="color:#555; margin-top:0;">Inquadra questo QR col telefono per timbrare entrata/uscita</p>' +
                 '<div style="margin:24px 0;">' + imgTag + '</div>' +
-                '<p style="font-size:12px; color:#999; word-break:break-all;">' + url + '</p>' +
             '</body></html>'
         );
         w.document.close();
