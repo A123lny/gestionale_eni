@@ -398,6 +398,12 @@
     min-width: 200px;
     z-index: var(--z-dropdown);
     display: none;
+    /* Il menu cresce verso l'alto: se ha molte voci deve poter scorrere,
+       altrimenti le voci in cima finiscono fuori schermo (es. Timbratura). */
+    max-height: calc(100vh - var(--nav-bottom-height) - 16px);
+    max-height: calc(100dvh - var(--nav-bottom-height) - 16px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .bottom-nav-more-menu.active {
