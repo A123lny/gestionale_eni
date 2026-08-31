@@ -737,22 +737,41 @@ ENI.API = (function() {
         return true;
     }
 
+    // Giorni di calendario inclusi in un record vendite_giornaliere (data_inizio..data_fine).
+    // I weekend/festivi ENI sono accorpati in un solo record multi-giorno.
+    function _giorniInclusi(dataInizio, dataFine) {
+        if (!dataInizio) return 1;
+        if (!dataFine) return 1;
+        var d1 = new Date(dataInizio + 'T00:00:00');
+        var d2 = new Date(dataFine + 'T00:00:00');
+        var diff = Math.round((d2 - d1) / 86400000);
+        return diff >= 0 ? diff + 1 : 1;
+    }
+
     // Totale erogato (litri) per prodotto in un intervallo [da, a] — per la media automatica. SOLO LETTURA.
     async function getErogatoPeriodo(prodottoId, da, a) {
         var client = getClient();
-        var vg = await client.from('vendite_giornaliere').select('id').gte('data_inizio', da).lte('data_inizio', a);
+        var vg = await client.from('vendite_giornaliere').select('id, data_inizio, data_fine').gte('data_inizio', da).lte('data_inizio', a);
         if (vg.error) throw new Error(vg.error.message);
-        var ids = (vg.data || []).map(function(r) { return r.id; });
-        if (!ids.length) return { totale: 0, giorni_con_dati: 0 };
+        if (!vg.data || !vg.data.length) return { totale: 0, giorni_con_dati: 0 };
+        // Giorni REALI coperti da ciascun record (non 1 per record): un record che accorpa
+        // 2 giorni (weekend) vale 2, altrimenti la media si gonfia dividendo per meno giorni.
+        var giorniPerVendita = {};
+        var ids = vg.data.map(function(r) {
+            giorniPerVendita[r.id] = _giorniInclusi(r.data_inizio, r.data_fine);
+            return r.id;
+        });
         var vp = await client.from('vendite_per_prodotto').select('litri, vendita_id').eq('prodotto_id', prodottoId).in('vendita_id', ids);
         if (vp.error) throw new Error(vp.error.message);
-        var totale = 0;
-        var giorniSet = {};
+        var totale = 0, giorniTot = 0, visti = {};
         (vp.data || []).forEach(function(r) {
             totale += Number(r.litri) || 0;
-            if (r.vendita_id) giorniSet[r.vendita_id] = true; // conta i giorni distinti con vendita registrata
+            if (r.vendita_id && !visti[r.vendita_id]) {
+                visti[r.vendita_id] = true;
+                giorniTot += giorniPerVendita[r.vendita_id] || 1;
+            }
         });
-        return { totale: Math.round(totale), giorni_con_dati: Object.keys(giorniSet).length };
+        return { totale: Math.round(totale), giorni_con_dati: giorniTot };
     }
 
     // Giacenza fisica calcolata a oggi (riferimento + carichi − venduto), coerente col motore Marginalità. SOLO LETTURA.
