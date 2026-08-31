@@ -9,7 +9,7 @@ ENI.Modules = ENI.Modules || {};
 ENI.Modules.Timbrature = (function() {
     'use strict';
 
-    var _da = '', _a = '', _timbrature = [];
+    var _da = '', _a = '', _timbrature = [], _personale = [];
 
     // --- Date helper ---
     function _oggi() { return ENI.UI.oggiISO(); }
@@ -32,6 +32,11 @@ ENI.Modules.Timbrature = (function() {
     async function render(container) {
         if (!_da) { _da = _lunediCorrente(); _a = _oggi(); }
 
+        try { _personale = await ENI.API.getPersonale(); } catch (e) { _personale = []; }
+        var manOpts = _personale.filter(function(p) { return p.attivo !== false; }).map(function(p) {
+            return '<option value="' + p.id + '">' + ENI.UI.escapeHtml(p.nome_completo || ('#' + p.id)) + '</option>';
+        }).join('');
+
         container.innerHTML =
             '<div class="page-header"><h1 class="page-title">⏱️ Timbrature</h1></div>' +
             '<div class="card" style="padding:var(--space-4); margin-bottom:var(--space-4);">' +
@@ -49,6 +54,16 @@ ENI.Modules.Timbrature = (function() {
                     '<a href="#" data-range="settimana">Questa settimana</a> · ' +
                     '<a href="#" data-range="mese">Questo mese</a></div>' +
             '</div>' +
+            '<div class="card" style="padding:var(--space-4); margin-bottom:var(--space-4);">' +
+                '<div style="font-weight:700; margin-bottom:8px;">✍️ Timbratura manuale <span class="text-xs text-muted">(solo super admin)</span></div>' +
+                '<div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;">' +
+                    '<div><label class="form-label">Dipendente</label><select class="form-input" id="man-dip"><option value="">— scegli —</option>' + manOpts + '</select></div>' +
+                    '<div><label class="form-label">Data e ora</label><input type="datetime-local" class="form-input" id="man-ts"></div>' +
+                    '<div><label class="form-label">Tipo</label><select class="form-input" id="man-tipo"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div>' +
+                    '<button class="btn btn-primary btn-sm" id="man-salva">Registra</button>' +
+                '</div>' +
+                '<div class="text-xs text-muted" style="margin-top:6px;">Solo per casi eccezionali (telefono scarico/dimenticato). Resta segnata come <strong>manuale</strong>.</div>' +
+            '</div>' +
             '<div id="timb-content"><div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div></div></div>';
 
         container.querySelector('#timb-aggiorna').addEventListener('click', function() {
@@ -65,6 +80,11 @@ ENI.Modules.Timbrature = (function() {
                 _applicaRange(a.getAttribute('data-range'), container);
             });
         });
+
+        var manTs = container.querySelector('#man-ts');
+        if (manTs) manTs.value = _nowLocalInput();
+        var manBtn = container.querySelector('#man-salva');
+        if (manBtn) manBtn.addEventListener('click', function() { _salvaManuale(container); });
 
         await _load(container);
     }
@@ -316,7 +336,6 @@ ENI.Modules.Timbrature = (function() {
     }
 
     async function _mostraQr() {
-        var url = _urlTimbra();
         var modal = ENI.UI.showModal({
             title: '\u{1F4F1} QR Timbratura',
             body: '<div id="timb-qr-box" style="text-align:center; padding:10px;"><div class="spinner"></div></div>',
@@ -326,32 +345,80 @@ ENI.Modules.Timbrature = (function() {
         var box = modal.querySelector('#timb-qr-box');
         try { await _loadQrLib(); } catch (e) { box.innerHTML = '<p class="text-danger">' + ENI.UI.escapeHtml(e.message) + '</p>'; return; }
 
+        var token;
+        try { token = await _ensureToken(); }
+        catch (e) { box.innerHTML = '<p class="text-danger">Errore nel preparare il codice: ' + ENI.UI.escapeHtml(e.message) + '</p>'; return; }
+
         var qr = window.qrcode(0, 'M');
-        qr.addData(url);
+        qr.addData(token);
         qr.make();
         var imgTag = qr.createImgTag(6, 8);
         box.innerHTML =
             imgTag +
             '<div style="font-weight:700; margin-top:6px;">Timbratura Titanwash</div>' +
-            '<div class="text-sm text-muted">Inquadra col telefono per timbrare entrata/uscita</div>' +
-            '<div class="text-xs text-muted" style="margin-top:6px; word-break:break-all;">' + ENI.UI.escapeHtml(url) + '</div>';
+            '<div class="text-sm text-muted">Affiggi in stazione. I dipendenti lo inquadrano dall\'app (Timbratura → Timbra) per confermare entrata/uscita.</div>';
 
-        modal.querySelector('#timb-qr-stampa').addEventListener('click', function() { _stampaQr(imgTag, url); });
+        modal.querySelector('#timb-qr-stampa').addEventListener('click', function() { _stampaQr(imgTag); });
     }
 
-    function _stampaQr(imgTag, url) {
+    // Codice segreto legato al QR: generato e salvato la prima volta (solo Super Admin).
+    // Il QR contiene questo codice; la pagina timbra lo confronta dopo la scansione.
+    async function _ensureToken() {
+        var tok = await ENI.API.getImpostazioneApp('timbra_qr_token');
+        if (!tok) {
+            tok = _generaToken();
+            await ENI.API.salvaImpostazioneApp('timbra_qr_token', tok);
+        }
+        return tok;
+    }
+
+    function _generaToken() {
+        var cr = window.crypto || window.msCrypto;
+        var arr = new Uint8Array(16);
+        cr.getRandomValues(arr);
+        var s = '';
+        for (var i = 0; i < arr.length; i++) s += ('0' + arr[i].toString(16)).slice(-2);
+        return 'TW-TIMBRA-' + s;
+    }
+
+    function _stampaQr(imgTag) {
         var w = window.open('', '_blank');
         if (!w) { ENI.UI.warning('Consenti i popup per stampare il QR'); return; }
         w.document.write(
             '<html><head><title>QR Timbratura Titanwash</title></head>' +
             '<body style="text-align:center; font-family:sans-serif; padding:40px;">' +
                 '<h1 style="margin-bottom:4px;">Timbratura Titanwash</h1>' +
-                '<p style="color:#555; margin-top:0;">Inquadra questo QR col telefono per timbrare entrata/uscita</p>' +
+                '<p style="color:#555; margin-top:0;">Apri l\'app &rarr; Timbratura &rarr; Timbra e inquadra questo QR</p>' +
                 '<div style="margin:24px 0;">' + imgTag + '</div>' +
             '</body></html>'
         );
         w.document.close();
         setTimeout(function() { w.focus(); w.print(); }, 300);
+    }
+
+    // --- Timbratura manuale (super admin) ---
+    async function _salvaManuale(container) {
+        var pid = container.querySelector('#man-dip').value;
+        var tsLocal = container.querySelector('#man-ts').value;
+        var tipo = container.querySelector('#man-tipo').value;
+        if (!pid) { ENI.UI.warning('Scegli un dipendente'); return; }
+        if (!tsLocal) { ENI.UI.warning('Scegli data e ora'); return; }
+        var iso;
+        try { iso = new Date(tsLocal).toISOString(); }
+        catch (e) { ENI.UI.warning('Data/ora non valida'); return; }
+        try {
+            await ENI.API.salvaTimbratura({ personale_id: pid, tipo: tipo, ts: iso, data: tsLocal.slice(0, 10), origine: 'manuale' });
+            ENI.UI.success('Timbratura manuale registrata');
+            _load(container);
+        } catch (e) {
+            ENI.UI.error('Errore: ' + e.message);
+        }
+    }
+
+    function _nowLocalInput() {
+        var d = new Date();
+        function p(n) { return (n < 10 ? '0' : '') + n; }
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
     }
 
     return { render: render };

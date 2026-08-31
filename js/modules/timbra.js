@@ -12,12 +12,18 @@ ENI.Modules.Timbra = (function() {
 
     var _busy = false;
     var _clock = null;
+    var _page = null;
+    var _qrToken = null;
+    var _html5QrCode = null;
+    var _scannerRunning = false;
 
     // Doppia scansione ravvicinata: sotto questa soglia (secondi) chiedo conferma extra.
     var SOGLIA_DOPPIO = 90;
 
     async function render(container) {
         if (_clock) { clearInterval(_clock); _clock = null; }
+        _stopScanner();
+        _page = container;
 
         var pid = ENI.State.getUserId();
         var nome = ENI.State.getUserName ? ENI.State.getUserName() : '';
@@ -35,6 +41,10 @@ ENI.Modules.Timbra = (function() {
         var ultima = null;
         try { ultima = await ENI.API.getUltimaTimbratura(pid); }
         catch (e) { az.innerHTML = _wrap('<p class="text-danger">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p>'); return; }
+
+        // Codice segreto del QR di stazione: la timbratura si conferma solo scansionandolo.
+        try { _qrToken = await ENI.API.getImpostazioneApp('timbra_qr_token'); }
+        catch (e) { _qrToken = null; }
 
         var oggi = ENI.UI.oggiISO();
         var dentro = false, sospesa = false;
@@ -108,19 +118,87 @@ ENI.Modules.Timbra = (function() {
         container.querySelector('#btn-forza').addEventListener('click', function() { _conferma(container, azione); });
     }
 
-    async function _conferma(container, azione) {
+    // Il tocco su "Timbra" NON registra subito: apre la fotocamera per inquadrare
+    // il QR affisso in stazione. Solo se il QR è quello giusto si timbra davvero.
+    function _conferma(container, azione) {
+        _apriScanner(container, azione);
+    }
+
+    async function _apriScanner(container, azione) {
+        if (!_qrToken) {
+            ENI.UI.warning('Timbratura non ancora configurata: il responsabile deve generare il QR.');
+            return;
+        }
+        if (typeof Html5Qrcode === 'undefined') {
+            ENI.UI.error('Fotocamera non disponibile su questo dispositivo.');
+            return;
+        }
+        var isEntrata = azione === 'entrata';
+        container.innerHTML = _wrap(
+            '<div style="text-align:center;">' +
+                '<h1 style="font-size:1.2rem;margin:0 0 4px;">📷 Inquadra il QR in stazione</h1>' +
+                '<p class="text-sm text-muted" style="margin-top:0;">per timbrare ' + (isEntrata ? 'l\'ENTRATA' : 'l\'USCITA') + '</p>' +
+                '<div id="timbra-reader" style="width:100%; max-width:320px; margin:10px auto;"></div>' +
+                '<div id="timbra-scan-msg" class="text-sm" style="min-height:20px;"></div>' +
+                '<button id="btn-scan-annulla" class="btn btn-outline btn-block" style="margin-top:10px;">Annulla</button>' +
+            '</div>'
+        );
+        var annulla = document.getElementById('btn-scan-annulla');
+        if (annulla) annulla.addEventListener('click', function() { _stopScanner(function() { render(_page); }); });
+
+        _html5QrCode = new Html5Qrcode('timbra-reader');
+        _scannerRunning = true;
+        var handled = false;
+        _html5QrCode.start(
+            { facingMode: 'environment' },
+            { fps: 10, qrbox: 220 },
+            function(decodedText) {
+                if (handled) return;
+                if (decodedText === _qrToken) {
+                    handled = true;
+                    _stopScanner(function() { _eseguiTimbra(container, azione); });
+                } else {
+                    var msg = document.getElementById('timbra-scan-msg');
+                    if (msg) msg.innerHTML = '<span class="text-danger">QR non valido: inquadra quello affisso in stazione.</span>';
+                }
+            },
+            function() { /* errori di lettura per-frame: ignorati */ }
+        ).catch(function(e) {
+            _scannerRunning = false;
+            ENI.UI.error('Impossibile aprire la fotocamera: ' + (e && e.message ? e.message : e));
+            render(_page);
+        });
+    }
+
+    function _stopScanner(cb) {
+        if (_html5QrCode && _scannerRunning) {
+            _scannerRunning = false;
+            _html5QrCode.stop().then(function() {
+                try { _html5QrCode.clear(); } catch (e) {}
+                _html5QrCode = null;
+                if (cb) cb();
+            }).catch(function() {
+                _html5QrCode = null;
+                if (cb) cb();
+            });
+        } else {
+            _scannerRunning = false;
+            if (cb) cb();
+        }
+    }
+
+    async function _eseguiTimbra(container, azione) {
         if (_busy) return;
         _busy = true;
-        var btn = container.querySelector('#btn-timbra');
-        if (btn) { btn.disabled = true; btn.textContent = 'Registro…'; }
+        container.innerHTML = _wrap('<div class="flex justify-center" style="padding:2rem;"><div class="spinner"></div><span style="margin-left:10px;">Registro…</span></div>');
         try {
-            var rec = await ENI.API.salvaTimbratura({ tipo: azione });
+            var rec = await ENI.API.salvaTimbratura({ tipo: azione, origine: 'qr' });
             _renderSuccesso(container, azione, rec);
             _renderStorico(ENI.State.getUserId());
         } catch (e) {
-            ENI.UI.error('Errore nel salvataggio: ' + e.message);
             _busy = false;
-            if (btn) { btn.disabled = false; }
+            ENI.UI.error('Errore nel salvataggio: ' + e.message);
+            render(_page);
         }
     }
 

@@ -1136,10 +1136,10 @@ ENI.API = (function() {
     // Registra una timbratura per l'utente loggato (entrata/uscita).
     async function salvaTimbratura(dati) {
         var payload = {
-            personale_id: ENI.State.getUserId(),
+            personale_id: dati.personale_id || ENI.State.getUserId(),
             tipo: dati.tipo,
-            ts: new Date().toISOString(),
-            data: ENI.UI.oggiISO(),
+            ts: dati.ts || new Date().toISOString(),
+            data: dati.data || ENI.UI.oggiISO(),
             origine: dati.origine || 'qr'
         };
         var result = await getClient().from('timbrature')
