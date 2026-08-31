@@ -302,11 +302,23 @@ ENI.Modules.Timbra = (function() {
             var sess = _sessioni(perGiorno[g]);
             var min = _minuti(sess);
             totMin += min;
-            var pairs = sess.map(function(s) { return (s.inizio ? _oraDi(s.inizio) : '??') + '–' + (s.fine ? _oraDi(s.fine) : '??'); }).join(', ');
-            return '<div style="display:flex; justify-content:space-between; gap:8px; padding:5px 0; border-bottom:1px solid var(--border-color);">' +
-                '<div><div style="font-weight:600; font-size:0.85rem;">' + _fmtDataStorico(g) + '</div>' +
-                '<div class="text-xs text-muted">' + pairs + '</div></div>' +
-                '<div style="font-weight:700; white-space:nowrap;">' + _fmtOre(min) + '</div>' +
+            var lineeSess = sess.map(function(s) {
+                if (s.inizio && s.fine) {
+                    var durata = (new Date(s.fine) - new Date(s.inizio)) / 60000;
+                    return '<div style="display:flex; justify-content:space-between; gap:8px; font-size:0.9rem; padding:3px 0;">' +
+                        '<span>🟢 Entrata ' + _oraDi(s.inizio) + ' → 🔴 Uscita ' + _oraDi(s.fine) + '</span>' +
+                        '<span class="text-muted" style="white-space:nowrap;">' + _fmtOre(durata) + '</span></div>';
+                }
+                if (s.inizio && !s.fine) {
+                    return '<div style="font-size:0.9rem; padding:3px 0;">🟢 Entrata ' + _oraDi(s.inizio) + ' → <span class="text-muted">ancora in servizio</span></div>';
+                }
+                return '<div style="font-size:0.9rem; padding:3px 0; color:var(--color-danger);">🔴 Uscita ' + _oraDi(s.fine) + ' · entrata mancante</div>';
+            }).join('');
+            return '<div style="padding:8px 0; border-bottom:1px solid var(--border-color);">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">' +
+                    '<span style="font-weight:700; text-transform:capitalize;">' + _fmtDataStorico(g) + '</span>' +
+                    '<span style="font-weight:700; white-space:nowrap;">Tot ' + _fmtOre(min) + '</span>' +
+                '</div>' + lineeSess +
             '</div>';
         }).join('');
 

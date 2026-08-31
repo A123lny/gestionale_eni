@@ -398,6 +398,8 @@ ENI.Modules.Timbrature = (function() {
 
     // --- Timbratura manuale (super admin) ---
     async function _salvaManuale(container) {
+        var btn = container.querySelector('#man-salva');
+        if (btn && btn.disabled) return; // già in corso: evita doppioni
         var pid = container.querySelector('#man-dip').value;
         var tsLocal = container.querySelector('#man-ts').value;
         var tipo = container.querySelector('#man-tipo').value;
@@ -406,12 +408,15 @@ ENI.Modules.Timbrature = (function() {
         var iso;
         try { iso = new Date(tsLocal).toISOString(); }
         catch (e) { ENI.UI.warning('Data/ora non valida'); return; }
+        if (btn) { btn.disabled = true; }
         try {
             await ENI.API.salvaTimbratura({ personale_id: pid, tipo: tipo, ts: iso, data: tsLocal.slice(0, 10), origine: 'manuale' });
             ENI.UI.success('Timbratura manuale registrata');
             _load(container);
         } catch (e) {
             ENI.UI.error('Errore: ' + e.message);
+        } finally {
+            if (btn) { btn.disabled = false; }
         }
     }
 
