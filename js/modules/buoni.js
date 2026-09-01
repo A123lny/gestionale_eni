@@ -356,7 +356,7 @@ ENI.Modules.Buoni = (function() {
 
     function _loadLogos() {
         return new Promise(function(resolve) {
-            var tagli = [5, 10, 20, 50];
+            var tagli = ENI.Config.TAGLI_BUONI;
             var allLoaded = tagli.every(function(t) { return _sfondiB64[t]; });
             if (allLoaded) { resolve(); return; }
 

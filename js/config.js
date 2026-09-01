@@ -27,18 +27,19 @@ ENI.Config = {
     },
 
     // Tagli buoni cartacei
-    TAGLI_BUONI: [5, 10, 20, 50],
+    TAGLI_BUONI: [5, 10, 20, 25, 50],
 
     // Colori per taglio buono
     COLORI_BUONI: {
         5:  { primary: '#4CAF50', accent: '#2E7D32', label: 'Verde' },
         10: { primary: '#2196F3', accent: '#1565C0', label: 'Blu' },
         20: { primary: '#FF9800', accent: '#E65100', label: 'Arancione' },
+        25: { primary: '#E53935', accent: '#B71C1C', label: 'Rosso' },
         50: { primary: '#9C27B0', accent: '#6A1B9A', label: 'Viola' }
     },
 
     // Codice denominazione per EAN-13
-    DENOM_CODE_BUONI: { 5: '1', 10: '2', 20: '3', 50: '4' },
+    DENOM_CODE_BUONI: { 5: '1', 10: '2', 20: '3', 25: '5', 50: '4' },
 
     // Ruoli e permessi
     RUOLI: {
