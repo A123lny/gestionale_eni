@@ -15,6 +15,7 @@ ENI.Modules.Buoni = (function() {
 
     // Stato selezione cliente
     var _selectedCliente = null;     // Tab Genera
+    var _modoRegalo = false;         // Tab Genera: true = buono al portatore, senza cliente
     var _gestioneCliente = null;     // Tab Gestione
 
     // Cache sfondi PNG per PDF (uno per ogni taglio)
@@ -112,18 +113,27 @@ ENI.Modules.Buoni = (function() {
         });
 
         container.innerHTML =
-            // Step 1: Selezione cliente
+            // Step 1: Intestazione (Cliente o Regalo)
             '<div class="card" style="margin-bottom: var(--space-4);">' +
-                '<div class="card-header"><h3>1. Seleziona Cliente</h3></div>' +
+                '<div class="card-header"><h3>1. Intestazione</h3></div>' +
                 '<div class="card-body">' +
-                    '<p class="text-muted" style="margin-bottom: var(--space-3);">I buoni devono essere associati a un cliente. Cerca un cliente esistente o creane uno nuovo.</p>' +
-                    '<div class="form-group" style="position: relative;">' +
-                        '<input type="text" class="form-input" id="genera-cerca-cliente" placeholder="Cerca per nome, ragione sociale, targa o P.IVA...">' +
-                        '<div id="genera-clienti-results" class="pos-search-dropdown" style="display: none;"></div>' +
+                    '<div class="filter-chips" style="margin-bottom: var(--space-3);">' +
+                        '<button class="chip' + (_modoRegalo ? '' : ' active') + '" data-modo="cliente">👤 Cliente</button>' +
+                        '<button class="chip' + (_modoRegalo ? ' active' : '') + '" data-modo="regalo">🎁 Regalo</button>' +
                     '</div>' +
-                    '<div id="genera-cliente-selected" style="display: none;"></div>' +
-                    '<div style="margin-top: var(--space-2);">' +
-                        '<button class="btn btn-outline btn-sm" id="btn-genera-nuovo-cliente">+ Crea Nuovo Cliente</button>' +
+                    '<div id="genera-blocco-cliente"' + (_modoRegalo ? ' style="display:none;"' : '') + '>' +
+                        '<p class="text-muted" style="margin-bottom: var(--space-3);">I buoni devono essere associati a un cliente. Cerca un cliente esistente o creane uno nuovo.</p>' +
+                        '<div class="form-group" style="position: relative;">' +
+                            '<input type="text" class="form-input" id="genera-cerca-cliente" placeholder="Cerca per nome, ragione sociale, targa o P.IVA...">' +
+                            '<div id="genera-clienti-results" class="pos-search-dropdown" style="display: none;"></div>' +
+                        '</div>' +
+                        '<div id="genera-cliente-selected" style="display: none;"></div>' +
+                        '<div style="margin-top: var(--space-2);">' +
+                            '<button class="btn btn-outline btn-sm" id="btn-genera-nuovo-cliente">+ Crea Nuovo Cliente</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div id="genera-blocco-regalo"' + (_modoRegalo ? '' : ' style="display:none;"') + '>' +
+                        '<p class="text-muted" style="margin:0;">🎁 <strong>Buono regalo</strong>: nessun cliente, nessuna anagrafica. È al portatore — lo spende chi lo riceve.</p>' +
                     '</div>' +
                 '</div>' +
             '</div>' +
@@ -161,6 +171,23 @@ ENI.Modules.Buoni = (function() {
 
         // Bottone nuovo cliente
         document.getElementById('btn-genera-nuovo-cliente').addEventListener('click', _mostraNuovoClientePerBuoni);
+
+        // Interruttore Cliente / Regalo
+        container.querySelectorAll('[data-modo]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                _modoRegalo = (btn.getAttribute('data-modo') === 'regalo');
+                if (_modoRegalo) _selectedCliente = null;
+                container.querySelectorAll('[data-modo]').forEach(function(b) {
+                    b.classList.toggle('active', (b.getAttribute('data-modo') === 'regalo') === _modoRegalo);
+                });
+                var bc = document.getElementById('genera-blocco-cliente');
+                var br = document.getElementById('genera-blocco-regalo');
+                if (bc) bc.style.display = _modoRegalo ? 'none' : '';
+                if (br) br.style.display = _modoRegalo ? '' : 'none';
+                var sel = document.getElementById('genera-cliente-selected');
+                if (sel && _modoRegalo) sel.style.display = 'none';
+            });
+        });
 
         // Bottone genera
         document.getElementById('btn-genera-buoni').addEventListener('click', _generaBuoni);
@@ -246,9 +273,9 @@ ENI.Modules.Buoni = (function() {
     }
 
     async function _generaBuoni() {
-        // Validazione cliente
-        if (!_selectedCliente) {
-            ENI.UI.warning('Seleziona un cliente prima di generare i buoni');
+        // Validazione: serve un cliente, a meno che sia un buono regalo (al portatore)
+        if (!_modoRegalo && !_selectedCliente) {
+            ENI.UI.warning('Seleziona un cliente, oppure scegli la modalità Regalo');
             return;
         }
 
@@ -270,8 +297,9 @@ ENI.Modules.Buoni = (function() {
 
         var totale = buoniDaGenerare.reduce(function(s, b) { return s + b.qty; }, 0);
 
+        var perChi = _modoRegalo ? 'come REGALO (al portatore, senza cliente)' : 'per "' + _selectedCliente.nome_ragione_sociale + '"';
         var conferma = await ENI.UI.confirm(
-            'Generare ' + totale + ' buoni per "' + _selectedCliente.nome_ragione_sociale + '"?'
+            'Generare ' + totale + ' buoni ' + perChi + '?'
         );
         if (!conferma) return;
 
@@ -301,7 +329,8 @@ ENI.Modules.Buoni = (function() {
                         taglio: bg.taglio,
                         stato: 'attivo',
                         lotto: lotto,
-                        cliente_id: _selectedCliente.id,
+                        cliente_id: _modoRegalo ? null : _selectedCliente.id,
+                        note: _modoRegalo ? 'Regalo' : null,
                         creato_da: ENI.State.getUserId(),
                         creato_nome: ENI.State.getUserName()
                     });
@@ -311,11 +340,11 @@ ENI.Modules.Buoni = (function() {
             // Salva in DB
             await ENI.API.generaBuoniCartacei(tuttiBuoni);
 
-            // Genera PDF
-            await _generaPDF(tuttiBuoni, lotto, _selectedCliente.nome_ragione_sociale);
+            // Genera PDF (regalo = nessuna intestazione)
+            await _generaPDF(tuttiBuoni, lotto, _modoRegalo ? null : _selectedCliente.nome_ragione_sociale);
 
             ENI.UI.hideLoading();
-            ENI.UI.success('Generati ' + totale + ' buoni per "' + _selectedCliente.nome_ragione_sociale + '" - Lotto: ' + lotto);
+            ENI.UI.success('Generati ' + totale + ' buoni ' + (_modoRegalo ? '(Regalo)' : 'per "' + _selectedCliente.nome_ragione_sociale + '"') + ' - Lotto: ' + lotto);
 
             // Reset
             _selectedCliente = null;
