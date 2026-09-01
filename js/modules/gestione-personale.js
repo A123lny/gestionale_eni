@@ -27,5 +27,5 @@ ENI.Modules = ENI.Modules || {};
     // Ferie e Permessi ha un modulo dedicato (js/modules/ferie.js)
     // Timbrature ha un modulo dedicato (js/modules/timbrature.js)
     // Turni ha un modulo dedicato (js/modules/turni.js)
-    ENI.Modules.BustePaga = { render: _placeholder('Buste Paga', '📄', 'Archivio e consultazione dei cedolini paga.') };
+    // Buste Paga ha un modulo dedicato (js/modules/buste-paga.js): BustePaga (admin) + BustePagaMie (dipendente)
 })();

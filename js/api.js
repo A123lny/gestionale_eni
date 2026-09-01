@@ -2739,6 +2739,64 @@ ENI.API = (function() {
         };
     }
 
+    // --- Buste Paga (cedolini PDF) ---
+    // Lista cedolini. Admin: tutti (o filtrati); dipendente: solo i propri (via RLS).
+    async function getBustePaga(opts) {
+        opts = opts || {};
+        var q = getClient().from('buste_paga')
+            .select('*, personale:personale_id(nome_completo)')
+            .order('anno', { ascending: false })
+            .order('mese', { ascending: false });
+        if (opts.personaleId) q = q.eq('personale_id', opts.personaleId);
+        if (opts.anno) q = q.eq('anno', opts.anno);
+        var result = await q;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    // Carica un cedolino: upload PDF su Storage + riga in tabella. Solo super admin (RLS).
+    async function caricaBustaPaga(dati, file) {
+        var client = getClient();
+        var rand = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (String(Date.now()) + Math.round(Math.random() * 1e9));
+        var path = dati.personale_id + '/' + rand + '.pdf';
+        var up = await client.storage.from('buste-paga').upload(path, file, { contentType: 'application/pdf', upsert: false });
+        if (up.error) throw new Error(up.error.message);
+        var payload = {
+            personale_id: dati.personale_id,
+            anno: dati.anno,
+            mese: dati.mese,
+            descrizione: dati.descrizione || null,
+            file_path: path,
+            file_nome: dati.file_nome || null,
+            caricato_da: ENI.State.getUserId(),
+            caricato_nome: ENI.State.getUserName()
+        };
+        var ins = await client.from('buste_paga').insert(payload).select().single();
+        if (ins.error) {
+            try { await client.storage.from('buste-paga').remove([path]); } catch (e) {}
+            throw new Error(ins.error.message);
+        }
+        await scriviLog('Carica_Busta_Paga', 'BustePaga', dati.mese + '/' + dati.anno);
+        return ins.data;
+    }
+
+    // Link firmato per aprire/scaricare il PDF (scadenza breve).
+    async function getUrlBustaPaga(filePath) {
+        var res = await getClient().storage.from('buste-paga').createSignedUrl(filePath, 120);
+        if (res.error) throw new Error(res.error.message);
+        return res.data.signedUrl;
+    }
+
+    // Elimina cedolino (file + riga). Solo super admin.
+    async function eliminaBustaPaga(id, filePath) {
+        var client = getClient();
+        if (filePath) { try { await client.storage.from('buste-paga').remove([filePath]); } catch (e) {} }
+        var del = await client.from('buste_paga').delete().eq('id', id);
+        if (del.error) throw new Error(del.error.message);
+        await scriviLog('Elimina_Busta_Paga', 'BustePaga', 'id ' + id);
+        return true;
+    }
+
     // API pubblica
     return {
         init: init,
@@ -2750,6 +2808,10 @@ ENI.API = (function() {
         remove: remove,
         generaCodice: generaCodice,
         scriviLog: scriviLog,
+        getBustePaga: getBustePaga,
+        caricaBustaPaga: caricaBustaPaga,
+        getUrlBustaPaga: getUrlBustaPaga,
+        eliminaBustaPaga: eliminaBustaPaga,
         getStaffLoginList: getStaffLoginList,
         loginConPin: loginConPin,
         cambiaPinCorrente: cambiaPinCorrente,

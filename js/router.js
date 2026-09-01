@@ -35,6 +35,7 @@ ENI.Router = (function() {
         'timbrature':   { module: 'Timbrature',   id: 'timbrature' },
         'turni':        { module: 'Turni',        id: 'turni' },
         'buste-paga':   { module: 'BustePaga',    id: 'buste-paga' },
+        'buste-paga-mie': { module: 'BustePagaMie', id: 'buste-paga-mie' },
         'manutenzioni': { module: 'Manutenzioni', id: 'manutenzioni' },
         'log':          { module: 'Log',          id: 'log' },
         'impostazioni': { module: 'Impostazioni', id: 'impostazioni' }

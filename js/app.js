@@ -161,6 +161,8 @@ ENI.App = (function() {
             if (item.id === 'mie-richieste' && isSA) return false;
             // "Timbratura" è per i dipendenti: il super admin usa Gestione Personale → Timbrature.
             if (item.id === 'timbra' && isSA) return false;
+            // "Buste Paga" (voce dipendente): il super admin usa Gestione Personale → Buste Paga.
+            if (item.id === 'buste-paga-mie' && isSA) return false;
             return config.moduli.indexOf(item.id) !== -1 && ENI.State.isModuloAttivo(item.id);
         });
 
