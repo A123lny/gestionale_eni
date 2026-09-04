@@ -59,7 +59,10 @@ ENI.Modules.Timbrature = (function() {
                 '<div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;">' +
                     '<div><label class="form-label">Dipendente</label><select class="form-input" id="man-dip"><option value="">— scegli —</option>' + manOpts + '</select></div>' +
                     '<div><label class="form-label">Data e ora</label><input type="datetime-local" class="form-input" id="man-ts"></div>' +
-                    '<div><label class="form-label">Tipo</label><select class="form-input" id="man-tipo"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div>' +
+                    '<div><label class="form-label">Tipo</label><div class="filter-chips" id="man-tipo-chips">' +
+                        '<button type="button" class="chip active" data-tipo="entrata">🟢 Entrata</button>' +
+                        '<button type="button" class="chip" data-tipo="uscita">🔴 Uscita</button>' +
+                    '</div></div>' +
                     '<button class="btn btn-primary btn-sm" id="man-salva">Registra</button>' +
                 '</div>' +
                 '<div class="text-xs text-muted" style="margin-top:6px;">Solo per casi eccezionali (telefono scarico/dimenticato). Resta segnata come <strong>manuale</strong>.</div>' +
@@ -83,6 +86,12 @@ ENI.Modules.Timbrature = (function() {
 
         var manTs = container.querySelector('#man-ts');
         if (manTs) manTs.value = _nowLocalInput();
+        container.querySelectorAll('#man-tipo-chips [data-tipo]').forEach(function(c) {
+            c.addEventListener('click', function() {
+                container.querySelectorAll('#man-tipo-chips [data-tipo]').forEach(function(x) { x.classList.remove('active'); });
+                c.classList.add('active');
+            });
+        });
         var manBtn = container.querySelector('#man-salva');
         if (manBtn) manBtn.addEventListener('click', function() { _salvaManuale(container); });
 
@@ -402,7 +411,8 @@ ENI.Modules.Timbrature = (function() {
         if (btn && btn.disabled) return; // già in corso: evita doppioni
         var pid = container.querySelector('#man-dip').value;
         var tsLocal = container.querySelector('#man-ts').value;
-        var tipo = container.querySelector('#man-tipo').value;
+        var tipoEl = container.querySelector('#man-tipo-chips [data-tipo].active');
+        var tipo = tipoEl ? tipoEl.getAttribute('data-tipo') : 'entrata';
         if (!pid) { ENI.UI.warning('Scegli un dipendente'); return; }
         if (!tsLocal) { ENI.UI.warning('Scegli data e ora'); return; }
         var iso;
