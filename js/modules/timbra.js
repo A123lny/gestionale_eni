@@ -16,6 +16,9 @@ ENI.Modules.Timbra = (function() {
     var _qrToken = null;
     var _html5QrCode = null;
     var _scannerRunning = false;
+    var _meseSel = null; // {anno, mese} mostrato nello storico ore
+    var MESI_NOMI = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+                     'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 
     // Doppia scansione ravvicinata: sotto questa soglia (secondi) chiedo conferma extra.
     var SOGLIA_DOPPIO = 90;
@@ -286,12 +289,16 @@ ENI.Modules.Timbra = (function() {
     async function _renderStorico(pid) {
         var el = document.getElementById('timbra-storico');
         if (!el) return;
+        if (!_meseSel) { var n = new Date(); _meseSel = { anno: n.getFullYear(), mese: n.getMonth() + 1 }; }
         el.innerHTML = '<div class="card" style="padding:var(--space-4);"><div class="flex justify-center" style="padding:1rem;"><div class="spinner"></div></div></div>';
 
-        var da = _lunediCorrente(), a = ENI.UI.oggiISO();
+        var anno = _meseSel.anno, mese = _meseSel.mese;
+        var da = anno + '-' + _due(mese) + '-01';
+        var ultimoGiorno = new Date(anno, mese, 0).getDate();
+        var a = anno + '-' + _due(mese) + '-' + _due(ultimoGiorno);
         var timb;
         try { timb = await ENI.API.getTimbrature(da, a); }
-        catch (e) { el.innerHTML = ''; return; }
+        catch (e) { el.innerHTML = '<div class="card" style="padding:var(--space-4);"><p class="text-danger">Errore nel caricare le ore.</p></div>'; return; }
         timb = (timb || []).filter(function(t) { return t.personale_id === pid; });
 
         var perGiorno = {};
@@ -306,31 +313,88 @@ ENI.Modules.Timbra = (function() {
                 if (s.inizio && s.fine) {
                     var durata = (new Date(s.fine) - new Date(s.inizio)) / 60000;
                     return '<div style="display:flex; justify-content:space-between; gap:8px; font-size:0.9rem; padding:3px 0;">' +
-                        '<span>🟢 Entrata ' + _oraDi(s.inizio) + ' → 🔴 Uscita ' + _oraDi(s.fine) + '</span>' +
+                        '<span>🟢 ' + _oraDi(s.inizio) + ' → 🔴 ' + _oraDi(s.fine) + '</span>' +
                         '<span class="text-muted" style="white-space:nowrap;">' + _fmtOre(durata) + '</span></div>';
                 }
                 if (s.inizio && !s.fine) {
-                    return '<div style="font-size:0.9rem; padding:3px 0;">🟢 Entrata ' + _oraDi(s.inizio) + ' → <span class="text-muted">ancora in servizio</span></div>';
+                    return '<div style="font-size:0.9rem; padding:3px 0;">🟢 ' + _oraDi(s.inizio) + ' → <span class="text-muted">ancora in servizio</span></div>';
                 }
                 return '<div style="font-size:0.9rem; padding:3px 0; color:var(--color-danger);">🔴 Uscita ' + _oraDi(s.fine) + ' · entrata mancante</div>';
             }).join('');
             return '<div style="padding:8px 0; border-bottom:1px solid var(--border-color);">' +
                 '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">' +
                     '<span style="font-weight:700; text-transform:capitalize;">' + _fmtDataStorico(g) + '</span>' +
-                    '<span style="font-weight:700; white-space:nowrap;">Tot ' + _fmtOre(min) + '</span>' +
+                    '<span style="font-weight:700; white-space:nowrap;">' + _fmtOre(min) + '</span>' +
                 '</div>' + lineeSess +
             '</div>';
         }).join('');
 
         el.innerHTML =
             '<div class="card" style="padding:var(--space-4);">' +
-                '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
-                    '<span style="font-weight:700;">📋 Le mie timbrature</span>' +
-                    '<span class="text-xs text-muted">questa settimana</span>' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">' +
+                    '<span style="font-weight:700;">📋 Le mie ore</span>' +
+                    '<button id="tb-refresh" class="btn btn-ghost btn-sm" title="Aggiorna">🔄</button>' +
                 '</div>' +
-                (righe || '<div class="text-sm text-muted">Nessuna timbratura questa settimana.</div>') +
-                (giorni.length ? '<div style="display:flex; justify-content:space-between; margin-top:8px; font-weight:700;"><span>Totale settimana</span><span>' + _fmtOre(totMin) + '</span></div>' : '') +
+                '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">' +
+                    '<button id="tb-mprev" class="btn btn-outline btn-sm">‹</button>' +
+                    '<span style="font-weight:700; text-transform:capitalize;">' + MESI_NOMI[mese] + ' ' + anno + '</span>' +
+                    '<button id="tb-mnext" class="btn btn-outline btn-sm">›</button>' +
+                '</div>' +
+                (righe || '<div class="text-sm text-muted" style="padding:8px 0;">Nessuna timbratura in questo mese.</div>') +
+                (giorni.length ? '<div style="display:flex; justify-content:space-between; margin-top:8px; font-weight:700; border-top:2px solid var(--border-color); padding-top:8px;"><span>Totale mese</span><span>' + _fmtOre(totMin) + '</span></div>' : '') +
+                '<button id="tb-scarica" class="btn btn-primary btn-block" style="margin-top:12px;"' + (giorni.length ? '' : ' disabled') + '>📄 Scarica PDF del mese</button>' +
             '</div>';
+
+        document.getElementById('tb-refresh').addEventListener('click', function() { render(_page); });
+        document.getElementById('tb-mprev').addEventListener('click', function() { _cambiaMese(pid, -1); });
+        document.getElementById('tb-mnext').addEventListener('click', function() { _cambiaMese(pid, 1); });
+        var sc = document.getElementById('tb-scarica');
+        if (sc && giorni.length) sc.addEventListener('click', function() { _scaricaPdfMese(anno, mese, giorni, perGiorno, totMin); });
+    }
+
+    function _cambiaMese(pid, delta) {
+        var m = _meseSel.mese + delta, y = _meseSel.anno;
+        if (m < 1) { m = 12; y--; } else if (m > 12) { m = 1; y++; }
+        _meseSel = { anno: y, mese: m };
+        _renderStorico(pid);
+    }
+
+    function _scaricaPdfMese(anno, mese, giorni, perGiorno, totMin) {
+        if (!(window.jspdf && window.jspdf.jsPDF)) { ENI.UI.error('Libreria PDF non disponibile'); return; }
+        try {
+            var doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+            var nome = (ENI.State.getUserName && ENI.State.getUserName()) || '';
+            var y = 18;
+            doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+            doc.text('Ore lavorate — ' + MESI_NOMI[mese] + ' ' + anno, 15, y);
+            y += 7; doc.setFontSize(11); doc.setFont('helvetica', 'normal');
+            doc.text('Dipendente: ' + nome, 15, y);
+            y += 9; doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+            doc.text('Giorno', 15, y); doc.text('Orari', 60, y); doc.text('Ore', 195, y, { align: 'right' });
+            y += 1.5; doc.line(15, y, 195, y); y += 5;
+            doc.setFont('helvetica', 'normal');
+            giorni.slice().sort().forEach(function(g) {
+                var sess = _sessioni(perGiorno[g]);
+                var min = _minuti(sess);
+                var pairs = sess.map(function(s) {
+                    if (s.inizio && s.fine) return _oraDi(s.inizio) + '-' + _oraDi(s.fine);
+                    if (s.inizio) return _oraDi(s.inizio) + '-??';
+                    return '??-' + _oraDi(s.fine);
+                }).join('   ');
+                if (y > 275) { doc.addPage(); y = 18; }
+                doc.text(_fmtDataStorico(g), 15, y);
+                doc.text(pairs, 60, y, { maxWidth: 120 });
+                doc.text(_fmtOre(min), 195, y, { align: 'right' });
+                y += 6;
+            });
+            y += 1.5; doc.line(15, y, 195, y); y += 6;
+            doc.setFont('helvetica', 'bold');
+            doc.text('Totale mese', 15, y);
+            doc.text(_fmtOre(totMin), 195, y, { align: 'right' });
+            doc.save('ore_' + anno + '-' + _due(mese) + '.pdf');
+        } catch (e) {
+            ENI.UI.error('Errore nel PDF: ' + e.message);
+        }
     }
 
     return { render: render };
