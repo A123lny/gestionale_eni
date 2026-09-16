@@ -114,8 +114,20 @@ const C = sandbox.ENI.Config;
   check('esistono 2 formule crediti', formuleCrediti.length === 2, formuleCrediti.length + ' trovate');
   check('nessuna formula crediti tocca i lavaggi',
     formuleCrediti.every(f => !f.includes('lavaggi')));
-  check('il venduto lavaggi resta in sola lettura dalle Vendite',
-    /_vendutoRO\('Lavaggi', 'venduto_lavaggi'/.test(cassaSrc));
+  check('il venduto lavaggi e alimentato dalla categoria Lavaggi delle Vendite',
+    /_vendutoNegozio\('Lavaggi', 'venduto_lavaggi', 'Lavaggi'/.test(cassaSrc));
+
+  // --- 5bis. Il venduto negozio e' modificabile in ogni stato della cassa ---
+  check('nessun campo readonly rimasto in cassa', !/readonly/.test(cassaSrc));
+  const campiVenduto = ['venduto_bar','venduto_olio','venduto_accessori','venduto_adblue',
+    'venduto_lavaggi','venduto_tergicristalli','venduto_catene','venduto_profumatori',
+    'venduto_detailing','venduto_uso_interno','venduto_altro'];
+  check('tutti gli 11 campi venduto usano la versione modificabile',
+    campiVenduto.every(c => cassaSrc.includes("_vendutoNegozio('") && cassaSrc.includes("'" + c + "'")));
+  check('esiste il pulsante per riprendere il valore dalle Vendite',
+    /btn-sync-venduto/.test(cassaSrc) && /data-sync-valore/.test(cassaSrc));
+  check('i pulsanti si disabilitano a cassa chiusa',
+    /#cassa-note, \.btn-sync-venduto/.test(cassaSrc));
 
   // --- 6. Il popup vecchio non esiste piu' ---
   const lavSrc = fs.readFileSync(P + 'js/modules/lavaggi.js', 'utf8');
