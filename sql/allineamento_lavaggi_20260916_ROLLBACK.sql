@@ -17,6 +17,48 @@
 begin;
 
 -- ============================================================
+-- 0. Annulla le correzioni delle anomalie preesistenti (A0)
+-- ============================================================
+
+-- 0a) Ripristina le vendite doppie messe in 'annullata'
+do $$
+declare n int;
+begin
+  with upd as (
+    update public.vendite
+       set stato = 'completata',
+           note = nullif(regexp_replace(note, '( \| )?ALLINEAMENTO 20260916 DOPPIONE$', ''), '')
+     where note like '%ALLINEAMENTO 20260916 DOPPIONE'
+    returning 1
+  )
+  select count(*) into n from upd;
+  raise notice 'Vendite doppie ripristinate: %', n;
+end $$;
+
+-- 0b) Ripristina i prezzi originali dei lavaggi dal backup
+do $$
+declare n int;
+begin
+  if not exists (
+    select 1 from information_schema.tables
+     where table_schema='public' and table_name='lavaggi_backup_20260916'
+  ) then
+    raise notice 'Nessun lavaggi_backup_20260916: niente prezzi da ripristinare';
+    return;
+  end if;
+  with upd as (
+    update public.lavaggi l
+       set prezzo = b.prezzo_originale
+      from public.lavaggi_backup_20260916 b
+     where l.id = b.id
+    returning 1
+  )
+  select count(*) into n from upd;
+  raise notice 'Prezzi lavaggio ripristinati: %', n;
+end $$;
+
+
+-- ============================================================
 -- 1. Riporta a 'contanti' le vendite convertite
 -- ============================================================
 do $$

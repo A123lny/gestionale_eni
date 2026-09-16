@@ -61,6 +61,75 @@ end $$;
 
 
 -- ============================================================
+-- A0) Anomalie preesistenti, da sistemare prima di allineare.
+-- Sono 8 casi nati da vecchi difetti, non dal lavoro di oggi. Senza
+-- sistemarli l'allineamento non potrebbe mai tornare su quelle giornate.
+-- L'utente ha scelto di allineare tutto prendendo la VENDITA come dato buono.
+-- ============================================================
+
+-- A0a) Tre lavaggi con DUE vendite ciascuno (LAV1064, LAV1081, LAV1128):
+-- 88 EUR contati due volte. La seconda vendita viene messa in stato
+-- 'annullata', non cancellata: esce dai totali (che filtrano 'completata')
+-- ma resta tracciata e ripristinabile.
+do $$
+declare n int;
+begin
+  with doppie as (
+    select v.id,
+           row_number() over (partition by v.lavaggio_id order by v.codice) as rn
+      from public.lavaggi l
+      join public.vendite v on v.lavaggio_id = l.id and v.stato <> 'annullata'
+     where l.stato = 'Completato'
+       and l.data between date '2026-08-01' and date '2026-09-12'
+       and l.id in (
+         select l2.id from public.lavaggi l2
+           join public.vendite v2 on v2.lavaggio_id = l2.id and v2.stato <> 'annullata'
+          where l2.data between date '2026-08-01' and date '2026-09-12'
+          group by l2.id having count(v2.id) > 1
+       )
+  ),
+  upd as (
+    update public.vendite v
+       set stato = 'annullata',
+           note = coalesce(nullif(v.note, '') || ' | ', '') || 'ALLINEAMENTO 20260916 DOPPIONE'
+      from doppie d
+     where v.id = d.id and d.rn > 1
+    returning 1
+  )
+  select count(*) into n from upd;
+  raise notice 'A0a) vendite doppie annullate: %', n;
+end $$;
+
+-- A0b) Cinque lavaggi il cui prezzo non coincide con la vendita, strascico del
+-- vecchio bug sul prezzo in modifica. Backup dei prezzi originali, poi
+-- allineamento del lavaggio alla vendita.
+create table if not exists public.lavaggi_backup_20260916 as
+select l.id, l.codice, l.prezzo as prezzo_originale, now() as salvato_il
+  from public.lavaggi l
+  join public.vendite v on v.lavaggio_id = l.id and v.stato <> 'annullata'
+ where l.stato = 'Completato'
+   and l.data between date '2026-08-01' and date '2026-09-12'
+   and v.totale <> l.prezzo;
+
+do $$
+declare n int;
+begin
+  with upd as (
+    update public.lavaggi l
+       set prezzo = v.totale
+      from public.vendite v
+     where v.lavaggio_id = l.id and v.stato <> 'annullata'
+       and l.stato = 'Completato'
+       and l.data between date '2026-08-01' and date '2026-09-12'
+       and v.totale <> l.prezzo
+    returning 1
+  )
+  select count(*) into n from upd;
+  raise notice 'A0b) prezzi lavaggio allineati alla vendita: %', n;
+end $$;
+
+
+-- ============================================================
 -- A) Vendita mancante per OGNI lavaggio completato del periodo
 -- Marcatore 'ALLINEAMENTO 20260916 CREATA' per riconoscerle e annullarle.
 -- ============================================================
