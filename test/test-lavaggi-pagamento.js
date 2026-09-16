@@ -129,6 +129,14 @@ const C = sandbox.ENI.Config;
   check('i pulsanti si disabilitano a cassa chiusa',
     /#cassa-note, \.btn-sync-venduto/.test(cassaSrc));
 
+  // --- 5ter. Totale carburante: anche i litri, non solo gli euro ---
+  check('il totale carburante mostra i litri',
+    /tot-carburante-litri/.test(cassaSrc));
+  check('i litri sommano gli stessi tre prodotti degli euro',
+    /totCarburanteLitri[\s\S]{0,160}super_sp_litri[\s\S]{0,80}diesel_litri[\s\S]{0,80}diesel_plus_litri/.test(cassaSrc));
+  check('i litri finiscono a schermo',
+    /_setText\('tot-carburante-litri'/.test(cassaSrc));
+
   // --- 6. Il popup vecchio non esiste piu' ---
   const lavSrc = fs.readFileSync(P + 'js/modules/lavaggi.js', 'utf8');
   check('rimosso "vuoi registrare come vendita?"', !/registrare anche come/i.test(lavSrc));
