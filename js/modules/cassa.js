@@ -254,7 +254,11 @@ ENI.Modules.Cassa = (function() {
                             _hint('\u2139\uFE0F Inserisci solo il venduto della <strong>giornata precedente</strong> (NON comprensiva della notte).<br>' +
                                 'Il dato <strong>comprensivo della notte</strong> va invece sul <strong>portale PA</strong> e in <strong>Marginalit\u00E0 Carburante \u2192 Registra vendita</strong>.') +
                             _renderCarburanteTable(c) +
-                            '<div class="cassa-subtotal text-right mt-3">Totale Carburante: <span id="tot-carburante">\u20AC 0,00</span></div>'
+                            '<div class="cassa-subtotal text-right mt-3">Totale Carburante: ' +
+                                '<span id="tot-carburante-litri" style="font-weight:600;">0 L</span>' +
+                                '<span style="opacity:.5; margin:0 6px;">\u00B7</span>' +
+                                '<span id="tot-carburante">\u20AC 0,00</span>' +
+                            '</div>'
                         ) +
 
                         // Venduto Negozio (fonte unica: modulo Vendite)
@@ -895,6 +899,12 @@ ENI.Modules.Cassa = (function() {
         var totCarburante =
             val('super_sp_euro') + val('diesel_euro') + val('diesel_plus_euro');
 
+        // Litri venduti: stessi tre prodotti degli euro. Serve a colpo d'occhio
+        // per accorgersi di una lettura battuta male, che sugli euro non si
+        // nota perche' sono sempre litri x prezzo di listino.
+        var totCarburanteLitri =
+            val('super_sp_litri') + val('diesel_litri') + val('diesel_plus_litri');
+
         // Venduto negozio (dal modulo Vendite, incl. Altro/Varie)
         var totAltro =
             val('venduto_bar') + val('venduto_olio') + val('venduto_accessori') +
@@ -948,6 +958,7 @@ ENI.Modules.Cassa = (function() {
 
         // Aggiorna UI
         _setText('tot-carburante',    ENI.UI.formatValuta(totCarburante));
+        _setText('tot-carburante-litri', ENI.UI.formatNumero(totCarburanteLitri, 2) + ' L');
         _setText('tot-altro',         ENI.UI.formatValuta(totAltro));
         _setText('tot-venduto',       ENI.UI.formatValuta(totVenduto));
         _setText('tot-banconote',     ENI.UI.formatValuta(totBanconote));
