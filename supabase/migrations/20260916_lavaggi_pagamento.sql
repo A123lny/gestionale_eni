@@ -9,10 +9,10 @@
 --
 -- SOLUZIONE: il metodo di pagamento non si chiede piu' "se" ma "come".
 --   - cliente ad addebito differito -> vendita automatica con metodo 'fattura':
---     il ricavo conta nel venduto, l'importo va tra i crediti, il cassetto quadra
+--     conta nel venduto ma non nei contanti di giornata
 --   - tutti gli altri -> popup con due soli pulsanti, Contanti o POS
 --
--- Migration ADDITIVA: allarga un vincolo e aggiunge due colonne.
+-- Migration ADDITIVA: allarga un vincolo e aggiunge una colonna.
 -- Nessun dato esistente viene modificato.
 
 -- ============================================================
