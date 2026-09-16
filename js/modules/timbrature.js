@@ -10,6 +10,7 @@ ENI.Modules.Timbrature = (function() {
     'use strict';
 
     var _da = '', _a = '', _timbrature = [], _personale = [];
+    var _container = null;   // serve a ricaricare la lista dopo una correzione
 
     // --- Date helper ---
     function _oggi() { return ENI.UI.oggiISO(); }
@@ -30,6 +31,7 @@ ENI.Modules.Timbrature = (function() {
     }
 
     async function render(container) {
+        _container = container;
         if (!_da) { _da = _lunediCorrente(); _a = _oggi(); }
 
         try { _personale = await ENI.API.getPersonale(); } catch (e) { _personale = []; }
@@ -190,7 +192,16 @@ ENI.Modules.Timbrature = (function() {
                 var righeGiorno = sess.map(function(s) {
                     return (s.inizio ? _oraDi(s.inizio) : '??') + '–' + (s.fine ? _oraDi(s.fine) : '??');
                 }).join(', ');
-                dettaglio.push('<div class="text-xs" style="color:var(--color-gray-600);">' + _fmtData(g) + ': ' + righeGiorno + '</div>');
+                var eventiGiorno = perGiorno[g].slice().sort(function(a, b) { return a.ts < b.ts ? -1 : 1; });
+                dettaglio.push(
+                    '<div style="padding:8px 4px; border-bottom:1px solid var(--color-border,#eee);">' +
+                        '<div class="text-xs" style="color:var(--color-gray-600); font-weight:600;">' +
+                            _fmtData(g) + ': ' + righeGiorno +
+                        '</div>' +
+                        '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">' +
+                            eventiGiorno.map(_chipTimbratura).join('') +
+                        '</div>' +
+                    '</div>');
             });
             return '<tr class="timb-row" style="cursor:pointer;" data-pid="' + pid + '">' +
                     '<td><strong>' + ENI.UI.escapeHtml(p.nome) + '</strong>' + (sospese ? ' <span class="badge badge-warning" title="Timbrate incomplete (entrata o uscita mancante)">⚠️ ' + sospese + '</span>' : '') + '</td>' +
@@ -215,6 +226,149 @@ ENI.Modules.Timbrature = (function() {
                 if (dett) dett.style.display = dett.style.display === 'none' ? '' : 'none';
             });
         });
+
+        _setupAzioniTimbrature(content);
+    }
+
+    // --- Correzione delle singole timbrature (solo super admin) ---
+    //
+    // Serve perche' un errore di battitura si sistemava solo da SQL: nessuna
+    // schermata permetteva di correggere o togliere una timbratura sbagliata.
+    // Mostrare anche l'origine e' utile: 'qr' l'ha timbrata il dipendente,
+    // 'manuale' l'ha inserita l'amministratore, e in caso di doppione si
+    // riconosce a colpo d'occhio quale delle due togliere.
+
+    function _chipTimbratura(e) {
+        var entrata = e.tipo === 'entrata';
+        return '<span class="badge ' + (entrata ? 'badge-success' : 'badge-annullato') + '" ' +
+                'style="display:inline-flex; align-items:center; gap:6px; padding:5px 8px;">' +
+                (entrata ? '🟢' : '🔴') +
+                '<strong>' + _oraDi(e.ts) + '</strong>' +
+                '<span class="text-xs" style="opacity:.75;">' + ENI.UI.escapeHtml(e.origine || '') + '</span>' +
+                '<button type="button" data-timb-edit="' + e.id + '" title="Correggi"' +
+                    ' style="background:none;border:none;cursor:pointer;padding:0 2px;font-size:13px;">✏️</button>' +
+                '<button type="button" data-timb-del="' + e.id + '" title="Elimina"' +
+                    ' style="background:none;border:none;cursor:pointer;padding:0 2px;font-size:13px;">🗑️</button>' +
+            '</span>';
+    }
+
+    function _trovaTimbratura(id) {
+        for (var i = 0; i < _timbrature.length; i++) {
+            if (_timbrature[i].id === id) return _timbrature[i];
+        }
+        return null;
+    }
+
+    function _descrizione(t) {
+        return _fmtDataBreve(t.data) + ' ' + _oraDi(t.ts) + ' ' + t.tipo;
+    }
+
+    // Da 'ts' ISO al formato accettato da <input type="datetime-local">, in ora locale
+    function _tsPerInput(ts) {
+        var d = new Date(ts);
+        return d.getFullYear() + '-' + _due(d.getMonth() + 1) + '-' + _due(d.getDate()) +
+               'T' + _due(d.getHours()) + ':' + _due(d.getMinutes());
+    }
+
+    function _setupAzioniTimbrature(content) {
+        ENI.UI.delegate(content, 'click', '[data-timb-edit]', function(ev, el) {
+            ev.stopPropagation();   // senza questo si richiuderebbe il dettaglio
+            _showFormCorreggi(_trovaTimbratura(el.dataset.timbEdit));
+        });
+        ENI.UI.delegate(content, 'click', '[data-timb-del]', function(ev, el) {
+            ev.stopPropagation();
+            _eliminaTimbratura(_trovaTimbratura(el.dataset.timbDel));
+        });
+    }
+
+    function _showFormCorreggi(t) {
+        if (!t) return;
+        var nome = (t.personale && t.personale.nome_completo) || '';
+
+        var modal = ENI.UI.showModal({
+            title: '✏️ Correggi timbratura',
+            body:
+                '<p class="text-sm text-muted" style="margin-top:0;">' +
+                    ENI.UI.escapeHtml(nome) + ' — registrata come <strong>' +
+                    ENI.UI.escapeHtml(t.origine || '') + '</strong>' +
+                '</p>' +
+                '<div class="form-group">' +
+                    '<label class="form-label form-label-required">Data e ora</label>' +
+                    '<input type="datetime-local" class="form-input" id="corr-ts" value="' + _tsPerInput(t.ts) + '">' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Tipo</label>' +
+                    '<div class="filter-chips" id="corr-tipo">' +
+                        '<button type="button" class="chip' + (t.tipo === 'entrata' ? ' active' : '') + '" data-tipo="entrata">🟢 Entrata</button>' +
+                        '<button type="button" class="chip' + (t.tipo === 'uscita' ? ' active' : '') + '" data-tipo="uscita">🔴 Uscita</button>' +
+                    '</div>' +
+                '</div>',
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-primary" id="corr-salva">💾 Salva</button>'
+        });
+
+        modal.querySelectorAll('#corr-tipo [data-tipo]').forEach(function(c) {
+            c.addEventListener('click', function() {
+                modal.querySelectorAll('#corr-tipo [data-tipo]').forEach(function(x) { x.classList.remove('active'); });
+                c.classList.add('active');
+            });
+        });
+
+        modal.querySelector('#corr-salva').addEventListener('click', async function() {
+            var btn = this;
+            var tsLocal = modal.querySelector('#corr-ts').value;
+            if (!tsLocal) { ENI.UI.warning('Indica data e ora'); return; }
+
+            var iso;
+            try { iso = new Date(tsLocal).toISOString(); }
+            catch (e) { ENI.UI.warning('Data/ora non valida'); return; }
+
+            var tipoEl = modal.querySelector('#corr-tipo [data-tipo].active');
+            var tipo = tipoEl ? tipoEl.getAttribute('data-tipo') : t.tipo;
+
+            btn.disabled = true;
+            try {
+                await ENI.API.aggiornaTimbratura(t.id,
+                    {
+                        ts: iso,
+                        data: tsLocal.slice(0, 10),
+                        tipo: tipo,
+                        descrizione: _fmtDataBreve(tsLocal.slice(0, 10)) + ' ' + tsLocal.slice(11, 16) + ' ' + tipo
+                    },
+                    { nome: nome, descrizione: _descrizione(t) });
+                ENI.UI.closeModal(modal);
+                ENI.UI.success('Timbratura corretta');
+                await _load(_container);
+            } catch (e) {
+                ENI.UI.error('Errore: ' + e.message);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    }
+
+    async function _eliminaTimbratura(t) {
+        if (!t) return;
+        var nome = (t.personale && t.personale.nome_completo) || '';
+
+        var ok = await ENI.UI.confirm({
+            title: 'Elimina timbratura',
+            message: 'Eliminare la timbratura di ' + nome + '?\n\n' +
+                     _descrizione(t) + ' (' + (t.origine || '') + ')\n\n' +
+                     'Le ore della giornata verranno ricalcolate.',
+            confirmText: 'Elimina',
+            danger: true
+        });
+        if (!ok) return;
+
+        try {
+            await ENI.API.eliminaTimbratura(t.id, nome + ' - ' + _descrizione(t));
+            ENI.UI.success('Timbratura eliminata');
+            await _load(_container);
+        } catch (e) {
+            ENI.UI.error('Errore: ' + e.message);
+        }
     }
 
     function _fmtData(iso) {
