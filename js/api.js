@@ -911,7 +911,12 @@ ENI.API = (function() {
 
     // --- Vendita da Lavaggio ---
 
-    async function salvaVenditaDaLavaggio(lavaggio, prodottoMagazzino) {
+    // metodo: 'contanti' | 'pos' | 'fattura'
+    // 'fattura' = cliente ad addebito differito: il ricavo conta nel venduto ma
+    // gli importi incassati restano a 0, perche' i soldi non entrano nel cassetto
+    // oggi. La Cassa li somma ai crediti, cosi' la quadratura torna.
+    async function salvaVenditaDaLavaggio(lavaggio, prodottoMagazzino, metodo) {
+        metodo = metodo || 'contanti';
         var codice = await generaCodice('vendite', ENI.Config.PREFISSI.VENDITA);
 
         var vendita = {
@@ -922,9 +927,9 @@ ENI.API = (function() {
             sconto_globale: 0,
             sconto_globale_tipo: 'fisso',
             totale: lavaggio.prezzo,
-            metodo_pagamento: 'contanti',
-            importo_contanti: lavaggio.prezzo,
-            importo_pos: 0,
+            metodo_pagamento: metodo,
+            importo_contanti: metodo === 'contanti' ? lavaggio.prezzo : 0,
+            importo_pos: metodo === 'pos' ? lavaggio.prezzo : 0,
             importo_buono: 0,
             importo_wallet: 0,
             resto: 0,
@@ -953,9 +958,31 @@ ENI.API = (function() {
         await insert('vendite_dettaglio', dettaglio);
 
         await scriviLog('Vendita_Da_Lavaggio', 'Vendita',
-            codice + ' - ' + lavaggio.codice + ' - ' + ENI.UI.formatValuta(lavaggio.prezzo));
+            codice + ' - ' + lavaggio.codice + ' - ' + ENI.UI.formatValuta(lavaggio.prezzo) +
+            ' - ' + metodo);
 
         return record;
+    }
+
+    // Come e' stato incassato un lavaggio: 'contanti' | 'pos' | 'fattura' | 'da_incassare'.
+    // 'da_incassare' = l'operatore ha chiuso il popup senza scegliere: resta
+    // visibile nella lista invece di sparire in silenzio.
+    async function setStatoPagamentoLavaggio(lavaggioId, stato) {
+        return await update('lavaggi', lavaggioId, { stato_pagamento: stato });
+    }
+
+    // Lavaggi completati che non hanno ancora un incasso registrato.
+    async function getLavaggiDaIncassare(dataDa) {
+        var query = getClient()
+            .from('lavaggi')
+            .select('id, codice, data, nome_cliente, veicolo, tipo_lavaggio, prezzo')
+            .eq('stato', 'Completato')
+            .eq('stato_pagamento', 'da_incassare')
+            .order('data', { ascending: false });
+        if (dataDa) query = query.gte('data', dataDa);
+        var result = await query;
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
     }
 
     async function getVenditaPerLavaggio(lavaggioId) {
@@ -2944,6 +2971,8 @@ ENI.API = (function() {
         // Vendita da lavaggio
         salvaVenditaDaLavaggio: salvaVenditaDaLavaggio,
         getVenditaPerLavaggio: getVenditaPerLavaggio,
+        setStatoPagamentoLavaggio: setStatoPagamentoLavaggio,
+        getLavaggiDaIncassare: getLavaggiDaIncassare,
         // Tesoreria
         getCategorieTesoreria: getCategorieTesoreria,
         salvaCategoriaTesoreria: salvaCategoriaTesoreria,

@@ -131,6 +131,11 @@ ENI.Config = {
         { value: 'Bonifico_Anticipato', label: 'Bonifico anticipato' }
     ],
 
+    // Modalita' di pagamento che NON portano soldi nel cassetto al momento del
+    // servizio: il ricavo conta nel venduto, ma l'incasso e' differito (fattura).
+    // Un lavaggio di questi clienti non deve mai finire nei contanti di giornata.
+    MODALITA_PAGAMENTO_DIFFERITO: ['Addebito_Mese', 'Addebito_30gg', 'Addebito_60gg', 'Bonifico_Anticipato'],
+
     // Modalita incasso crediti
     MODALITA_INCASSO: [
         { value: 'Contanti', label: 'Contanti' },

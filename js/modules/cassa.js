@@ -266,17 +266,17 @@ ENI.Modules.Cassa = (function() {
                                 : ''),
                             _hint('\u2139\uFE0F Importi presi <strong>automaticamente dal modulo Vendite</strong> del giorno (sola lettura). Per correggere una vendita, aprila nel modulo Vendite.') +
                             '<div class="cassa-grid">' +
-                                _vendutoRO('Bar', 'venduto_bar', 'Bar', c) +
-                                _vendutoRO('Oli e lubrificanti', 'venduto_olio', 'Oli e lubrificanti', c) +
-                                _vendutoRO('Accessori', 'venduto_accessori', 'Accessori', c) +
-                                _vendutoRO('AdBlue', 'venduto_adblue', 'AdBlue', c) +
-                                _vendutoRO('Lavaggi', 'venduto_lavaggi', 'Lavaggi', c) +
-                                _vendutoRO('Tergicristalli', 'venduto_tergicristalli', 'Tergicristalli', c) +
-                                _vendutoRO('Catene', 'venduto_catene', 'Catene', c) +
-                                _vendutoRO('Profumatori', 'venduto_profumatori', 'Profumatori', c) +
-                                _vendutoRO('Detailing', 'venduto_detailing', 'Detailing', c) +
-                                _vendutoRO('Uso interno', 'venduto_uso_interno', 'Uso interno', c) +
-                                _vendutoRO('Altro / Varie', 'venduto_altro', '__ALTRO__', c) +
+                                _vendutoNegozio('Bar', 'venduto_bar', 'Bar', c) +
+                                _vendutoNegozio('Oli e lubrificanti', 'venduto_olio', 'Oli e lubrificanti', c) +
+                                _vendutoNegozio('Accessori', 'venduto_accessori', 'Accessori', c) +
+                                _vendutoNegozio('AdBlue', 'venduto_adblue', 'AdBlue', c) +
+                                _vendutoNegozio('Lavaggi', 'venduto_lavaggi', 'Lavaggi', c) +
+                                _vendutoNegozio('Tergicristalli', 'venduto_tergicristalli', 'Tergicristalli', c) +
+                                _vendutoNegozio('Catene', 'venduto_catene', 'Catene', c) +
+                                _vendutoNegozio('Profumatori', 'venduto_profumatori', 'Profumatori', c) +
+                                _vendutoNegozio('Detailing', 'venduto_detailing', 'Detailing', c) +
+                                _vendutoNegozio('Uso interno', 'venduto_uso_interno', 'Uso interno', c) +
+                                _vendutoNegozio('Altro / Varie', 'venduto_altro', '__ALTRO__', c) +
                             '</div>' +
                             '<div class="text-right mt-2"><a href="#/vendita" class="text-xs" style="color:var(--color-primary);">Vai alle Vendite \u2192</a></div>' +
                             '<div class="cassa-subtotal text-right mt-2">Totale Negozio: <span id="tot-altro">\u20AC 0,00</span></div>'
@@ -411,7 +411,7 @@ ENI.Modules.Cassa = (function() {
         // Disabilita campi se chiusa (tranne data)
         if (isChiusa) {
             contentEl.querySelectorAll(
-                '.cassa-field, .pos-importo, .banconota-qty, #cassa-note'
+                '.cassa-field, .pos-importo, .banconota-qty, #cassa-note, .btn-sync-venduto'
             ).forEach(function(el) {
                 el.setAttribute('disabled', 'disabled');
             });
@@ -576,46 +576,81 @@ ENI.Modules.Cassa = (function() {
         return altro > 0 ? Math.round(altro * 100) / 100 : 0;
     }
 
-    // Campo venduto negozio in SOLA LETTURA, alimentato dal modulo Vendite.
-    // Con vendite del giorno usa quelle; altrimenti (cassa chiusa/storica) il valore salvato.
-    function _vendutoRO(label, name, catKey, c) {
-        var v;
-        if (_posTotals && _posTotals.numVendite > 0) {
-            v = (catKey === '__ALTRO__') ? _altroVarieValue()
-                : Number((_posTotals.perCategoria && _posTotals.perCategoria[catKey]) || 0);
-        } else {
-            v = Number((c && c[name]) || 0);
-        }
+    // Valore che il modulo Vendite calcola per una categoria del venduto negozio.
+    // null se per quel giorno non ci sono vendite da cui ricavarlo.
+    function _vendutoDaVendite(catKey) {
+        if (!_posTotals || !_posTotals.numVendite) return null;
+        return (catKey === '__ALTRO__')
+            ? _altroVarieValue()
+            : Number((_posTotals.perCategoria && _posTotals.perCategoria[catKey]) || 0);
+    }
+
+    // Campo venduto negozio MODIFICABILE.
+    // Regola: vince sempre il valore salvato in cassa. Quello del modulo Vendite
+    // serve solo a precompilare un campo mai salvato, e resta visibile accanto
+    // con un pulsante per riprenderlo. La cassa si compila il giorno dopo, quindi
+    // se l'utente scrive un numero e' deliberato e non va sovrascritto.
+    function _vendutoNegozio(label, name, catKey, c) {
+        var salvato = (c && c[name] !== null && c[name] !== undefined && _cassa && _cassa.id)
+            ? Number(c[name]) : null;
+        var daVendite = _vendutoDaVendite(catKey);
+
+        var v = (salvato !== null) ? salvato : (daVendite !== null ? daVendite : 0);
         var vStr = v ? v.toFixed(2) : '0';
+
+        // Suggerimento solo quando le Vendite dicono qualcosa di diverso
+        var hint = '';
+        if (daVendite !== null && Math.abs(daVendite - v) > 0.005) {
+            hint = '<span class="text-xs" style="display:block;color:var(--color-gray-500);font-weight:400;">' +
+                       'Vendite: ' + ENI.UI.formatValuta(daVendite) +
+                       ' <button type="button" class="btn-sync-venduto" data-sync-venduto="' + name + '"' +
+                       ' data-sync-valore="' + daVendite.toFixed(2) + '"' +
+                       ' title="Riprendi il valore dal modulo Vendite"' +
+                       ' style="background:none;border:none;color:var(--color-primary);cursor:pointer;padding:0 2px;font-size:12px;">↻ usa</button>' +
+                   '</span>';
+        }
+
         return '<div class="cassa-row">' +
-            '<span class="cassa-row-label">' + label + '</span>' +
+            '<span class="cassa-row-label">' + label + hint + '</span>' +
             '<div class="cassa-row-input">' +
-                '<input type="number" step="0.01" class="form-input cassa-field" readonly ' +
-                    'title="Dato dal modulo Vendite — non modificabile qui" ' +
-                    'style="background:var(--bg-secondary); cursor:not-allowed;" ' +
+                '<input type="number" step="0.01" class="form-input cassa-field" ' +
                     'data-field="' + name + '" value="' + vStr + '">' +
             '</div>' +
         '</div>';
     }
 
-    // Incasso Crediti (rientri) in sola lettura: dal modulo Vendite (categoria "Incasso Credito").
+    // NB lavaggi dei clienti ad addebito differito: contano nel VENDUTO
+    // (categoria Lavaggi) e basta. NON vanno aggiunti ai crediti: quei clienti
+    // sono gia' riportati a mano fra i crediti nella sezione 4TSCARD, quindi
+    // sommarli di nuovo li conterebbe due volte.
+
+    // Incasso Crediti (rientri): dal modulo Vendite (categoria "Incasso Credito"),
+    // ma modificabile come gli altri campi del venduto.
     // Viene SOTTRATTO dai crediti: è un credito pregresso che rientra, non una vendita.
     function _incassoCreditiRO(c) {
-        var v;
-        if (_posTotals && _posTotals.numVendite > 0) {
-            v = Number(_posTotals.incassoCrediti || 0);
-        } else {
-            v = Number((c && c.incasso_crediti) || 0);
-        }
+        var salvato = (c && c.incasso_crediti !== null && c.incasso_crediti !== undefined && _cassa && _cassa.id)
+            ? Number(c.incasso_crediti) : null;
+        var daVendite = (_posTotals && _posTotals.numVendite)
+            ? Number(_posTotals.incassoCrediti || 0) : null;
+
+        var v = (salvato !== null) ? salvato : (daVendite !== null ? daVendite : 0);
         var vStr = v ? v.toFixed(2) : '0';
+
+        var hint = 'Dalle Vendite (categoria "Incasso Credito"): scalato dai crediti';
+        if (daVendite !== null && Math.abs(daVendite - v) > 0.005) {
+            hint = 'Vendite: ' + ENI.UI.formatValuta(daVendite) +
+                   ' <button type="button" class="btn-sync-venduto" data-sync-venduto="incasso_crediti"' +
+                   ' data-sync-valore="' + daVendite.toFixed(2) + '"' +
+                   ' title="Riprendi il valore dal modulo Vendite"' +
+                   ' style="background:none;border:none;color:var(--color-primary);cursor:pointer;padding:0 2px;font-size:12px;">↻ usa</button>';
+        }
+
         return '<div class="cassa-row" style="grid-column: 1 / -1;">' +
             '<span class="cassa-row-label">Incasso Crediti (rientri) −' +
-                '<span class="text-xs" style="display:block; color:var(--color-gray-500); font-weight:400;">Dalle Vendite (categoria "Incasso Credito"): scalato dai crediti</span>' +
+                '<span class="text-xs" style="display:block; color:var(--color-gray-500); font-weight:400;">' + hint + '</span>' +
             '</span>' +
             '<div class="cassa-row-input">' +
-                '<input type="number" step="0.01" class="form-input cassa-field" readonly ' +
-                    'title="Rientri di crediti dal modulo Vendite — non modificabile qui" ' +
-                    'style="background:var(--bg-secondary); cursor:not-allowed;" ' +
+                '<input type="number" step="0.01" class="form-input cassa-field" ' +
                     'data-field="incasso_crediti" value="' + vStr + '">' +
             '</div>' +
         '</div>';
@@ -823,6 +858,23 @@ ENI.Modules.Cassa = (function() {
 
     function _setupCalcoli(container, totSpese) {
         _ricalcola(totSpese);
+
+        // "↻ usa": riprende nel campo il valore calcolato dal modulo Vendite
+        container.addEventListener('click', function(e) {
+            var btn = e.target.closest('.btn-sync-venduto');
+            if (!btn || btn.disabled) return;
+            e.preventDefault();
+            var campo = container.querySelector('[data-field="' + btn.dataset.syncVenduto + '"]');
+            if (!campo) return;
+            campo.value = btn.dataset.syncValore;
+            _ricalcola(totSpese);
+            _scheduleBozza();
+            var riga = btn.closest('.cassa-row-label');
+            if (riga) {
+                var hint = riga.querySelector('.text-xs');
+                if (hint) hint.remove();
+            }
+        });
 
         container.addEventListener('input', function(e) {
             if (e.target.classList.contains('cassa-field') ||
