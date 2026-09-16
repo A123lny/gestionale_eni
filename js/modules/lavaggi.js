@@ -290,6 +290,21 @@ ENI.Modules.Lavaggi = (function() {
         return ' <span class="badge badge-info" title="' + titolo + '">+' + l.servizi_extra.length + ' extra</span>';
     }
 
+    // Come e' stato incassato il lavaggio. Il caso che conta e' "da incassare":
+    // prima un incasso non registrato spariva in silenzio, ora si vede.
+    function _pagamentoBadge(l) {
+        if (l.stato !== 'Completato' || !l.stato_pagamento) return '';
+        if (l.stato_pagamento === 'da_incassare') {
+            return ' <span class="badge badge-scaduto" title="Incasso non registrato: apri le azioni per sistemarlo">⚠️ da incassare</span>';
+        }
+        if (l.stato_pagamento === 'fattura') {
+            return ' <span class="badge badge-corporate" title="Cliente ad addebito differito: si fattura a fine mese">\u{1F9FE} a fattura</span>';
+        }
+        if (l.stato_pagamento === 'pos') return ' <span class="badge badge-incassato">\u{1F4B3} POS</span>';
+        if (l.stato_pagamento === 'contanti') return ' <span class="badge badge-incassato">\u{1F4B5} contanti</span>';
+        return '';
+    }
+
     function _clienteIcona(l) {
         if (l.walk_in) return '\u{1F6B6} ';
         if (l.cliente_id) return '\u{1F464} ';
@@ -330,7 +345,7 @@ ENI.Modules.Lavaggi = (function() {
             '<td class="text-sm">' + ENI.UI.escapeHtml(l.tipo_lavaggio) + _extraBadge(l) + '</td>' +
             '<td><strong>' + ENI.UI.formatValuta(l.prezzo) + '</strong></td>' +
             '<td class="text-sm">' + _prioritaLabel(l) + '</td>' +
-            '<td>' + ENI.UI.badgeStato(l.stato) + '</td>' +
+            '<td>' + ENI.UI.badgeStato(l.stato) + _pagamentoBadge(l) + '</td>' +
             '<td class="table-actions">' + _azioniHtml(l) + '</td>' +
         '</tr>';
     }
@@ -341,7 +356,7 @@ ENI.Modules.Lavaggi = (function() {
         return '<div class="lav-card ' + cls + '">' +
             '<div class="lav-card-top">' +
                 '<span class="lav-card-orario">' + _orarioLabel(l) + '</span>' +
-                ENI.UI.badgeStato(l.stato) +
+                ENI.UI.badgeStato(l.stato) + _pagamentoBadge(l) +
             '</div>' +
             '<div class="lav-card-veicolo">' + ENI.UI.escapeHtml(l.veicolo || l.nome_cliente || '-') + '</div>' +
             '<div class="lav-card-meta">' + ENI.UI.escapeHtml(l.tipo_lavaggio) + ' \u00B7 <strong>' + ENI.UI.formatValuta(l.prezzo) + '</strong>' +
@@ -1131,51 +1146,137 @@ ENI.Modules.Lavaggi = (function() {
             _stampaScontrinoLavaggio(lavaggio);
             await _loadLavaggi();
 
-            // Chiedi se registrare come vendita
-            _chiediRegistraVendita(lavaggio);
+            // Registra l'incasso: automatico per i clienti ad addebito differito,
+            // con scelta Contanti/POS per chi paga sul momento.
+            await _registraIncasso(id, lavaggio);
         } catch(e) {
             ENI.UI.error('Errore: ' + e.message);
         }
     }
 
-    function _chiediRegistraVendita(lavaggio) {
-        var body =
-            '<div style="text-align:center; margin-bottom: 16px;">' +
-                '<div style="font-size: 48px;">\u{1F4B0}</div>' +
-                '<p style="margin: 8px 0;">Lavaggio <strong>' + ENI.UI.escapeHtml(lavaggio.codice) + '</strong> completato.</p>' +
-                '<p><strong>' + ENI.UI.escapeHtml(lavaggio.veicolo || '') + '</strong> - ' +
-                    ENI.UI.escapeHtml(lavaggio.tipo_lavaggio) + ' - ' +
-                    '<span style="font-size: 1.2rem; font-weight: bold; color: var(--color-primary);">' + ENI.UI.formatValuta(lavaggio.prezzo) + '</span>' +
-                '</p>' +
-                (lavaggio.nome_cliente && lavaggio.nome_cliente !== 'Walk-in'
-                    ? '<p class="text-sm text-muted">Cliente: ' + ENI.UI.escapeHtml(lavaggio.nome_cliente) + '</p>'
-                    : '') +
-            '</div>' +
-            '<p style="text-align:center;">Vuoi registrare anche come <strong>vendita</strong>?</p>';
+    // --- Registrazione incasso del lavaggio ---
+    //
+    // Prima l'app chiedeva "vuoi registrare come vendita?": se l'operatore
+    // rispondeva No (o chiudeva il popup) il lavaggio non entrava mai in cassa.
+    // Nel 2026 sono spariti cosi' 388 lavaggi pagati sul momento, e al contrario
+    // 176 lavaggi di clienti ad addebito mensile sono finiti in cassa come
+    // contanti mai incassati.
+    //
+    // Ora la domanda non e' piu' "se" ma "come", e solo a chi paga sul momento:
+    // il cliente ad addebito differito lo sa gia' l'anagrafica.
 
-        var vendModal = ENI.UI.showModal({
-            title: 'Registrare come Vendita?',
-            body: body,
-            footer:
-                '<button class="btn btn-outline" data-modal-close>No, solo lavaggio</button>' +
-                '<button class="btn btn-primary" id="btn-registra-vendita">\u2705 Si, registra vendita</button>'
-        });
+    // Il cliente di questo lavaggio paga a fine mese / a fattura?
+    async function _clientePagaDifferito(lavaggio) {
+        if (!lavaggio.cliente_id) return false;   // walk-in: paga subito
+        try {
+            var clienti = await ENI.API.getClienti();
+            var cliente = (clienti || []).find(function(c) { return c.id === lavaggio.cliente_id; });
+            if (!cliente || !cliente.modalita_pagamento) return false;
+            return (ENI.Config.MODALITA_PAGAMENTO_DIFFERITO || []).indexOf(cliente.modalita_pagamento) !== -1;
+        } catch(e) {
+            // Anagrafica non raggiungibile: meglio chiedere che indovinare
+            console.error('Lettura cliente fallita, chiedo il metodo:', e);
+            return false;
+        }
+    }
 
-        vendModal.querySelector('#btn-registra-vendita').addEventListener('click', async function() {
-            ENI.UI.closeModal(vendModal);
+    async function _creaVenditaLavaggio(lavaggio, metodo) {
+        var prodotto = null;
+        try {
+            var prodottiLavaggi = await ENI.API.getMagazzino('Lavaggi');
+            prodotto = prodottiLavaggi.find(function(p) {
+                return p.nome_prodotto === lavaggio.tipo_lavaggio;
+            }) || null;
+        } catch(e) {
+            console.error('Articolo magazzino non trovato, procedo senza:', e);
+        }
+        return await ENI.API.salvaVenditaDaLavaggio(lavaggio, prodotto, metodo);
+    }
+
+    async function _registraIncasso(id, lavaggio) {
+        // Gia' incassato (es. lavaggio ricompletato): non creare doppioni
+        try {
+            var esistente = await ENI.API.getVenditaPerLavaggio(id);
+            if (esistente) return;
+        } catch(e) {
+            console.error('Verifica vendita esistente fallita:', e);
+        }
+
+        var differito = await _clientePagaDifferito(lavaggio);
+
+        // Cliente ad addebito differito: nessuna domanda all'operatore.
+        // Il ricavo conta nel venduto, l'importo va tra i crediti della Cassa.
+        if (differito) {
             try {
-                // Cerca articolo magazzino corrispondente
-                var prodottiLavaggi = await ENI.API.getMagazzino('Lavaggi');
-                var prodotto = prodottiLavaggi.find(function(p) {
-                    return p.nome_prodotto === lavaggio.tipo_lavaggio;
-                });
-
-                var record = await ENI.API.salvaVenditaDaLavaggio(lavaggio, prodotto || null);
-                ENI.UI.success('Vendita ' + record.codice + ' registrata da lavaggio ' + lavaggio.codice);
+                await _creaVenditaLavaggio(lavaggio, 'fattura');
+                await ENI.API.setStatoPagamentoLavaggio(id, 'fattura');
+                ENI.UI.info(ENI.UI.formatValuta(lavaggio.prezzo) + ' da fatturare a ' +
+                    (lavaggio.nome_cliente || 'cliente'));
+                await _loadLavaggi();
             } catch(e) {
-                ENI.UI.error('Errore registrazione vendita: ' + e.message);
+                ENI.UI.error('Errore registrazione a fattura: ' + e.message);
             }
+            return;
+        }
+
+        _chiediComeHaPagato(id, lavaggio);
+    }
+
+    function _chiediComeHaPagato(id, lavaggio) {
+        var body =
+            '<div style="text-align:center; margin-bottom: 20px;">' +
+                '<p style="margin: 4px 0;"><strong>' + ENI.UI.escapeHtml(lavaggio.veicolo || lavaggio.nome_cliente || '') + '</strong> \u00b7 ' +
+                    ENI.UI.escapeHtml(lavaggio.tipo_lavaggio) + '</p>' +
+                '<div style="font-size: 2rem; font-weight: 700; color: var(--color-primary); margin: 8px 0;">' +
+                    ENI.UI.formatValuta(lavaggio.prezzo) +
+                '</div>' +
+            '</div>' +
+            '<div style="display:flex; gap:12px;">' +
+                '<button class="btn btn-primary" id="btn-pag-contanti" style="flex:1; font-size:1.15rem; padding:1.4rem 1rem;">\u{1F4B5}<br>Contanti</button>' +
+                '<button class="btn btn-primary" id="btn-pag-pos" style="flex:1; font-size:1.15rem; padding:1.4rem 1rem;">\u{1F4B3}<br>POS</button>' +
+            '</div>';
+
+        var modal = ENI.UI.showModal({
+            title: 'Come ha pagato?',
+            body: body,
+            footer: false
         });
+
+        var scelto = false;
+
+        // Se il popup viene chiuso senza scegliere (X, Esc, click fuori) il
+        // lavaggio NON sparisce in silenzio: resta marcato "da incassare".
+        var obs = new MutationObserver(function() {
+            if (document.body.contains(modal)) return;
+            obs.disconnect();
+            if (scelto) return;
+            ENI.API.setStatoPagamentoLavaggio(id, 'da_incassare')
+                .then(function() {
+                    ENI.UI.warning('Incasso non registrato: lavaggio segnato "da incassare"');
+                    return _loadLavaggi();
+                })
+                .catch(function(e) { console.error('Stato pagamento non salvato:', e); });
+        });
+        obs.observe(document.body, { childList: true });
+
+        function _scegli(metodo) {
+            scelto = true;
+            ENI.UI.closeModal(modal);
+            _creaVenditaLavaggio(lavaggio, metodo)
+                .then(function() { return ENI.API.setStatoPagamentoLavaggio(id, metodo); })
+                .then(function() {
+                    ENI.UI.success(ENI.UI.formatValuta(lavaggio.prezzo) + ' incassati - ' +
+                        (metodo === 'pos' ? 'POS' : 'contanti'));
+                    return _loadLavaggi();
+                })
+                .catch(function(e) {
+                    ENI.UI.error('Errore registrazione incasso: ' + e.message);
+                    return ENI.API.setStatoPagamentoLavaggio(id, 'da_incassare').catch(function() {});
+                });
+        }
+
+        modal.querySelector('#btn-pag-contanti').addEventListener('click', function() { _scegli('contanti'); });
+        modal.querySelector('#btn-pag-pos').addEventListener('click', function() { _scegli('pos'); });
     }
 
     // --- Stampa scontrino lavaggio (riusa il print-server della Vendita) ---

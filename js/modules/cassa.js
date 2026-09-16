@@ -358,6 +358,7 @@ ENI.Modules.Cassa = (function() {
                     '<div class="cassa-grid">' +
                         _cassaInputHint('Buoni ENI Carburante', 'crediti_buoni_eni', c.crediti_buoni_eni, 'Inserisci qui i voucher carburante.') +
                         _cassaInputHint('Bollette/Green Money', 'crediti_bollette', c.crediti_bollette, 'Clienti che non pagano subito (es. Lenny).') +
+                        _lavaggiFatturaRO(c) +
                         _incassoCreditiRO(c) +
                     '</div>' +
                     '<div class="cassa-subtotal text-right mt-2">Totale Crediti (senza 4TSCARD): <span id="tot-crediti-base">\u20AC 0,00</span></div>'
@@ -594,6 +595,31 @@ ENI.Modules.Cassa = (function() {
                     'title="Dato dal modulo Vendite — non modificabile qui" ' +
                     'style="background:var(--bg-secondary); cursor:not-allowed;" ' +
                     'data-field="' + name + '" value="' + vStr + '">' +
+            '</div>' +
+        '</div>';
+    }
+
+    // Lavaggi a fattura in sola lettura: dal modulo Lavaggi, clienti ad addebito
+    // differito. Il ricavo e' gia' contato nel venduto (categoria Lavaggi), ma i
+    // soldi non sono nel cassetto: senza questa voce la cassa segnerebbe un
+    // ammanco pari ai lavaggi da fatturare.
+    function _lavaggiFatturaRO(c) {
+        var v;
+        if (_posTotals && _posTotals.numVendite > 0) {
+            v = Number(_posTotals.vendutoAFattura || 0);
+        } else {
+            v = Number((c && c.crediti_lavaggi_fattura) || 0);
+        }
+        var vStr = v ? v.toFixed(2) : '0';
+        return '<div class="cassa-row">' +
+            '<span class="cassa-row-label">Lavaggi a fine mese' +
+                '<span class="text-xs" style="display:block; color:var(--color-gray-500); font-weight:400;">Clienti ad addebito differito: venduto oggi, incassato con la fattura</span>' +
+            '</span>' +
+            '<div class="cassa-row-input">' +
+                '<input type="number" step="0.01" class="form-input cassa-field" readonly ' +
+                    'title="Dal modulo Lavaggi — non modificabile qui" ' +
+                    'style="background:var(--bg-secondary); cursor:not-allowed;" ' +
+                    'data-field="crediti_lavaggi_fattura" value="' + vStr + '">' +
             '</div>' +
         '</div>';
     }
@@ -888,7 +914,8 @@ ENI.Modules.Cassa = (function() {
 
         // Crediti (base − rientri + 4TSCARD). I rientri (Incasso Credito dalle Vendite) si sottraggono.
         var totCreditiBase =
-            val('crediti_buoni_eni') + val('crediti_bollette') - val('incasso_crediti');
+            val('crediti_buoni_eni') + val('crediti_bollette') +
+            val('crediti_lavaggi_fattura') - val('incasso_crediti');
         var tot4tscard = _getPosGroupTotal('crediti-4tscard');
         var totCrediti = totCreditiBase + tot4tscard;
 
@@ -1057,7 +1084,8 @@ ENI.Modules.Cassa = (function() {
 
         var tot4tscard = _getPosGroupTotal('crediti-4tscard');
         var totCrediti =
-            val('crediti_buoni_eni') + val('crediti_bollette') - val('incasso_crediti') +
+            val('crediti_buoni_eni') + val('crediti_bollette') +
+            val('crediti_lavaggi_fattura') - val('incasso_crediti') +
             tot4tscard;
 
         function collectPosGroup(groupId) {
@@ -1116,6 +1144,7 @@ ENI.Modules.Cassa = (function() {
             crediti_buoni_eni_desc:  (document.querySelector('[data-field="crediti_buoni_eni_desc"]') || {}).value || null,
             crediti_voucher:         val('crediti_voucher'),
             crediti_bollette:        val('crediti_bollette'),
+            crediti_lavaggi_fattura: val('crediti_lavaggi_fattura'),
             incasso_crediti:         val('incasso_crediti'),
             crediti_4tscard:         collectPosGroup('crediti-4tscard'),
             totale_venduto:   totVenduto,
