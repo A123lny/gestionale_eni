@@ -1204,6 +1204,33 @@ ENI.API = (function() {
         return result.data || [];
     }
 
+    // Correzione di una timbratura sbagliata. Solo super admin: la RLS
+    // (timb_update) lo impone lato database, non solo lato interfaccia.
+    // Da queste righe dipendono le ore pagate, quindi ogni modifica finisce
+    // nel log con il valore precedente.
+    async function aggiornaTimbratura(id, dati, precedente) {
+        var payload = {};
+        if (dati.ts) payload.ts = dati.ts;
+        if (dati.data) payload.data = dati.data;
+        if (dati.tipo) payload.tipo = dati.tipo;
+
+        var record = await update('timbrature', id, payload);
+
+        await scriviLog('Modifica_Timbratura', 'Timbrature',
+            (precedente && precedente.nome ? precedente.nome + ' - ' : '') +
+            'da ' + (precedente ? precedente.descrizione : '?') +
+            ' a ' + (dati.descrizione || ''));
+
+        return record;
+    }
+
+    // Eliminazione di una timbratura (super admin, imposto dalla RLS timb_delete).
+    async function eliminaTimbratura(id, descrizione) {
+        await remove('timbrature', id);
+        await scriviLog('Elimina_Timbratura', 'Timbrature', descrizione || String(id));
+        return true;
+    }
+
     // --- Log ---
 
     async function getLog(options) {
@@ -2917,6 +2944,8 @@ ENI.API = (function() {
         getUltimaTimbratura: getUltimaTimbratura,
         salvaTimbratura: salvaTimbratura,
         getTimbrature: getTimbrature,
+        aggiornaTimbratura: aggiornaTimbratura,
+        eliminaTimbratura: eliminaTimbratura,
         aggiornaPersonale: aggiornaPersonale,
         getLog: getLog,
         getDashboardData: getDashboardData,
