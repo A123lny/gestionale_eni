@@ -99,22 +99,23 @@ const C = sandbox.ENI.Config;
     { id: 'v3', totale: 26, metodo_pagamento: 'fattura',  importo_contanti: 0,  importo_pos: 0 }
   ];
   const tot = await API.getVenditeTotaliPerData('2026-09-16');
-  check('vendutoAFattura somma solo le vendite a fattura', tot.vendutoAFattura === 26, tot.vendutoAFattura);
+  // La vendita a fattura conta nel venduto ma non in nessun metodo di incasso:
+  // i crediti di quei clienti sono gia' inseriti a mano nella sezione 4TSCARD.
   check('totale venduto include anche la fattura', tot.totaleVendite === 68, tot.totaleVendite);
   check('contanti non gonfiati dalla fattura', tot.perMetodo.contanti === 30, tot.perMetodo.contanti);
   check('pos corretto', tot.perMetodo.pos === 12, tot.perMetodo.pos);
 
-  // --- 5. La quadratura della Cassa tiene conto dei lavaggi a fattura ---
+  // --- 5. La Cassa NON somma i lavaggi a fattura fra i crediti ---
+  // Quei clienti sono gia' riportati a mano nella sezione 4TSCARD:
+  // sommarli di nuovo li conterebbe due volte.
   const cassaSrc = fs.readFileSync(P + 'js/modules/cassa.js', 'utf8');
-  // Le due formule dei crediti (quella a schermo e quella al salvataggio)
-  // devono sommare i lavaggi a fattura, altrimenti la cassa segna un ammanco.
+  check('nessun riferimento a crediti_lavaggi_fattura', !/crediti_lavaggi_fattura/.test(cassaSrc));
   const formuleCrediti = cassaSrc.match(/val\('crediti_buoni_eni'\)[\s\S]{0,200}?val\('incasso_crediti'\)/g) || [];
   check('esistono 2 formule crediti', formuleCrediti.length === 2, formuleCrediti.length + ' trovate');
-  check('entrambe sommano i lavaggi a fattura',
-    formuleCrediti.length === 2 && formuleCrediti.every(f => f.includes("val('crediti_lavaggi_fattura')")),
-    formuleCrediti.filter(f => !f.includes("val('crediti_lavaggi_fattura')")).length + ' senza');
-  check('crediti_lavaggi_fattura viene salvato', /crediti_lavaggi_fattura:\s*val\(/.test(cassaSrc));
-  check('campo in sola lettura presente', /_lavaggiFatturaRO/.test(cassaSrc));
+  check('nessuna formula crediti tocca i lavaggi',
+    formuleCrediti.every(f => !f.includes('lavaggi')));
+  check('il venduto lavaggi resta in sola lettura dalle Vendite',
+    /_vendutoRO\('Lavaggi', 'venduto_lavaggi'/.test(cassaSrc));
 
   // --- 6. Il popup vecchio non esiste piu' ---
   const lavSrc = fs.readFileSync(P + 'js/modules/lavaggi.js', 'utf8');

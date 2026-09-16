@@ -13,7 +13,8 @@
 -- COSA FA
 --   A) crea la vendita mancante per OGNI lavaggio completato del periodo (109):
 --        - cliente ad addebito differito -> metodo 'fattura', incassato 0
---          (il ricavo conta nel venduto, i soldi arrivano con la fattura)
+--          (conta nel venduto; NON nei crediti, dove quei clienti sono gia'
+--           riportati a mano nella sezione 4TSCARD)
 --        - tutti gli altri               -> metodo 'contanti'
 --   B) converte le 38 vendite corporate gia' esistenti da 'contanti' a 'fattura'
 --
@@ -24,9 +25,13 @@
 --     verso vendite/lavaggi, e che il modulo Fatturazione non legge da queste
 --     tabelle. Numero di controllo pre-intervento: 74 fatture, 29.532,27 EUR
 --     nel periodo 01/08-16/09.
---   - non tocca la tabella cassa: i totali salvati delle giornate chiuse restano
---     quelli. Per vederli aggiornati va riaperta e risalvata la singola giornata.
---   - non fa quadrare le casse (verificato: 0 quadrano prima, 0 dopo).
+--   - non tocca totale_incassato: i soldi fisicamente contati restano quelli.
+--   - non tocca totale_crediti: i clienti ad addebito differito sono gia'
+--     riportati a mano fra i crediti nella sezione 4TSCARD.
+--   - non fa quadrare le casse. Simulato in anticipo: 0 giornate quadrano prima
+--     e 0 dopo; l'errore assoluto passa da 6.883 a 6.819 EUR (12 giorni
+--     migliorano, 11 peggiorano). L'operazione serve a rendere veri i dati dei
+--     lavaggi, non a far tornare la cassa.
 --   - non tocca il doppione VEN846/VEN848 (stesso lavaggio LAV1128, 30 EUR due
 --     volte, 14/08 Dr.ssa Marchi): va deciso a mano.
 --
@@ -179,7 +184,7 @@ update public.lavaggi l
 --     quei valori con un ricalcolo, cioe' li cambierebbe invece di ripristinarli.
 -- ============================================================
 create table if not exists public.cassa_backup_20260916 as
-select id, data, venduto_lavaggi, crediti_lavaggi_fattura,
+select id, data, venduto_lavaggi,
        totale_venduto, totale_crediti, totale_incassato, differenza,
        now() as salvato_il
   from public.cassa
@@ -197,8 +202,10 @@ begin
 end $$;
 
 
--- C) Riallinea venduto_lavaggi e crediti_lavaggi_fattura, e ricalcola i totali.
--- totale_incassato NON si tocca: i soldi fisicamente contati sono quelli.
+-- C) Riallinea venduto_lavaggi e ricalcola totale_venduto e differenza.
+-- totale_incassato e totale_crediti NON si toccano: i soldi contati sono quelli,
+-- e i clienti ad addebito differito sono gia' riportati a mano fra i crediti
+-- nella sezione 4TSCARD (sommarli di nuovo li conterebbe due volte).
 -- I totali si aggiornano per DIFFERENZA sui valori salvati, senza ricostruire
 -- l'intera formula: e' gia' stato verificato che su tutte e 35 le giornate
 -- differenza == totale_venduto - totale_incassato - totale_crediti al centesimo.
@@ -213,28 +220,17 @@ begin
                join public.vendite_dettaglio vd on vd.vendita_id = v.id
               where v.data = k.data and v.stato = 'completata'
                 and vd.categoria = 'Lavaggi'
-           ), 0) as new_lavaggi,
-           coalesce((
-             select sum(v.totale)
-               from public.vendite v
-              where v.data = k.data and v.stato = 'completata'
-                and v.metodo_pagamento = 'fattura'
-           ), 0) as new_fattura
+           ), 0) as new_lavaggi
       from public.cassa k
      where k.data between date '2026-08-01' and date '2026-09-12'
        and k.stato = 'chiusa'
   ),
   upd as (
     update public.cassa k
-       set venduto_lavaggi         = n.new_lavaggi,
-           crediti_lavaggi_fattura = n.new_fattura,
-           totale_venduto = k.totale_venduto
-                            - coalesce(k.venduto_lavaggi, 0) + n.new_lavaggi,
-           totale_crediti = k.totale_crediti
-                            - coalesce(k.crediti_lavaggi_fattura, 0) + n.new_fattura,
-           differenza = (k.totale_venduto - coalesce(k.venduto_lavaggi, 0) + n.new_lavaggi)
-                        - k.totale_incassato
-                        - (k.totale_crediti - coalesce(k.crediti_lavaggi_fattura, 0) + n.new_fattura),
+       set venduto_lavaggi = n.new_lavaggi,
+           totale_venduto  = k.totale_venduto - coalesce(k.venduto_lavaggi, 0) + n.new_lavaggi,
+           differenza      = (k.totale_venduto - coalesce(k.venduto_lavaggi, 0) + n.new_lavaggi)
+                             - k.totale_incassato - k.totale_crediti,
            updated_at = now()
       from nuovi n
      where k.id = n.id

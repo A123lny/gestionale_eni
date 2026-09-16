@@ -57,16 +57,15 @@ create index if not exists idx_lavaggi_stato_pagamento
   where stato_pagamento = 'da_incassare';
 
 -- ============================================================
--- 3. cassa.crediti_lavaggi_fattura
--- Colonna in sola lettura alimentata dalle vendite del giorno con metodo
--- 'fattura'. Entra nel totale crediti, cosi' la quadratura
--- (venduto - incassato - crediti) torna anche con i lavaggi da fatturare.
+-- NB: nessuna colonna nuova sulla tabella cassa.
+-- I lavaggi dei clienti ad addebito differito contano nel VENDUTO
+-- (categoria Lavaggi) e basta: quei clienti sono gia' riportati a mano
+-- fra i crediti nella sezione 4TSCARD, quindi aggiungerli anche li'
+-- li conterebbe due volte.
 -- ============================================================
-alter table public.cassa
-  add column if not exists crediti_lavaggi_fattura numeric default 0;
 
 -- ============================================================
--- 4. Verifica: se manca qualcosa la migration fallisce.
+-- 3. Verifica: se manca qualcosa la migration fallisce.
 -- ============================================================
 do $$
 begin
@@ -85,12 +84,5 @@ begin
     raise exception 'Colonna lavaggi.stato_pagamento mancante';
   end if;
 
-  if not exists (
-    select 1 from information_schema.columns
-     where table_schema='public' and table_name='cassa' and column_name='crediti_lavaggi_fattura'
-  ) then
-    raise exception 'Colonna cassa.crediti_lavaggi_fattura mancante';
-  end if;
-
-  raise notice 'Lavaggi/Cassa: vincolo allargato e 2 colonne aggiunte. Storico invariato.';
+  raise notice 'Lavaggi: vincolo allargato e colonna stato_pagamento aggiunta. Storico invariato.';
 end $$;

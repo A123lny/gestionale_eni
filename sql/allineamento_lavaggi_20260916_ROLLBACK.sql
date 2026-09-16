@@ -88,12 +88,11 @@ begin
 
   with upd as (
     update public.cassa k
-       set venduto_lavaggi         = b.venduto_lavaggi,
-           crediti_lavaggi_fattura = b.crediti_lavaggi_fattura,
-           totale_venduto          = b.totale_venduto,
-           totale_crediti          = b.totale_crediti,
-           differenza              = b.differenza,
-           updated_at              = now()
+       set venduto_lavaggi = b.venduto_lavaggi,
+           totale_venduto  = b.totale_venduto,
+           totale_crediti  = b.totale_crediti,
+           differenza      = b.differenza,
+           updated_at      = now()
       from public.cassa_backup_20260916 b
      where k.id = b.id
     returning 1
