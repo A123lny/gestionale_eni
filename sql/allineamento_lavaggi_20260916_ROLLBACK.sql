@@ -69,6 +69,44 @@ update public.lavaggi
 
 
 -- ============================================================
+-- 3bis. Ripristina i totali delle casse dal backup
+--
+-- Da backup e NON per ricalcolo: su 9 giornate (1-13 agosto) il
+-- venduto_lavaggi salvato divergeva da quello ricavabile dalle vendite,
+-- perche' all'epoca il campo si scriveva a mano. Un ricalcolo li
+-- cambierebbe invece di riportarli come erano.
+-- ============================================================
+do $$
+declare n int;
+begin
+  if not exists (
+    select 1 from information_schema.tables
+     where table_schema='public' and table_name='cassa_backup_20260916'
+  ) then
+    raise exception 'Manca cassa_backup_20260916: impossibile ripristinare le casse';
+  end if;
+
+  with upd as (
+    update public.cassa k
+       set venduto_lavaggi         = b.venduto_lavaggi,
+           crediti_lavaggi_fattura = b.crediti_lavaggi_fattura,
+           totale_venduto          = b.totale_venduto,
+           totale_crediti          = b.totale_crediti,
+           differenza              = b.differenza,
+           updated_at              = now()
+      from public.cassa_backup_20260916 b
+     where k.id = b.id
+    returning 1
+  )
+  select count(*) into n from upd;
+  raise notice 'Casse ripristinate dal backup: %', n;
+end $$;
+
+-- La tabella di backup NON viene cancellata: resta come traccia.
+-- Per rimuoverla, a mente fredda:  drop table public.cassa_backup_20260916;
+
+
+-- ============================================================
 -- 4. Verifica: nessun residuo dei marcatori
 -- ============================================================
 do $$
