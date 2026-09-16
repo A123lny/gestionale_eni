@@ -1,21 +1,23 @@
 -- allineamento_lavaggi_20260916_ROLLBACK.sql
--- Annulla allineamento_lavaggi_20260916.sql e riporta i dati esattamente
--- com'erano prima.
+-- Annulla allineamento_lavaggi_20260916.sql e riporta i dati com'erano.
 --
--- Riconosce cosa toccare dal marcatore 'ALLINEAMENTO 20260916' nel campo note:
---   - vendite create dall'allineamento  -> note = 'ALLINEAMENTO 20260916'
---     e metodo 'contanti'  => si cancellano
---   - vendite convertite                -> note che FINISCE con il marcatore
---     e metodo 'fattura'   => si riportano a 'contanti'
+-- Riconosce cosa toccare da DUE marcatori distinti nelle note:
+--   'ALLINEAMENTO 20260916 CREATA'      -> vendita nata dall'allineamento: si cancella
+--   'ALLINEAMENTO 20260916 CONVERTITA'  -> vendita preesistente passata a fattura:
+--                                          si riporta a 'contanti'
 --
--- Le 38 vendite convertite avevano tutte importo_contanti = totale e
+-- Due marcatori e non uno perche' una vendita convertita che non aveva note
+-- sarebbe finita con una stringa identica a quella delle create, rendendo
+-- impossibile distinguerle.
+--
+-- Le vendite convertite avevano tutte importo_contanti = totale e
 -- importo_pos = 0 (verificato prima dell'intervento), quindi il ripristino
--- e' esatto senza bisogno di una tabella di appoggio.
+-- e' esatto senza tabelle di appoggio.
 
 begin;
 
 -- ============================================================
--- 1. Riporta a 'contanti' le vendite convertite a fattura
+-- 1. Riporta a 'contanti' le vendite convertite
 -- ============================================================
 do $$
 declare n int;
@@ -25,10 +27,8 @@ begin
        set metodo_pagamento = 'contanti',
            importo_contanti = totale,
            importo_pos      = 0,
-           note = nullif(regexp_replace(note, '( \| )?ALLINEAMENTO 20260916$', ''), '')
-     where metodo_pagamento = 'fattura'
-       and note like '%ALLINEAMENTO 20260916'
-       and lavaggio_id is not null
+           note = nullif(regexp_replace(note, '( \| )?ALLINEAMENTO 20260916 CONVERTITA$', ''), '')
+     where note like '%ALLINEAMENTO 20260916 CONVERTITA'
     returning 1
   )
   select count(*) into n from upd;
@@ -42,7 +42,7 @@ end $$;
 delete from public.vendite_dettaglio
  where vendita_id in (
    select id from public.vendite
-    where note = 'ALLINEAMENTO 20260916' and lavaggio_id is not null
+    where note = 'ALLINEAMENTO 20260916 CREATA' and lavaggio_id is not null
  );
 
 do $$
@@ -50,7 +50,7 @@ declare n int;
 begin
   with del as (
     delete from public.vendite
-     where note = 'ALLINEAMENTO 20260916' and lavaggio_id is not null
+     where note = 'ALLINEAMENTO 20260916 CREATA' and lavaggio_id is not null
     returning 1
   )
   select count(*) into n from del;
@@ -69,7 +69,7 @@ update public.lavaggi
 
 
 -- ============================================================
--- 4. Verifica: nessun residuo del marcatore
+-- 4. Verifica: nessun residuo dei marcatori
 -- ============================================================
 do $$
 declare resid int;
