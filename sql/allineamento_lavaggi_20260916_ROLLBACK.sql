@@ -102,11 +102,12 @@ end $$;
 
 -- ============================================================
 -- 3. Azzera stato_pagamento sui lavaggi del periodo
+-- (esteso al 15/09: copre anche allineamento_..._estensione_14_15.sql)
 -- (prima dell'allineamento era NULL su tutto lo storico)
 -- ============================================================
 update public.lavaggi
    set stato_pagamento = null
- where data between date '2026-08-01' and date '2026-09-12'
+ where data between date '2026-08-01' and date '2026-09-15'
    and stato_pagamento is not null;
 
 
