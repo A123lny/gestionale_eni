@@ -410,6 +410,26 @@ $$;
 
 grant execute on function public.current_staff_id() to authenticated;
 
+-- Chi e' il gestore. ATTENZIONE: non esiste nessun ruolo chiamato 'Super Admin'.
+-- I valori reali di personale.ruolo sono 'Admin', 'Cassiere' e 'Lavaggi'; il
+-- gestore si riconosce dal flag booleano personale.super_admin. Una policy che
+-- confrontasse staff_role() con 'Super Admin' non corrisponderebbe MAI, e
+-- bloccherebbe il gestore invece degli altri.
+create or replace function public.is_super_admin()
+  returns boolean
+  language sql
+  stable
+  security definer
+  set search_path = public
+as $$
+  select exists (
+    select 1 from public.personale
+    where auth_user_id = auth.uid() and attivo is true and super_admin is true
+  );
+$$;
+
+grant execute on function public.is_super_admin() to authenticated;
+
 -- 2) Quali articoli danno bonus ----------------------------------------------
 alter table public.magazzino
     add column if not exists bonus_attivo boolean not null default false;
@@ -498,8 +518,8 @@ create policy bonus_fasce_lettura on public.bonus_fasce
 drop policy if exists bonus_fasce_scrittura on public.bonus_fasce;
 create policy bonus_fasce_scrittura on public.bonus_fasce
     for all to authenticated
-    using (public.staff_role() = 'Super Admin')
-    with check (public.staff_role() = 'Super Admin');
+    using (public.is_super_admin())
+    with check (public.is_super_admin());
 
 -- I movimenti: il dipendente vede SOLO i propri e non scrive mai.
 -- L'unica strada per lui e' la funzione registra_vendita_bonus.
@@ -511,8 +531,8 @@ create policy bonus_movimenti_propri on public.bonus_movimenti
 drop policy if exists bonus_movimenti_gestore on public.bonus_movimenti;
 create policy bonus_movimenti_gestore on public.bonus_movimenti
     for all to authenticated
-    using (public.staff_role() = 'Super Admin')
-    with check (public.staff_role() = 'Super Admin');
+    using (public.is_super_admin())
+    with check (public.is_super_admin());
 
 -- I periodi: stesso schema.
 drop policy if exists bonus_periodi_propri on public.bonus_periodi;
@@ -523,24 +543,30 @@ create policy bonus_periodi_propri on public.bonus_periodi
 drop policy if exists bonus_periodi_gestore on public.bonus_periodi;
 create policy bonus_periodi_gestore on public.bonus_periodi
     for all to authenticated
-    using (public.staff_role() = 'Super Admin')
-    with check (public.staff_role() = 'Super Admin');
+    using (public.is_super_admin())
+    with check (public.is_super_admin());
 ```
 
-- [ ] **Step 2: Verificare che il ruolo si chiami davvero "Super Admin"**
+- [ ] **Step 2: Nessuna verifica da fare, è già stata fatta**
 
-Le policy usano `public.staff_role() = 'Super Admin'`. Controllare il valore reale:
+Questo passo chiedeva di controllare come si riconosce il gestore. **Verificato
+sul database il 2026-09-17, esito:**
 
-Run (SELECT, sola lettura):
-```sql
-select distinct ruolo from public.personale;
-```
-Expected: fra i valori compare il ruolo del gestore. **Se la stringa è diversa** (es. `super_admin`), correggere le cinque occorrenze nella migration **prima** di consegnarla. Se invece il super admin si riconosce dalla colonna `personale.super_admin`, sostituire ogni `public.staff_role() = 'Super Admin'` con:
+| `ruolo` | `super_admin` | quanti |
+|---|---|---|
+| Admin | false | 2 |
+| **Admin** | **true** | **1** ← il gestore |
+| Cassiere | false | 2 |
+| Lavaggi | false | 1 |
 
-```sql
-exists (select 1 from public.personale
-        where auth_user_id = auth.uid() and attivo is true and super_admin is true)
-```
+**Non esiste nessun ruolo chiamato `'Super Admin'`.** Il gestore si riconosce
+solo dal flag booleano `personale.super_admin`, e il suo `ruolo` è `'Admin'`
+come quello di altri due utenti che super admin non sono.
+
+Per questo la migration definisce `public.is_super_admin()` e le policy usano
+quella. Una policy scritta come `staff_role() = 'Super Admin'` non
+corrisponderebbe **mai**: bloccherebbe il gestore lasciando le tabelle
+inaccessibili anche a lui. **Non reintrodurre quel confronto da nessuna parte.**
 
 - [ ] **Step 3: Commit**
 
@@ -647,9 +673,13 @@ begin
   v_modo   := v_regola ->> 'modo';
 
   if v_modo = 'euro' then
+    -- greatest(..., 0): l'importo al pezzo sta in impostazioni_app, dove non
+    -- si puo' mettere un vincolo. Un valore negativo salvato per errore
+    -- trasformerebbe il bonus in un addebito. Stessa difesa in
+    -- js/lib/bonus-calcoli.js, per non rompere la parita'.
     v_euro := coalesce((v_regola ->> 'euro_pezzo')::numeric, 0);
     return jsonb_build_object(
-      'bonus',         round(v_euro * p_quantita, 2),
+      'bonus',         greatest(round(v_euro * p_quantita, 2), 0),
       'regola_modo',   'euro',
       'regola_valore', v_euro);
   end if;
@@ -667,7 +697,7 @@ begin
     end if;
 
     return jsonb_build_object(
-      'bonus',         round(p_prezzo * p_quantita * v_perc / 100, 2),
+      'bonus',         greatest(round(p_prezzo * p_quantita * v_perc / 100, 2), 0),
       'regola_modo',   'percentuale',
       'regola_valore', v_perc);
   end if;
@@ -791,7 +821,7 @@ declare
   v_venduto numeric(10,2);
   v_bonus   numeric(10,2);
 begin
-  if public.staff_role() <> 'Super Admin' then
+  if not public.is_super_admin() then
     raise exception 'Operazione riservata al gestore';
   end if;
 
