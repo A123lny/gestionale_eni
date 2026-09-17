@@ -105,5 +105,18 @@ check('importo al pezzo a zero viene segnalato',
 check('i messaggi sono leggibili, non codici',
   B.problemiConfigurazione({ modo: 'percentuale', euroPezzo: 0, fasce: [] })[0].length > 20);
 
+// Stampa i casi di confronto con SQL. Serve a verificare a mano che
+// js/lib/bonus-calcoli.js e public.bonus_riga_calcola diano lo stesso numero:
+// il client mostra l'anteprima, il server scrive il valore definitivo, e se
+// divergono il dipendente vede una cifra e ne incassa un'altra.
+if (process.argv.indexOf('--parita') !== -1) {
+  const CASI = [[9.99,1],[10,1],[10.5,1],[12,3],[25,1],[29.99,1],[30,1],[50,1],[13.33,7],[8,1]];
+  console.log('\nprezzo\tqta\tbonus_js\tperc_js');
+  CASI.forEach(function(c) {
+    const x = B.bonusRiga(c[0], c[1], PERC);
+    console.log(c[0].toFixed(2) + '\t' + c[1] + '\t' + x.bonus.toFixed(2) + '\t\t' + x.regolaValore);
+  });
+}
+
 console.log('\n' + pass + ' passati, ' + fail + ' falliti');
 process.exit(fail === 0 ? 0 : 1);
