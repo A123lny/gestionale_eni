@@ -511,9 +511,23 @@ ENI.API = (function() {
         if (nuove.length) {
             var ins = await getClient().from('bonus_fasce').insert(nuove);
             if (ins.error) {
-                // Rimetti quelle di prima: meglio la configurazione vecchia che nessuna.
+                // Rimetti quelle di prima: meglio la configurazione vecchia che
+                // nessuna. Se fallisce anche questo la tabella resta vuota, cioe'
+                // bonus a zero per tutti: va detto, non nascosto dietro l'errore
+                // originale.
                 if (vecchie.length) {
-                    await getClient().from('bonus_fasce').insert(vecchie);
+                    var rip = await getClient().from('bonus_fasce').insert(vecchie);
+                    if (rip.error) {
+                        await scriviLog('Modifica_Bonus', 'Bonus',
+                            'ATTENZIONE: fasce bonus perse. Inserimento fallito (' +
+                            ins.error.message + ') e ripristino fallito (' +
+                            rip.error.message + '). Fasce da reinserire: ' +
+                            JSON.stringify(vecchie));
+                        throw new Error(
+                            'Le fasce non sono state salvate e NON si sono potute ripristinare: ' +
+                            'il bonus e\' rimasto senza fasce. Reinseriscile subito. Dettaglio: ' +
+                            ins.error.message);
+                    }
                 }
                 throw new Error(ins.error.message);
             }
