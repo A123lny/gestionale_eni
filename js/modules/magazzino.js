@@ -109,10 +109,11 @@ ENI.Modules.Magazzino = (function() {
         });
 
         // Modifica articolo esistente
-        container.addEventListener('click', function(e) {
-            var btn = e.target.closest('.btn-modifica-prod');
-            if (!btn) return;
-            var prodotto = _prodotti.filter(function(x) { return x.id === btn.dataset.prodId; })[0];
+        // delegate e non addEventListener: il container e' sempre lo stesso nodo
+        // #main-content, e un listener diretto si accumulerebbe a ogni rientro nel
+        // modulo, aprendo tante finestre quante sono le visite.
+        ENI.UI.delegate(container, 'click', '.btn-modifica-prod', function(e, el) {
+            var prodotto = _prodotti.filter(function(x) { return x.id === el.dataset.prodId; })[0];
             if (prodotto) _showFormModificaProdotto(prodotto);
         });
 
@@ -652,8 +653,11 @@ ENI.Modules.Magazzino = (function() {
                     '</div>' +
                 '</div>' +
 
-                (isServizio ? '' :
-                '<div class="form-row">' +
+                // Righe giacenza/scorta e bonus SEMPRE presenti nel markup: si
+                // nascondono/mostrano al volo col cambio di categoria (vedi
+                // listener su #mp-categoria piu' sotto), non si generano una
+                // volta per tutte sul valore iniziale.
+                '<div class="form-row" id="mp-row-giacenza" style="display:' + (isServizio ? 'none' : '') + ';">' +
                     '<div class="form-group">' +
                         '<label class="form-label">Giacenza attuale</label>' +
                         '<input type="text" class="form-input" value="' + (p.giacenza != null ? p.giacenza : 0) + '" disabled>' +
@@ -666,7 +670,7 @@ ENI.Modules.Magazzino = (function() {
                         '<input type="number" min="0" class="form-input" id="mp-scorta" value="' +
                             (p.giacenza_minima != null ? p.giacenza_minima : 0) + '">' +
                     '</div>' +
-                '</div>') +
+                '</div>' +
 
                 '<div class="form-row">' +
                     '<div class="form-group">' +
@@ -674,12 +678,11 @@ ENI.Modules.Magazzino = (function() {
                             '<input type="checkbox" id="mp-attivo"' + (p.attivo ? ' checked' : '') + '> Articolo attivo' +
                         '</label>' +
                     '</div>' +
-                    (isServizio ? '' :
-                    '<div class="form-group">' +
+                    '<div class="form-group" id="mp-row-bonus" style="display:' + (isServizio ? 'none' : '') + ';">' +
                         '<label style="display:flex;align-items:center;gap:8px;">' +
                             '<input type="checkbox" id="mp-bonus"' + (p.bonus_attivo ? ' checked' : '') + '> \u{1F4B0} Dà bonus ai dipendenti' +
                         '</label>' +
-                    '</div>') +
+                    '</div>' +
                 '</div>' +
             '</form>';
 
@@ -691,10 +694,28 @@ ENI.Modules.Magazzino = (function() {
                 '<button class="btn btn-primary" id="btn-salva-modifica">\u{1F4BE} Salva</button>'
         });
 
+        // Mostra/nasconde giacenza e bonus in base alla categoria SCELTA ora,
+        // non a quella con cui l'articolo era stato aperto: se si ricategorizza
+        // in corsa da/verso Lavaggi, le sezioni devono seguire, sullo stesso
+        // modello di _toggleGiacenza nella scheda di creazione.
+        var catSelectModifica = modal.querySelector('#mp-categoria');
+        var rowGiacenzaModifica = modal.querySelector('#mp-row-giacenza');
+        var rowBonusModifica = modal.querySelector('#mp-row-bonus');
+
+        function _toggleSezioniModifica() {
+            var isLavaggi = catSelectModifica.value === 'Lavaggi';
+            rowGiacenzaModifica.style.display = isLavaggi ? 'none' : '';
+            rowBonusModifica.style.display = isLavaggi ? 'none' : '';
+        }
+
+        catSelectModifica.addEventListener('change', _toggleSezioniModifica);
+
         modal.querySelector('#btn-salva-modifica').addEventListener('click', async function() {
             var codice = modal.querySelector('#mp-codice').value.trim();
             var nome = modal.querySelector('#mp-nome').value.trim();
             var prezzoVendita = parseFloat(modal.querySelector('#mp-prezzo-vendita').value);
+            var categoria = modal.querySelector('#mp-categoria').value;
+            var servizio = (categoria === 'Lavaggi');
 
             if (!codice || !nome || isNaN(prezzoVendita) || prezzoVendita <= 0) {
                 ENI.UI.warning('Compila codice, nome e prezzo vendita');
@@ -705,15 +726,15 @@ ENI.Modules.Magazzino = (function() {
                 codice: codice,
                 nome_prodotto: nome,
                 barcode: modal.querySelector('#mp-barcode').value.trim() || null,
-                categoria: modal.querySelector('#mp-categoria').value,
+                categoria: categoria,
                 fornitore: modal.querySelector('#mp-fornitore').value.trim() || null,
                 prezzo_acquisto: parseFloat(modal.querySelector('#mp-prezzo-acquisto').value) || 0,
                 prezzo_vendita: prezzoVendita,
                 attivo: modal.querySelector('#mp-attivo').checked,
                 updated_at: new Date().toISOString()
             };
-            if (!isServizio) {
-                dati.giacenza_minima = parseInt(modal.querySelector('#mp-scorta').value, 10) || 0;
+            if (!servizio) {
+                dati.giacenza_minima = parseInt(modal.querySelector('#mp-scorta').value, 10) || (ENI.Config.CONSTANTS.SCORTA_MINIMA_DEFAULT || 5);
                 dati.bonus_attivo = modal.querySelector('#mp-bonus').checked;
             }
 
