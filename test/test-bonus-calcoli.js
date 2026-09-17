@@ -68,6 +68,21 @@ check('non introduce code binarie', B.arrotonda(0.1 + 0.2) === 0.3);
 check('7 pezzi da 13,33 al 5% fanno 4,67',
   B.bonusRiga(13.33, 7, PERC).bonus === 4.67, B.bonusRiga(13.33, 7, PERC).bonus);
 
+// I mezzi centesimi: qui il database arrotonda per eccesso e il JavaScript deve
+// fare lo stesso, o il dipendente vede una cifra e ne incassa un'altra.
+// Con Math.round sul valore binario questi cinque davano tutti un centesimo in meno.
+check('2,135 arrotonda a 2,14 come fa il database', B.arrotonda(2.135) === 2.14, B.arrotonda(2.135));
+check('10 pezzi da 7,25 al 3% fanno 2,18',
+  B.bonusRiga(7.25, 10, PERC).bonus === 2.18, B.bonusRiga(7.25, 10, PERC).bonus);
+check('3 pezzi da 13,70 al 5% fanno 2,06',
+  B.bonusRiga(13.70, 3, PERC).bonus === 2.06, B.bonusRiga(13.70, 3, PERC).bonus);
+check('9 pezzi da 10,50 al 5% fanno 4,73',
+  B.bonusRiga(10.50, 9, PERC).bonus === 4.73, B.bonusRiga(10.50, 9, PERC).bonus);
+check('6 pezzi da 10,95 al 5% fanno 3,29',
+  B.bonusRiga(10.95, 6, PERC).bonus === 3.29, B.bonusRiga(10.95, 6, PERC).bonus);
+check('un pezzo da 30,50 al 7% fa 2,14',
+  B.bonusRiga(30.50, 1, PERC).bonus === 2.14, B.bonusRiga(30.50, 1, PERC).bonus);
+
 console.log('\n--- niente deve esplodere ---');
 check('nessuna fascia applicabile -> bonus 0', B.bonusRiga(3, 1,
   { modo: 'percentuale', euroPezzo: 0, fasce: [{ da_prezzo: 10, percentuale: 5 }] }).bonus === 0);
@@ -110,7 +125,8 @@ check('i messaggi sono leggibili, non codici',
 // il client mostra l'anteprima, il server scrive il valore definitivo, e se
 // divergono il dipendente vede una cifra e ne incassa un'altra.
 if (process.argv.indexOf('--parita') !== -1) {
-  const CASI = [[9.99,1],[10,1],[10.5,1],[12,3],[25,1],[29.99,1],[30,1],[50,1],[13.33,7],[8,1]];
+  const CASI = [[9.99,1],[10,1],[10.5,1],[12,3],[25,1],[29.99,1],[30,1],[50,1],[13.33,7],[8,1],
+                [30.5,1],[7.25,10],[13.7,3],[10.5,9],[10.95,6],[10.1,9]];
   console.log('\nprezzo\tqta\tbonus_js\tperc_js');
   CASI.forEach(function(c) {
     const x = B.bonusRiga(c[0], c[1], PERC);

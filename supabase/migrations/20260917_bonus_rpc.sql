@@ -101,7 +101,10 @@ declare
   v_art      public.magazzino%rowtype;
   v_calc     jsonb;
   v_imponib  numeric(10,2);
-  v_oggi     date := current_date;
+  -- Il database gira in UTC: current_date fra mezzanotte e le 02:00 italiane
+  -- e' ancora ieri, e il movimento finirebbe nel mese precedente, che puo'
+  -- essere gia' chiuso e pagato. Stesso pattern di 20260827_timbrature.sql.
+  v_oggi     date := (now() at time zone 'Europe/Rome')::date;
   v_vendita  jsonb;
   v_mov_id   uuid;
 begin
@@ -119,7 +122,11 @@ begin
     raise exception 'La quantita'' deve essere almeno 1';
   end if;
 
-  select * into v_art from public.magazzino where id = p_magazzino_id;
+  -- for update: senza il lock due chiamate in parallelo leggono la stessa
+  -- giacenza e passano entrambe il controllo. movimenta_giacenza non solleva
+  -- errore quando la scorta non basta, fa greatest(0, ...) in silenzio: si
+  -- pagherebbe il bonus due volte per un pezzo solo.
+  select * into v_art from public.magazzino where id = p_magazzino_id for update;
   if not found then
     raise exception 'Articolo non trovato';
   end if;
@@ -141,7 +148,7 @@ begin
   v_vendita := public.salva_vendita(
     jsonb_build_object(
       'data',             v_oggi,
-      'ora',              to_char(now(), 'HH24:MI:SS'),
+      'ora',              to_char(now() at time zone 'Europe/Rome', 'HH24:MI:SS'),
       'operatore_id',     v_staff,
       'operatore_nome',   (select nome_completo from public.personale where id = v_staff),
       'subtotale',        v_imponib,

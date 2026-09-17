@@ -10,6 +10,7 @@ select
     (public.bonus_riga_calcola(c.prezzo, c.quantita) ->> 'bonus')::numeric   as bonus_sql,
     (public.bonus_riga_calcola(c.prezzo, c.quantita) ->> 'regola_valore')::numeric as perc_sql
 from (values
+    -- estremi delle fasce
     (9.99::numeric,  1),
     (10.00,          1),
     (10.50,          1),
@@ -19,6 +20,14 @@ from (values
     (30.00,          1),
     (50.00,          1),
     (13.33,          7),
-    (8.00,           1)
+    (8.00,           1),
+    -- mezzi centesimi: e' QUI che i due calcoli divergevano di un centesimo.
+    -- Senza queste righe la verifica darebbe verde su una parita' inesistente.
+    (30.50,          1),
+    (7.25,          10),
+    (13.70,          3),
+    (10.50,          9),
+    (10.95,          6),
+    (10.10,          9)
 ) as c(prezzo, quantita)
 order by c.prezzo, c.quantita;

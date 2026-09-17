@@ -21,11 +21,24 @@
         return isFinite(n) ? n : 0;
     }
 
-    // Due decimali. Il +Number.EPSILON evita che 1.005 scenda a 1.00 per via
-    // della rappresentazione binaria.
+    /**
+     * Due decimali, arrotondando per eccesso sui mezzi come fa il database.
+     *
+     * Si arrotonda sulla rappresentazione DECIMALE, non su quella binaria. In
+     * binario 2,135 vale in realta' 2,13499999..., quindi Math.round darebbe
+     * 2,13 mentre Postgres, che lavora su decimali esatti, scrive 2,14. Con un
+     * solo centesimo di scarto il dipendente vedrebbe un'anteprima diversa da
+     * quello che incassa: sull'intervallo dei prezzi reali le combinazioni che
+     * divergevano erano 312. toFixed(6) ricostruisce il decimale voluto perche'
+     * l'errore binario sta molto piu' in la' della sesta cifra.
+     */
     function arrotonda(n) {
         n = num(n);
-        return Math.round((n + Number.EPSILON) * 100) / 100;
+        var segno = n < 0 ? -1 : 1;
+        var parti = Math.abs(n).toFixed(6).split('.');
+        var centesimi = Number(parti[0]) * 100 + Number(parti[1].slice(0, 2));
+        if (Number(parti[1].slice(2)) >= 5000) centesimi += 1;
+        return segno * centesimi / 100;
     }
 
     function fasceOrdinate(fasce) {
