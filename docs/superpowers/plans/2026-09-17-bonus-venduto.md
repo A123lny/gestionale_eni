@@ -1811,12 +1811,15 @@ Nella costruzione della riga prodotto (dove oggi c'è `html += '<td>' + ENI.UI.f
 Nel punto in cui il modulo aggancia gli altri listener della lista (accanto a "Modifica giacenza +/-", ~riga 99), aggiungere:
 
 ```javascript
-        // Interruttore bonus: si salva subito, senza un form di mezzo.
-        // In Magazzino non esiste una scheda di modifica articolo, e per un
-        // singolo interruttore non vale la pena costruirne una.
-        container.addEventListener('change', async function(e) {
-            var chk = e.target.closest('.bonus-toggle');
-            if (!chk) return;
+        // Interruttore bonus: si salva subito, senza un form di mezzo. Serve
+        // ad accendere in fretta molti articoli di fila; per correggerne uno
+        // singolo c'e' la scheda di modifica (Task 6).
+        //
+        // ENI.UI.delegate e non addEventListener: il container e' lo stesso
+        // nodo #main-content a ogni navigazione, e un listener diretto si
+        // accumulerebbe ogni volta che si rientra in Magazzino, facendo partire
+        // N salvataggi per un solo click. delegate ha la guardia anti-duplicati.
+        ENI.UI.delegate(container, 'change', '.bonus-toggle', async function(e, chk) {
             var id = chk.dataset.bonusId;
             var attivo = chk.checked;
             chk.disabled = true;
@@ -2559,6 +2562,17 @@ In `js/config.js`, dentro `NAV_SECTION_ITEMS`, accanto a `buste-paga`:
 
 e aggiungere `'bonus-gestione'` all'array `MODULI_SUPER_ADMIN` (riga ~123) e all'array `moduli` del ruolo con i permessi pieni (riga ~48).
 
+**E in `js/router.js`**, dentro la mappa `_routes`, accanto a `buste-paga`:
+
+```javascript
+        'bonus-gestione': { module: 'BonusGestione', id: 'bonus-gestione' },
+```
+
+Senza questa riga la voce compare nel menu ma non apre niente: il router non trova il
+modulo e rimanda alla pagina iniziale. Alzare anche il `?v=` di `js/router.js`.
+(Questa riga mancava dal piano ed è stata scoperta durante la Task 8, che aveva lo
+stesso buco per `bonus-venduto`.)
+
 - [ ] **Step 5: Aggiungere lo script e alzare la versione**
 
 In `index.html`:
@@ -2644,6 +2658,274 @@ git push origin main
 ```
 
 ---
+
+### Task 11: Il bonus vale su tutto il magazzino
+
+Cambio di perimetro deciso dal gestore a lavoro quasi finito: *"il bonus va su
+tutti i prodotti del magazzino, non solo su alcuni"*, con l'unica esclusione di
+**carburante e lavaggi**. Il carburante non sta in `magazzino` (ha le sue
+tabelle e i suoi moduli), quindi in pratica l'unico criterio da scrivere è la
+categoria `Lavaggi`, che ha già il proprio modulo e la propria strada verso la
+cassa: venderla anche dal portale bonus aprirebbe una seconda via per la stessa
+vendita.
+
+Questa task **toglie** roba. Sparisce la selezione per articolo, sparisce
+l'interruttore in Magazzino, sparisce il filtro, e sparisce il trigger che
+impediva ai dipendenti di accendersi il bonus da soli — non c'è più niente da
+accendere.
+
+**Files:**
+- Create: `supabase/migrations/20260917_bonus_tutti_articoli.sql`
+- Modify: `js/api.js` (`getArticoliBonus`; rimuovere `setBonusArticolo`)
+- Modify: `js/modules/magazzino.js` (rimuovere colonna, filtro, interruttore, casella nella scheda)
+- Modify: `test/test-bonus-api.js`, `test/test-bonus-moduli.js`
+- Modify: `index.html` (`?v=`)
+
+**Interfaces:**
+- Consumes: `public.registra_vendita_bonus` (Task 3), `public.magazzino`.
+- Produces: `ENI.API.getArticoliBonus()` ora restituisce **tutti** gli articoli
+  vendibili; `ENI.API.setBonusArticolo` **non esiste più**.
+
+**La colonna `bonus_attivo` non si cancella.** Resta sul database, non letta da
+nessuno. Togliere una colonna in produzione non si disfa, e se il gestore
+ripensasse alla selezione per articolo sarebbe già lì. La migration lo scrive in
+un commento, così nessuno la usa per sbaglio credendola viva.
+
+- [ ] **Step 1: Scrivere la migration**
+
+Creare `supabase/migrations/20260917_bonus_tutti_articoli.sql`:
+
+```sql
+-- Bonus venduto: vale su TUTTO il magazzino
+--
+-- Cambio di perimetro deciso dal gestore: il bonus non si accende piu' articolo
+-- per articolo, vale su tutta la merce. Restano fuori solo il carburante, che
+-- non sta in questa tabella, e i servizi di Lavaggio, che hanno gia' il proprio
+-- modulo e la propria strada verso la cassa.
+--
+-- DA LANCIARE DOPO 20260917_bonus_schema.sql e 20260917_bonus_rpc.sql.
+-- Non tocca nessun dato: sostituisce una funzione e toglie un trigger.
+
+-- 1) Via il trigger: non c'e' piu' nessun interruttore da proteggere ---------
+drop trigger if exists magazzino_bonus_attivo_guard on public.magazzino;
+drop function if exists public.blocca_bonus_attivo_non_gestore();
+
+-- 2) La colonna resta ma non la legge piu' nessuno ---------------------------
+comment on column public.magazzino.bonus_attivo is
+    'NON PIU'' USATA dal 17/09/2026: il bonus vale su tutto il magazzino. Colonna lasciata sul database perche'' togliere una colonna in produzione non si disfa. Non usarla per decidere chi da'' bonus.';
+
+-- 3) La funzione di vendita: niente piu' controllo su bonus_attivo -----------
+create or replace function public.registra_vendita_bonus(
+    p_magazzino_id uuid,
+    p_quantita     integer,
+    p_metodo       text)
+  returns jsonb
+  language plpgsql
+  security definer
+  set search_path = public
+as $$
+declare
+  v_staff    uuid;
+  v_art      public.magazzino%rowtype;
+  v_calc     jsonb;
+  v_imponib  numeric(10,2);
+  -- Il database gira in UTC: current_date fra mezzanotte e le 02:00 italiane
+  -- e' ancora ieri, e il movimento finirebbe nel mese precedente, che puo'
+  -- essere gia' chiuso e pagato.
+  v_oggi     date := (now() at time zone 'Europe/Rome')::date;
+  v_vendita  jsonb;
+  v_mov_id   uuid;
+begin
+  -- CHI vende lo decide la sessione, non il client
+  v_staff := public.current_staff_id();
+  if v_staff is null then
+    raise exception 'Utente non riconosciuto: rifai il login';
+  end if;
+
+  if p_metodo is null or p_metodo not in ('contanti','pos') then
+    raise exception 'Metodo di pagamento non valido: usa contanti o pos';
+  end if;
+
+  if p_quantita is null or p_quantita < 1 then
+    raise exception 'La quantita'' deve essere almeno 1';
+  end if;
+
+  -- for update: senza il lock due chiamate in parallelo leggono la stessa
+  -- giacenza e passano entrambe il controllo. movimenta_giacenza non solleva
+  -- errore quando la scorta non basta, fa greatest(0, ...) in silenzio: si
+  -- pagherebbe il bonus due volte per un pezzo solo.
+  select * into v_art from public.magazzino where id = p_magazzino_id for update;
+  if not found then
+    raise exception 'Articolo non trovato';
+  end if;
+  if v_art.attivo is not true then
+    raise exception 'Articolo non attivo';
+  end if;
+  -- I lavaggi hanno il loro modulo e la loro strada verso la cassa: venderli
+  -- anche da qui creerebbe due registrazioni per la stessa vendita.
+  if v_art.categoria = 'Lavaggi' then
+    raise exception 'I lavaggi si registrano dal modulo Lavaggi, non da qui';
+  end if;
+  if coalesce(v_art.prezzo_vendita, 0) <= 0 then
+    raise exception 'Questo articolo non ha un prezzo di vendita';
+  end if;
+  if coalesce(v_art.giacenza, 0) < p_quantita then
+    raise exception 'Giacenza insufficiente: ne restano %', coalesce(v_art.giacenza, 0);
+  end if;
+
+  -- A QUANTO si vende lo decide il magazzino, non il client: niente sconti
+  v_imponib := round(v_art.prezzo_vendita * p_quantita, 2);
+  v_calc    := public.bonus_riga_calcola(v_art.prezzo_vendita, p_quantita);
+
+  v_vendita := public.salva_vendita(
+    jsonb_build_object(
+      'data',             v_oggi,
+      'ora',              to_char(now() at time zone 'Europe/Rome', 'HH24:MI:SS'),
+      'operatore_id',     v_staff,
+      'operatore_nome',   (select nome_completo from public.personale where id = v_staff),
+      'subtotale',        v_imponib,
+      'totale',           v_imponib,
+      'metodo_pagamento', p_metodo,
+      'importo_contanti', case when p_metodo = 'contanti' then v_imponib else 0 end,
+      'importo_pos',      case when p_metodo = 'pos'      then v_imponib else 0 end,
+      'resto',            0,
+      'stato',            'completata',
+      'note',             'Bonus venduto'),
+    jsonb_build_array(jsonb_build_object(
+      'prodotto_id',     v_art.id,
+      'codice_prodotto', v_art.codice,
+      'barcode',         v_art.barcode,
+      'nome_prodotto',   v_art.nome_prodotto,
+      'categoria',       v_art.categoria,
+      'quantita',        p_quantita,
+      'prezzo_unitario', v_art.prezzo_vendita,
+      'sconto',          0,
+      'totale_riga',     v_imponib)),
+    'VEN');
+
+  insert into public.bonus_movimenti (
+    personale_id, vendita_id, magazzino_id, nome_prodotto, quantita,
+    prezzo_unitario, imponibile, regola_modo, regola_valore, bonus_calcolato,
+    anno, mese)
+  values (
+    v_staff, (v_vendita ->> 'id')::uuid, v_art.id, v_art.nome_prodotto, p_quantita,
+    v_art.prezzo_vendita, v_imponib,
+    coalesce(v_calc ->> 'regola_modo', 'percentuale'),
+    (v_calc ->> 'regola_valore')::numeric,
+    (v_calc ->> 'bonus')::numeric,
+    extract(year from v_oggi)::int, extract(month from v_oggi)::int)
+  returning id into v_mov_id;
+
+  return v_vendita || jsonb_build_object(
+    'bonus_movimento_id', v_mov_id,
+    'bonus',              (v_calc ->> 'bonus')::numeric);
+end;
+$$;
+
+grant execute on function public.registra_vendita_bonus(uuid, integer, text) to authenticated;
+```
+
+- [ ] **Step 2: Aggiornare l'API**
+
+In `js/api.js`, sostituire `getArticoliBonus` con:
+
+```javascript
+    // Tutti gli articoli su cui si prende il bonus, cioe' tutta la merce di
+    // magazzino tranne i Lavaggi (hanno il loro modulo) e gli articoli senza
+    // prezzo, che darebbero un bonus di zero e sporcherebbero l'elenco.
+    async function getArticoliBonus() {
+        var result = await getClient()
+            .from('magazzino')
+            .select('*')
+            .eq('attivo', true)
+            .neq('categoria', 'Lavaggi')
+            .gt('prezzo_vendita', 0)
+            .order('nome_prodotto', { ascending: true });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+```
+
+**Rimuovere** la funzione `setBonusArticolo` e la sua riga nel blocco `return`:
+non la chiama più nessuno, e lasciarla in giro inviterebbe a riusarla.
+
+- [ ] **Step 3: Ripulire Magazzino**
+
+In `js/modules/magazzino.js` rimuovere, senza toccare altro:
+- la colonna `💰 Bonus` dall'intestazione della tabella
+- la cella con la casella `.bonus-toggle` dalla riga prodotto
+- il gestore `ENI.UI.delegate(container, 'change', '.bonus-toggle', ...)`
+- il filtro `#filtro-solo-bonus` e la riga che lo applica nel filtraggio
+- la casella `#mp-bonus` dalla scheda di modifica e il campo `bonus_attivo` dai
+  dati inviati al salvataggio
+
+**Contare le celle** di `<thead>` e di ogni riga del `<tbody>` dopo la rimozione,
+in tutte le combinazioni di permessi e categoria: togliere una colonna disallinea
+la tabella esattamente come aggiungerne una.
+
+- [ ] **Step 4: Aggiornare i test**
+
+In `test/test-bonus-api.js`: togliere `setBonusArticolo` dall'elenco delle
+funzioni esportate, e aggiungere il controllo che `getArticoliBonus` escluda i
+Lavaggi e gli articoli senza prezzo, verificando i filtri registrati dal client
+finto.
+
+In `test/test-bonus-moduli.js`: togliere gli eventuali controlli sull'interruttore
+e aggiungere questi, che sono il punto di questa task:
+
+```javascript
+console.log('\n--- il bonus vale su tutto il magazzino ---');
+const apiSrcT11 = fs.readFileSync(P + 'js/api.js', 'utf8');
+const magSrcT11 = fs.readFileSync(P + 'js/modules/magazzino.js', 'utf8');
+check('non esiste piu un interruttore per articolo',
+  !/setBonusArticolo/.test(apiSrcT11) && !/bonus-toggle/.test(magSrcT11));
+check('l elenco esclude i Lavaggi', /\.neq\('categoria', 'Lavaggi'\)/.test(apiSrcT11));
+check('l elenco esclude gli articoli senza prezzo', /\.gt\('prezzo_vendita', 0\)/.test(apiSrcT11));
+check('nessun filtro residuo sul bonus in magazzino',
+  !/filtro-solo-bonus/.test(magSrcT11));
+check('la scheda articolo non manda piu bonus_attivo',
+  !/bonus_attivo/.test(magSrcT11));
+const migrT11 = fs.readFileSync(P + 'supabase/migrations/20260917_bonus_tutti_articoli.sql', 'utf8');
+check('la funzione di vendita rifiuta i Lavaggi', /categoria = 'Lavaggi'/.test(migrT11));
+check('la funzione di vendita non guarda piu bonus_attivo',
+  !/bonus_attivo is not true/.test(migrT11));
+check('il trigger di protezione viene tolto',
+  /drop trigger if exists magazzino_bonus_attivo_guard/.test(migrT11));
+```
+
+- [ ] **Step 5: Verificare e committare**
+
+Eseguire tutti i test e `node --check` sui file toccati, alzare i `?v=` di
+`js/api.js` e `js/modules/magazzino.js`, poi:
+
+```bash
+git add -A
+git commit -F - <<'EOF'
+feat(bonus): il bonus vale su tutto il magazzino
+
+Cambio di perimetro deciso dal gestore: niente piu' selezione articolo per
+articolo. Restano fuori solo il carburante, che non sta in magazzino, e i
+servizi di Lavaggio, che hanno gia' il loro modulo e la loro strada verso la
+cassa.
+
+Tolti l'interruttore, il filtro e il trigger che impediva ai dipendenti di
+accendersi il bonus da soli: non c'e' piu' niente da accendere. La colonna
+bonus_attivo resta sul database, non letta da nessuno e marcata come tale,
+perche' togliere una colonna in produzione non si disfa.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+EOF
+```
+
+- [ ] **Step 6: Consegnare la migration**
+
+**Fermarsi e chiedere** di lanciare `20260917_bonus_tutti_articoli.sql`, dopo le
+altre due. Se il gestore aveva già lanciato la migration del trigger, questa la
+disfa correttamente; se non l'aveva lanciata, il `drop ... if exists` non fa
+danni.
+
+---
+
 
 ## Verifica del piano contro il progetto
 
