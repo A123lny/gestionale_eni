@@ -13,6 +13,10 @@ ENI.Modules.Impostazioni = (function() {
     var _layout = {};
     var STORAGE_KEY = 'titanwash_print_layout';
 
+    // Il pannello Bonus si puo' salvare solo se la configurazione e' stata
+    // letta davvero: salvare un form mai popolato cancellerebbe le fasce.
+    var _bonusCaricato = false;
+
     // Caratteri speciali disponibili per lo scontrino
     var SPECIAL_CHARS = [
         { group: 'Decorativi', chars: '\u2605 \u2606 \u2665 \u2666 \u2663 \u2660 \u25CF \u25CB \u25A0 \u25A1 \u25B2 \u25BC \u25C6 \u25C7 \u2756 \u2055' },
@@ -871,6 +875,22 @@ ENI.Modules.Impostazioni = (function() {
         if (bFasce) bFasce.hidden = !isPerc;
 
         var problemi = ENI.BonusCalcoli.problemiConfigurazione(regola);
+
+        // Righe iniziate e non finite: verrebbero scartate in silenzio.
+        var incomplete = 0;
+        container.querySelectorAll('.bonus-fascia-row').forEach(function(tr) {
+            var da = tr.querySelector('.bonus-f-da').value.trim();
+            var pc = tr.querySelector('.bonus-f-perc').value.trim();
+            if ((da === '') !== (pc === '')) incomplete++;
+        });
+        if (incomplete) {
+            problemi = problemi.concat([
+                incomplete === 1
+                    ? 'Una riga è compilata a metà e non verrà salvata: completala o toglila.'
+                    : incomplete + ' righe sono compilate a metà e non verranno salvate: completale o toglile.'
+            ]);
+        }
+
         var pEl = container.querySelector('#bonus-problemi');
         if (pEl) {
             pEl.innerHTML = problemi.map(function(t) { return '⚠️ ' + ENI.UI.escapeHtml(t); }).join('<br>');
@@ -891,14 +911,30 @@ ENI.Modules.Impostazioni = (function() {
         var panel = container.querySelector('[data-panel="bonus"]');
         if (!panel) return;
 
+        _bonusCaricato = false;
         try {
             var regola = await ENI.API.getRegolaBonus();
             panel.querySelector('#bonus-modo').value = regola.modo;
-            panel.querySelector('#bonus-euro-pezzo').value = regola.euroPezzo || '';
+            panel.querySelector('#bonus-euro-pezzo').value =
+                (regola.euroPezzo || regola.euroPezzo === 0) ? regola.euroPezzo : '';
             panel.querySelector('#bonus-fasce-body').innerHTML =
                 (regola.fasce || []).map(_bonusFasciaRigaHtml).join('');
+            _bonusCaricato = true;
         } catch(e) {
+            // Form inutilizzabile finche' non si riesce a leggere: com'e' adesso
+            // e' vuoto, e salvarlo cancellerebbe la configurazione vera.
+            var salvaEl = panel.querySelector('#bonus-salva');
+            if (salvaEl) salvaEl.disabled = true;
+            var probEl = panel.querySelector('#bonus-problemi');
+            if (probEl) {
+                probEl.innerHTML = '⛔ Non sono riuscito a leggere la configurazione del bonus (' +
+                    ENI.UI.escapeHtml(e.message) + ').<br>' +
+                    'Il salvataggio è bloccato: quello che vedi adesso NON è la configurazione vera, ' +
+                    'e salvarlo cancellerebbe le fasce. Ricarica la pagina e riprova.';
+                probEl.hidden = false;
+            }
             ENI.UI.error('Impossibile leggere la regola del bonus: ' + e.message);
+            return;   // niente listener: il pannello resta in sola lettura
         }
 
         panel.addEventListener('input', function() { _bonusAggiorna(panel); });
@@ -917,7 +953,22 @@ ENI.Modules.Impostazioni = (function() {
         });
 
         panel.querySelector('#bonus-salva').addEventListener('click', async function() {
+            if (!_bonusCaricato) return;
+
             var regola = _bonusLeggiForm(panel);
+            var problemi = ENI.BonusCalcoli.problemiConfigurazione(regola);
+
+            if (problemi.length) {
+                var ok = await ENI.UI.confirm({
+                    title: '⚠️ Configurazione con problemi',
+                    message: problemi.join('\n') +
+                        '\n\nVuoi salvare lo stesso?',
+                    confirmText: 'Salva comunque',
+                    cancelText: 'Torna indietro'
+                });
+                if (!ok) return;
+            }
+
             try {
                 await ENI.API.salvaRegolaBonus(regola.modo, regola.euroPezzo);
                 await ENI.API.salvaFasceBonus(regola.modo === 'percentuale' ? regola.fasce : []);
