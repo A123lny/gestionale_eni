@@ -5,28 +5,39 @@
 -- (20260917_bonus_1_schema.sql, 20260917_bonus_2_rpc.sql,
 -- 20260917_bonus_3_tutti_articoli.sql).
 
--- 1) Annullare una vendita non toglie il bonus (CRITICO) -------------------
+-- 1) Bonus venduto: annullamenti e resi tolgono il bonus (CRITICO) ---------
 --
--- Il progetto prevedeva che la riga bonus sparisse con la vendita, e per
--- questo vendita_id ha "on delete cascade". Ma annullaVendita (js/api.js) non
--- CANCELLA la vendita: ne cambia lo stato ad 'annullata' e ripristina la
--- giacenza. La cascata quindi non scattava mai, e un dipendente poteva
--- registrare una vendita, incassare il bonus e poi annullarla tenendosi i
--- soldi, senza aver messo niente in cassa. Ripetibile all'infinito.
+-- Il progetto prevedeva che la riga bonus sparisse con la vendita, e per questo
+-- vendita_id ha "on delete cascade". Ma ne' annullaVendita ne' salvaReso
+-- CANCELLANO la vendita: ne cambiano lo stato ad 'annullata', 'reso_totale' o
+-- 'reso_parziale'. La cascata quindi non scattava mai, e un dipendente poteva
+-- registrare una vendita, incassare il bonus e poi annullarla o renderla
+-- tenendosi i soldi, senza aver messo niente in cassa.
+--
+-- Anche il reso PARZIALE toglie tutto il bonus, non una parte: la vendita non e'
+-- piu' quella su cui il bonus era stato calcolato, e pagare in proporzione
+-- richiederebbe di indovinare quali pezzi sono tornati indietro. Se una parte e'
+-- rimasta venduta davvero, il gestore riconosce quel pezzo con "aggiungi riga a
+-- mano" dalla scheda Bonus. Cosi' non si paga mai piu' del dovuto.
 --
 -- Nota: se la vendita apparteneva a un mese gia' chiuso, il periodo NON si
 -- ricalcola da solo qui dentro - e' voluto, ed e' esattamente il caso che fa
 -- comparire l'avviso "il maturato non corrisponde più ai movimenti" nella
 -- scheda del gestore.
 
-create or replace function public.togli_bonus_vendita_annullata()
+create or replace function public.togli_bonus_vendita_annullata_o_resa()
   returns trigger
   language plpgsql
   security definer
   set search_path = public
 as $$
 begin
-  if new.stato = 'annullata' and old.stato is distinct from 'annullata' then
+  -- Guardia sul PASSAGGIO verso uno di questi tre stati, non su ogni update di
+  -- una vendita che gia' ci si trova: senza "old.stato is distinct from
+  -- new.stato" un aggiornamento qualsiasi di una vendita gia' annullata (es.
+  -- una nota corretta a mano) ripeterebbe la delete ad ogni salvataggio.
+  if new.stato in ('annullata', 'reso_totale', 'reso_parziale')
+     and old.stato is distinct from new.stato then
     delete from public.bonus_movimenti where vendita_id = new.id;
   end if;
   return new;
@@ -34,10 +45,11 @@ end;
 $$;
 
 drop trigger if exists vendite_bonus_annullamento on public.vendite;
-create trigger vendite_bonus_annullamento
+drop trigger if exists vendite_bonus_annullamento_o_reso on public.vendite;
+create trigger vendite_bonus_annullamento_o_reso
   after update on public.vendite
   for each row
-  execute function public.togli_bonus_vendita_annullata();
+  execute function public.togli_bonus_vendita_annullata_o_resa();
 
 -- 2) "Ricalcola" su un periodo forzato dice "fatto" e non fa niente --------
 --
