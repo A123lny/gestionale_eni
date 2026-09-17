@@ -136,6 +136,15 @@ ENI.Modules.Magazzino = (function() {
                 await ENI.API.setBonusArticolo(id, attivo);
                 var prodotto = _prodotti.filter(function(x) { return x.id === id; })[0];
                 if (prodotto) prodotto.bonus_attivo = attivo;
+                // Col filtro "solo bonus" attivo, un articolo appena spento non
+                // appartiene piu' alla lista che si sta guardando: va tolto subito,
+                // o il filtro mostra una riga che contraddice il filtro stesso.
+                // Fuori da quel caso non si ridisegna, per non far saltare la
+                // posizione a chi ne accende molti di fila.
+                var filtroBonus = document.getElementById('filtro-solo-bonus');
+                if (filtroBonus && filtroBonus.checked && !attivo) {
+                    _renderList();
+                }
                 ENI.UI.success(attivo ? 'Articolo aggiunto al bonus' : 'Articolo tolto dal bonus');
             } catch(err) {
                 chk.checked = !attivo;   // rimetti com'era: il salvataggio non e' andato
@@ -267,7 +276,7 @@ ENI.Modules.Magazzino = (function() {
                 (isLavaggiView ? '' : '<th>Categoria</th>') +
                 (!isLavaggiView ? '<th>Giacenza</th>' : '') +
                 '<th>Prezzo</th>' +
-                '<th style="text-align:center;" title="L\'articolo dà bonus al dipendente che lo vende">\u{1F4B0} Bonus</th>' +
+                '<th style="text-align:center;" title="L\'articolo dà bonus ai dipendenti che lo vendono">\u{1F4B0} Bonus</th>' +
                 (canWrite ? '<th>Azioni</th>' : '') +
             '</tr></thead><tbody>';
 
