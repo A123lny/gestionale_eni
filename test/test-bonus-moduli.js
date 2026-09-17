@@ -90,12 +90,42 @@ check('permette di correggere una riga', /aggiornaMovimentoBonus\(/.test(gest));
 check('permette di cancellare una riga', /eliminaMovimentoBonus\(/.test(gest));
 check('permette di segnare come pagato', /salvaPeriodoBonus\(/.test(gest));
 check('permette di ricalcolare un periodo', /ricalcolaPeriodoBonus\(/.test(gest));
+// Ancorato al blocco che genera davvero l'avviso (il bottone Ricalcola li'
+// vicino): "non corrisponde" da solo resterebbe verde anche se l'avviso
+// sparisse ma ne restasse menzione in un commento.
 check('avvisa quando il periodo non corrisponde ai movimenti',
-  /non corrisponde/.test(gest));
-check('chiede conferma prima di cancellare', /UI\.confirm\(/.test(gest));
+  /non corrisponde[\s\S]{0,200}data-ricalcola=/.test(gest));
+// Ancorato al percorso di eliminazione: un UI.confirm( usato altrove nel
+// file non deve bastare a far passare questo controllo.
+check('chiede conferma prima di cancellare',
+  /UI\.confirm\(\{[\s\S]{0,400}?eliminaMovimentoBonus\(/.test(gest));
 check('e riservato al super admin', /'bonus-gestione'/.test(config) &&
   /MODULI_SUPER_ADMIN[\s\S]{0,200}'bonus-gestione'/.test(config));
 check('index.html carica il modulo gestore', /js\/modules\/bonus-gestione\.js\?v=/.test(index));
+
+// E' esattamente il buco scoperto nella Task 8 per bonus-venduto, capitato
+// di nuovo (e corretto) qui: senza questa riga il router non trova il
+// modulo e la voce di menu porta a una pagina vuota.
+check('la rotta e registrata in js/router.js',
+  /'bonus-gestione':\s*\{\s*module:\s*'BonusGestione'/.test(router));
+
+// NAV_SECTION_ITEMS non basta: e' NAV_SECTIONS['gestione-personale'].children
+// che decide cosa compare davvero nella sezione collassabile. Isolato come
+// per moduliDiRuolo, per non passare solo perche' 'bonus-gestione' compare
+// altrove nel file.
+function childrenDiSezione(idSezione) {
+  var m = config.match(new RegExp("id:\\s*'" + idSezione + "'[\\s\\S]{0,800}?children:\\s*\\[([^\\]]*)\\]"));
+  return m ? m[1] : '';
+}
+check("la voce e' nei children della sezione Gestione Personale (altrimenti invisibile in menu)",
+  /'bonus-gestione'/.test(childrenDiSezione('gestione-personale')));
+
+// Il fix principale del listener duplicato: #bg-lista non viene ricreato ad
+// ogni _render(), quindi il click va agganciato con UI.delegate (guardia
+// anti-duplicati) e non con un addEventListener diretto sullo stesso nodo -
+// altrimenti i gestori si accumulano ad ogni ricarica/azione.
+check('il click sulla lista di riepilogo usa UI.delegate, non si accumula ad ogni ricarica',
+  /UI\.delegate\(lista,\s*'click'/.test(gest) && !/lista\.addEventListener\(/.test(gest));
 
 console.log('\n' + pass + ' passati, ' + fail + ' falliti');
 process.exit(fail === 0 ? 0 : 1);

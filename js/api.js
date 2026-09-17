@@ -668,6 +668,22 @@ ENI.API = (function() {
         return result.data;
     }
 
+    // Riga inserita a mano dal gestore, per una vendita avvenuta fuori dal
+    // sistema. Nasce senza vendita agganciata: e' il modo di distinguerla,
+    // e il motivo per cui vendita_id e' nullable.
+    async function aggiungiMovimentoBonus(dati) {
+        dati.regola_modo = dati.regola_modo || 'euro';
+        dati.regola_valore = Number(dati.regola_valore) || 0;
+        var result = await getClient()
+            .from('bonus_movimenti').insert(dati).select().single();
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Riga aggiunta a mano: ' + dati.nome_prodotto + ' x' + dati.quantita +
+            ' - bonus ' + ENI.UI.formatValuta(dati.bonus_calcolato) +
+            ' (' + dati.mese + '/' + dati.anno + ')');
+        return result.data;
+    }
+
     async function ricalcolaPeriodoBonus(personaleId, anno, mese) {
         // Anche qui il "prima" si legge subito, non dopo: l'RPC aggiorna il
         // periodo, quindi rileggerlo dopo mostrerebbe due volte lo stesso "dopo".
@@ -3163,6 +3179,7 @@ ENI.API = (function() {
         getPeriodiBonus: getPeriodiBonus,
         salvaPeriodoBonus: salvaPeriodoBonus,
         ricalcolaPeriodoBonus: ricalcolaPeriodoBonus,
+        aggiungiMovimentoBonus: aggiungiMovimentoBonus,
         getCassaOggi: getCassaOggi,
         getCassaMese: getCassaMese,
         salvaCassa: salvaCassa,

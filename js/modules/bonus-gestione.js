@@ -18,7 +18,6 @@ ENI.Modules.BonusGestione = (function() {
     var _personale = [];
     var _movimenti = [];
     var _periodi = [];
-    var _container = null;
 
     var NOMI_MESE = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
                      'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
@@ -29,7 +28,6 @@ ENI.Modules.BonusGestione = (function() {
     }
 
     async function render(container) {
-        _container = container;
         container.innerHTML =
             '<div class="page-header"><h1 class="page-title">💰 Bonus venduto</h1></div>' +
             '<div class="flex gap-3 items-center" style="flex-wrap:wrap;margin-bottom:14px;">' +
@@ -89,7 +87,7 @@ ENI.Modules.BonusGestione = (function() {
 
     // Nota sui listener: questo #bg-lista NON viene ricreato ad ogni giro. Il
     // nodo e' creato una sola volta in render(); _render() (chiamata da _load,
-    // a sua volta richiamata da "Carica", paga/riapri/ricalcola e dalla
+    // a sua volta richiamata da "Carica", paga/riapri/ricalcola/forza e dalla
     // chiusura del modale righe) si limita a sovrascriverne l'innerHTML. Un
     // addEventListener diretto qui si accumulerebbe ad ogni ricarica -
     // ENI.UI.delegate ha la guardia anti-duplicati (un flag sul nodo stesso)
@@ -114,13 +112,18 @@ ENI.Modules.BonusGestione = (function() {
             var disallineato = per && !per.forzato &&
                 Math.abs(Number(per.bonus_totale) - t.bonus) > 0.005;
 
+            // Il mese in corso non ha (di norma) un periodo chiuso: mostra
+            // "in corso" accanto allo stato vero, senza nasconderlo - se un
+            // periodo esiste comunque (es. forzato prima della chiusura),
+            // resta visibile.
+            var statoReale = per
+                ? (per.stato === 'pagato'
+                    ? '<span class="badge badge-success">pagato</span>'
+                    : '<span class="badge badge-warning">da pagare</span>')
+                : '';
             var stato = _isMeseInCorso()
-                ? '<span class="badge badge-gray">in corso</span>'
-                : (per
-                    ? (per.stato === 'pagato'
-                        ? '<span class="badge badge-success">pagato</span>'
-                        : '<span class="badge badge-warning">da pagare</span>')
-                    : '<span class="badge badge-gray">da chiudere</span>');
+                ? '<span class="badge badge-gray">in corso</span>' + (statoReale ? ' ' + statoReale : '')
+                : (per ? statoReale : '<span class="badge badge-gray">da chiudere</span>');
 
             var azioni = '';
             if (!_isMeseInCorso()) {
@@ -129,6 +132,7 @@ ENI.Modules.BonusGestione = (function() {
                 } else {
                     azioni += '<button class="btn btn-sm btn-outline" data-riapri="' + p.id + '">↩️ Riapri</button> ';
                 }
+                azioni += '<button class="btn btn-sm btn-outline" data-forza="' + p.id + '">✏️ Forza totale</button> ';
             }
             azioni += '<button class="btn btn-sm btn-outline" data-righe="' + p.id + '">📋 Righe</button>';
 
@@ -162,9 +166,16 @@ ENI.Modules.BonusGestione = (function() {
         if (b.dataset.paga)      return _segnaPagato(b.dataset.paga, 'pagato');
         if (b.dataset.riapri)    return _segnaPagato(b.dataset.riapri, 'da_pagare');
         if (b.dataset.ricalcola) return _ricalcola(b.dataset.ricalcola);
+        if (b.dataset.forza)     return _forzaTotale(b.dataset.forza);
         if (b.dataset.righe)     return _mostraRighe(b.dataset.righe);
     }
 
+    // "Segna pagato" e "Riapri" cambiano SOLO lo stato: non toccano mai
+    // l'importo di un periodo che esiste gia'. Se lo riscrivessero con il
+    // totale ricalcolato al volo, un cambio di stato diventerebbe un
+    // ricalcolo silenzioso - esattamente cio' che questa schermata non deve
+    // fare. L'importo dei movimenti correnti (t.venduto/t.bonus) si usa SOLO
+    // quando il periodo non esiste ancora, cioe' alla sua creazione.
     async function _segnaPagato(personaleId, stato) {
         var t = _totaliDi(personaleId);
         var per = _periodoDi(personaleId);
@@ -172,9 +183,9 @@ ENI.Modules.BonusGestione = (function() {
             await ENI.API.salvaPeriodoBonus({
                 personale_id: personaleId,
                 anno: _anno, mese: _mese,
-                venduto: per && per.forzato ? per.venduto : t.venduto,
-                bonus_totale: per && per.forzato ? per.bonus_totale : t.bonus,
-                forzato: !!(per && per.forzato),
+                venduto:      per ? per.venduto      : t.venduto,
+                bonus_totale: per ? per.bonus_totale : t.bonus,
+                forzato:      !!(per && per.forzato),
                 stato: stato,
                 pagato_at: stato === 'pagato' ? new Date().toISOString() : null,
                 pagato_da: stato === 'pagato' ? ENI.State.getUserId() : null,
@@ -197,6 +208,78 @@ ENI.Modules.BonusGestione = (function() {
         }
     }
 
+    // Scrittura diretta del totale: da qui in avanti il ricalcolo non lo
+    // tocca piu' (lo garantisce anche la funzione del database, che esclude
+    // i periodi forzati). Si puo' anche rimuovere la forzatura: il numero in
+    // database resta quello forzato finche' il gestore non preme Ricalcola -
+    // rimuovere il blocco non deve mai, da solo, cambiare una cifra.
+    function _forzaTotale(personaleId) {
+        var pers = _personale.filter(function(p) { return p.id === personaleId; })[0];
+        var per = _periodoDi(personaleId);
+        var t = _totaliDi(personaleId);
+        var attuale = per && per.forzato ? per.bonus_totale : t.bonus;
+
+        var body =
+            '<p class="text-sm text-muted" style="margin-top:0;">Il totale forzato non viene più toccato dal ricalcolo, ' +
+                'nemmeno da "Segna pagato" o "Riapri".</p>' +
+            '<div class="form-group"><label class="form-label">Bonus totale (€)</label>' +
+                '<input type="number" step="0.01" min="0" class="form-input" id="bg-forza-val" value="' +
+                Number(attuale).toFixed(2) + '"></div>';
+
+        var footer = '<button class="btn btn-outline" data-modal-close>Annulla</button>';
+        if (per && per.forzato) {
+            footer += '<button class="btn btn-outline" id="bg-forza-rimuovi">🔓 Rimuovi forzatura</button>';
+        }
+        footer += '<button class="btn btn-primary" id="bg-forza-salva">Salva</button>';
+
+        var modal = ENI.UI.showModal({
+            title: '✏️ Forza totale — ' + (pers ? pers.nome_completo : ''),
+            body: body,
+            footer: footer
+        });
+
+        modal.querySelector('#bg-forza-salva').addEventListener('click', async function() {
+            var val = parseFloat(modal.querySelector('#bg-forza-val').value);
+            if (isNaN(val) || val < 0) { ENI.UI.warning('Importo non valido'); return; }
+            try {
+                await ENI.API.salvaPeriodoBonus({
+                    personale_id: personaleId,
+                    anno: _anno, mese: _mese,
+                    venduto:      per ? per.venduto : t.venduto,
+                    bonus_totale: val,
+                    forzato: true,
+                    stato: per ? per.stato : 'da_pagare',
+                    updated_at: new Date().toISOString()
+                });
+                ENI.UI.success('Totale forzato');
+                ENI.UI.closeModal(modal);
+                await _load();
+            } catch(err) { ENI.UI.error('Errore: ' + err.message); }
+        });
+
+        var btnRimuovi = modal.querySelector('#bg-forza-rimuovi');
+        if (btnRimuovi) {
+            btnRimuovi.addEventListener('click', async function() {
+                try {
+                    // Si spegne solo il flag: l'importo forzato resta scritto
+                    // finche' non arriva un Ricalcola esplicito.
+                    await ENI.API.salvaPeriodoBonus({
+                        personale_id: personaleId,
+                        anno: _anno, mese: _mese,
+                        venduto: per.venduto,
+                        bonus_totale: per.bonus_totale,
+                        forzato: false,
+                        stato: per.stato,
+                        updated_at: new Date().toISOString()
+                    });
+                    ENI.UI.success('Forzatura rimossa');
+                    ENI.UI.closeModal(modal);
+                    await _load();
+                } catch(err) { ENI.UI.error('Errore: ' + err.message); }
+            });
+        }
+    }
+
     function _mostraRighe(personaleId) {
         var pers = _personale.filter(function(p) { return p.id === personaleId; })[0];
         var righe = _movimenti.filter(function(m) { return m.personale_id === personaleId; });
@@ -208,7 +291,8 @@ ENI.Modules.BonusGestione = (function() {
               righe.map(function(m) {
                   return '<tr>' +
                       '<td>' + ENI.UI.formatData(m.created_at) + '</td>' +
-                      '<td>' + ENI.UI.escapeHtml(m.nome_prodotto) + '</td>' +
+                      '<td>' + ENI.UI.escapeHtml(m.nome_prodotto) +
+                          (!m.vendita_id ? ' <span class="badge badge-gray text-xs">a mano</span>' : '') + '</td>' +
                       '<td><input type="number" min="1" class="form-input bg-qta" style="max-width:70px;" ' +
                           'data-id="' + m.id + '" value="' + m.quantita + '"></td>' +
                       '<td>' + ENI.UI.formatValuta(m.imponibile) + '</td>' +
@@ -227,12 +311,18 @@ ENI.Modules.BonusGestione = (function() {
         var modal = ENI.UI.showModal({
             title: '📋 ' + (pers ? pers.nome_completo : '') + ' — ' + NOMI_MESE[_mese - 1] + ' ' + _anno,
             body: body,
-            footer: '<button class="btn btn-outline" data-modal-close>Chiudi</button>'
+            footer: '<button class="btn btn-outline" data-add-manuale>➕ Aggiungi riga a mano</button>' +
+                    '<button class="btn btn-outline" data-modal-close>Chiudi</button>'
         });
 
         // Il modale e' un nodo nuovo ad ogni apertura (showModal ne crea uno e
         // closeModal lo rimuove): qui addEventListener diretto non si accumula.
         modal.addEventListener('click', async function(e) {
+            if (e.target.closest('[data-add-manuale]')) {
+                _formRigaManuale(personaleId, modal);
+                return;
+            }
+
             var salva = e.target.closest('.bg-salva');
             if (salva) {
                 var id = salva.dataset.id;
@@ -244,9 +334,16 @@ ENI.Modules.BonusGestione = (function() {
                     return;
                 }
                 try {
+                    // L'imponibile (il "Venduto" della riga) va ricalcolato dal
+                    // prezzo unitario memorizzato: senza, correggere la
+                    // quantita' lascerebbe il venduto del periodo sbagliato per
+                    // sempre, e l'avviso di disallineamento non se ne
+                    // accorgerebbe perche' confronta solo il bonus.
+                    var nuovoImponibile = ENI.BonusCalcoli.arrotonda(Number(m.prezzo_unitario || 0) * qta);
                     await ENI.API.aggiornaMovimentoBonus(id,
-                        { quantita: qta, bonus_calcolato: bon },
-                        'qta ' + m.quantita + ', bonus ' + ENI.UI.formatValuta(m.bonus_calcolato));
+                        { quantita: qta, imponibile: nuovoImponibile, bonus_calcolato: bon },
+                        'qta ' + m.quantita + ', venduto ' + ENI.UI.formatValuta(m.imponibile) +
+                        ', bonus ' + ENI.UI.formatValuta(m.bonus_calcolato));
                     ENI.UI.success('Riga corretta');
                     ENI.UI.closeModal(modal);
                     await _load();
@@ -269,6 +366,57 @@ ENI.Modules.BonusGestione = (function() {
                     await _load();
                 } catch(err) { ENI.UI.error('Errore: ' + err.message); }
             }
+        });
+    }
+
+    // Riga per una vendita avvenuta fuori dal sistema (es. pagata a mano,
+    // mai passata dal magazzino): il gestore la registra qui perche' resti
+    // traccia nel maturato del dipendente. Chiude anche il modale delle
+    // righe, che va ricaricato con il dato nuovo.
+    function _formRigaManuale(personaleId, righeModal) {
+        var body =
+            '<div class="form-group"><label class="form-label">Descrizione</label>' +
+                '<input type="text" class="form-input" id="bg-man-desc" placeholder="Es. vendita fuori sistema"></div>' +
+            '<div class="form-group"><label class="form-label">Quantità</label>' +
+                '<input type="number" min="1" class="form-input" id="bg-man-qta" value="1"></div>' +
+            '<div class="form-group"><label class="form-label">Venduto (€)</label>' +
+                '<input type="number" step="0.01" min="0" class="form-input" id="bg-man-venduto" value="0"></div>' +
+            '<div class="form-group"><label class="form-label">Bonus (€)</label>' +
+                '<input type="number" step="0.01" min="0" class="form-input" id="bg-man-bonus" value="0"></div>';
+
+        var modal = ENI.UI.showModal({
+            title: '➕ Riga a mano',
+            body: body,
+            footer: '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                    '<button class="btn btn-primary" id="bg-man-salva">Salva</button>'
+        });
+
+        modal.querySelector('#bg-man-salva').addEventListener('click', async function() {
+            var desc = (modal.querySelector('#bg-man-desc').value || '').trim();
+            var qta = parseInt(modal.querySelector('#bg-man-qta').value, 10);
+            var venduto = parseFloat(modal.querySelector('#bg-man-venduto').value);
+            var bonus = parseFloat(modal.querySelector('#bg-man-bonus').value);
+            if (!desc) { ENI.UI.warning('Inserisci una descrizione'); return; }
+            if (isNaN(qta) || qta < 1 || isNaN(venduto) || venduto < 0 || isNaN(bonus) || bonus < 0) {
+                ENI.UI.warning('Valori non validi');
+                return;
+            }
+            try {
+                await ENI.API.aggiungiMovimentoBonus({
+                    personale_id: personaleId,
+                    anno: _anno, mese: _mese,
+                    nome_prodotto: desc,
+                    quantita: qta,
+                    prezzo_unitario: ENI.BonusCalcoli.arrotonda(venduto / qta),
+                    imponibile: venduto,
+                    bonus_calcolato: bonus,
+                    modificato_da: ENI.State.getUserId()
+                });
+                ENI.UI.success('Riga aggiunta');
+                ENI.UI.closeModal(modal);
+                if (righeModal) ENI.UI.closeModal(righeModal);
+                await _load();
+            } catch(err) { ENI.UI.error('Errore: ' + err.message); }
         });
     }
 
