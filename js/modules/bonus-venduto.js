@@ -14,7 +14,6 @@ ENI.Modules.BonusVenduto = (function() {
     var _movimenti = [];
     var _periodi = [];
     var _regola = null;
-    var _container = null;
 
     function _oggi() { return new Date(); }
     function _anno() { return _oggi().getFullYear(); }
@@ -24,7 +23,6 @@ ENI.Modules.BonusVenduto = (function() {
                      'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 
     async function render(container) {
-        _container = container;
         container.innerHTML =
             '<div class="page-header">' +
                 '<h1 class="page-title">💰 Bonus venduto</h1>' +
@@ -43,7 +41,23 @@ ENI.Modules.BonusVenduto = (function() {
             _periodi   = await ENI.API.getMieiPeriodiBonus();
         } catch(e) {
             var errEl = document.getElementById('bonus-corpo');
-            if (errEl) errEl.innerHTML = '<div class="stock-alert">Errore: ' + ENI.UI.escapeHtml(e.message) + '</div>';
+            if (errEl) {
+                // Senza un modo per riprovare da qui, un dipendente col telefono
+                // in mano resterebbe bloccato: non gli viene in mente di ricaricare
+                // la pagina, e ripremere la voce di menu non serve (l'indirizzo
+                // resta lo stesso, quindi la pagina non si ricarica da sola).
+                errEl.innerHTML =
+                    '<div class="stock-alert">Errore: ' + ENI.UI.escapeHtml(e.message) +
+                        '<div style="margin-top:10px;">' +
+                            '<button type="button" class="btn btn-outline" id="bonus-riprova">Riprova</button>' +
+                        '</div>' +
+                    '</div>';
+                var btnRiprova = document.getElementById('bonus-riprova');
+                if (btnRiprova) btnRiprova.addEventListener('click', function() {
+                    btnRiprova.disabled = true;
+                    _load();
+                });
+            }
             return;
         }
         _renderCorpo();
@@ -110,7 +124,7 @@ ENI.Modules.BonusVenduto = (function() {
             return '<tr>' +
                 '<td>' + ENI.UI.formatData(m.created_at) + '</td>' +
                 '<td>' + ENI.UI.escapeHtml(m.nome_prodotto) + '</td>' +
-                '<td style="text-align:center;">' + m.quantita + '</td>' +
+                '<td style="text-align:center;">' + ENI.UI.escapeHtml(m.quantita) + '</td>' +
                 '<td>' + ENI.UI.formatValuta(m.imponibile) + '</td>' +
                 '<td style="font-weight:600;color:var(--color-success);">' +
                     ENI.UI.formatValuta(m.bonus_calcolato) + '</td>' +
@@ -126,8 +140,9 @@ ENI.Modules.BonusVenduto = (function() {
     // che scopre a fine mese.
     function _formVendita() {
         var opzioni = _articoli.map(function(a) {
-            return '<option value="' + a.id + '">' + ENI.UI.escapeHtml(a.nome_prodotto) +
-                   ' — ' + ENI.UI.formatValuta(a.prezzo_vendita) + '</option>';
+            return '<option value="' + ENI.UI.escapeHtml(a.id) + '">' + ENI.UI.escapeHtml(a.nome_prodotto) +
+                   ' — ' + ENI.UI.formatValuta(a.prezzo_vendita) +
+                   ' · giac. ' + ENI.UI.escapeHtml(a.giacenza) + '</option>';
         }).join('');
 
         var body =
@@ -174,8 +189,13 @@ ENI.Modules.BonusVenduto = (function() {
 
         function aggiorna() {
             var a = articoloScelto();
-            var q = parseInt(modal.querySelector('#bv-qta').value, 10) || 0;
+            var qtaEl = modal.querySelector('#bv-qta');
+            var q = parseInt(qtaEl.value, 10) || 0;
             modal.querySelector('#bv-prezzo').value = a ? ENI.UI.formatValuta(a.prezzo_vendita) : '';
+            // Il tetto e' solo un aiuto: scopre subito il caso piu' probabile
+            // (chiedere piu' pezzi di quelli in giacenza), ma il controllo che
+            // conta resta quello del server.
+            if (a) { qtaEl.max = a.giacenza; } else { qtaEl.removeAttribute('max'); }
             var b = a ? ENI.BonusCalcoli.bonusRiga(a.prezzo_vendita, q, _regola).bonus : 0;
             modal.querySelector('#bv-bonus').textContent = ENI.UI.formatValuta(b);
         }
@@ -197,12 +217,31 @@ ENI.Modules.BonusVenduto = (function() {
 
             var btn = modal.querySelector('#bv-conferma');
             btn.disabled = true;
+            // Il velo di showLoading copre anche Esc, la X e lo sfondo: senza,
+            // una connessione lenta lascerebbe la finestra aperta e apparentemente
+            // ferma, e il dipendente potrebbe chiuderla e riprovare da capo,
+            // registrando due volte la stessa vendita.
+            ENI.UI.showLoading();
             try {
+                var anteprima = ENI.BonusCalcoli.bonusRiga(a.prezzo_vendita, q, _regola).bonus;
                 var res = await ENI.API.registraVenditaBonus(a.id, q, metodo);
+                var vero = Number(res && res.bonus) || 0;
+
+                ENI.UI.hideLoading();
                 ENI.UI.closeModal(modal);
-                ENI.UI.success('Registrato · bonus ' + ENI.UI.formatValuta(res && res.bonus));
+                if (Math.abs(vero - anteprima) > 0.005) {
+                    // La regola o il prezzo sono cambiati mentre la pagina era
+                    // aperta: meglio dirlo che lasciare il dipendente convinto
+                    // di aver preso una cifra diversa da quella accreditata.
+                    ENI.UI.warning('Registrato · bonus ' + ENI.UI.formatValuta(vero) +
+                        ' (l\'anteprima diceva ' + ENI.UI.formatValuta(anteprima) +
+                        ': la regola è cambiata nel frattempo)');
+                } else {
+                    ENI.UI.success('Registrato · bonus ' + ENI.UI.formatValuta(vero));
+                }
                 await _load();
             } catch(e) {
+                ENI.UI.hideLoading();
                 btn.disabled = false;
                 ENI.UI.error('Errore: ' + e.message);
             }

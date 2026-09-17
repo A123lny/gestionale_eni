@@ -16,6 +16,7 @@ function check(nome, cond, extra) {
 const venduto = fs.readFileSync(P + 'js/modules/bonus-venduto.js', 'utf8');
 const config  = fs.readFileSync(P + 'js/config.js', 'utf8');
 const app     = fs.readFileSync(P + 'js/app.js', 'utf8');
+const router  = fs.readFileSync(P + 'js/router.js', 'utf8');
 const index   = fs.readFileSync(P + 'index.html', 'utf8');
 
 console.log('\n--- portale dipendente ---');
@@ -26,20 +27,54 @@ check('registra la vendita SOLO tramite l API dedicata',
 check('non chiama mai salvaVendita direttamente', !/salvaVendita\(/.test(venduto));
 check('mostra l anteprima del bonus prima di confermare',
   /BonusCalcoli\.bonusRiga\(/.test(venduto));
+// Ancorato al campo del prezzo: cercare "readonly|disabled" ovunque nel file
+// passerebbe anche se il prezzo diventasse modificabile, perche' "disabled"
+// compare altrove (il bottone "Ho venduto" quando non ci sono articoli, e
+// quello di conferma durante l'invio).
 check('il prezzo e mostrato ma non modificabile',
-  /readonly|disabled/.test(venduto));
-check('chiede contanti o pos', /contanti/.test(venduto) && /pos/.test(venduto));
+  /id="bv-prezzo"[^>]*readonly/.test(venduto));
+// Ancorato all'attributo che il codice legge davvero: un "pos" nudo
+// comparirebbe anche in un commento futuro che non ha niente a che fare
+// col metodo di pagamento.
+check('chiede contanti o pos',
+  /data-metodo="contanti"/.test(venduto) && /data-metodo="pos"/.test(venduto));
 check('mostra i periodi da ricevere', /getMieiPeriodiBonus\(/.test(venduto));
-check('e in ES5: niente let, const o arrow function',
-  !/\b(let|const)\s|=>/.test(venduto.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')));
+check('e in ES5: niente let, const, arrow function o template literal',
+  !/\b(let|const)\b|=>|`/.test(venduto.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')));
 
 console.log('\n--- menu e permessi ---');
 check('la voce esiste in NAV_ITEMS', /id: 'bonus-venduto'/.test(config));
 check('la rotta e #/bonus-venduto', /route: '#\/bonus-venduto'/.test(config));
-check('il modulo e concesso ai ruoli dipendente',
-  (config.match(/'bonus-venduto'/g) || []).length >= 3, (config.match(/'bonus-venduto'/g) || []).length);
+
+// Non basta contare le occorrenze nel file: un ruolo a cui manca il modulo
+// non si vede se se ne conta solo il totale (tre ruoli su quattro punti di
+// codice fanno comunque >= 3). Si isola l'array "moduli" di ciascun ruolo e
+// si controlla dentro quello.
+function moduliDiRuolo(nomeRuolo) {
+  var m = config.match(new RegExp(nomeRuolo + ':\\s*\\{[\\s\\S]*?moduli:\\s*\\[([^\\]]*)\\]'));
+  return m ? m[1] : '';
+}
+check('bonus-venduto e concesso al ruolo Admin', /'bonus-venduto'/.test(moduliDiRuolo('Admin')));
+check('bonus-venduto e concesso al ruolo Cassiere', /'bonus-venduto'/.test(moduliDiRuolo('Cassiere')));
+check('bonus-venduto e concesso al ruolo Lavaggi', /'bonus-venduto'/.test(moduliDiRuolo('Lavaggi')));
+
+// Il dipendente non scrive nelle tabelle: passa dall'RPC. Se 'bonus-venduto'
+// finisse in un array 'scrivere' per errore, questo e' il controllo che se ne
+// accorge: e' il vincolo su cui poggia tutta la sicurezza del modulo.
+check("'bonus-venduto' non e in nessun array scrivere",
+  (config.match(/scrivere:\s*\[[^\]]*\]/g) || []).every(function(riga) {
+    return riga.indexOf('bonus-venduto') === -1;
+  }));
+
 check('la voce e nascosta al super admin',
   /item\.id === 'bonus-venduto' && isSA/.test(app));
+
+console.log('\n--- routing ---');
+// E' esattamente il pezzo che si era scollegato la prima volta: senza questa
+// riga il router non trova alcun modulo per #/bonus-venduto e la voce di
+// menu porta a una pagina vuota.
+check("la rotta e registrata in js/router.js",
+  /'bonus-venduto':\s*\{\s*module:\s*'BonusVenduto'/.test(router));
 
 console.log('\n--- caricamento ---');
 check('index.html carica bonus-calcoli', /js\/lib\/bonus-calcoli\.js\?v=/.test(index));

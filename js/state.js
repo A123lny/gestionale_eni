@@ -82,6 +82,10 @@ ENI.State = (function() {
         if (moduloId === 'mie-richieste' && isSuperAdmin()) return false;
         // "Buste Paga" dipendente: il Super Admin usa Gestione Personale → Buste Paga
         if (moduloId === 'buste-paga-mie' && isSuperAdmin()) return false;
+        // "Bonus venduto" dipendente: le RLS fanno vedere al Super Admin i movimenti
+        // di TUTTO il personale, quindi la pagina gli somma i numeri di tutti
+        // presentandoli come suoi. Lui ha la sua vista in Gestione Personale → Bonus.
+        if (moduloId === 'bonus-venduto' && isSuperAdmin()) return false;
         // La pagina admin "Timbrature" segue lo stesso interruttore della Timbratura ('timbra')
         if (moduloId === 'timbrature' && _moduliDisabilitati.indexOf('timbra') !== -1) return false;
         // Moduli riservati al Super Admin (Gestione Personale): solo lui, anche via URL diretto
