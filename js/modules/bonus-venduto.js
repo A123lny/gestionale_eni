@@ -142,7 +142,7 @@ ENI.Modules.BonusVenduto = (function() {
         var opzioni = _articoli.map(function(a) {
             return '<option value="' + ENI.UI.escapeHtml(a.id) + '">' + ENI.UI.escapeHtml(a.nome_prodotto) +
                    ' — ' + ENI.UI.formatValuta(a.prezzo_vendita) +
-                   ' · giac. ' + ENI.UI.escapeHtml(a.giacenza) + '</option>';
+                   ' · giac. ' + String(a.giacenza) + '</option>';
         }).join('');
 
         var body =
