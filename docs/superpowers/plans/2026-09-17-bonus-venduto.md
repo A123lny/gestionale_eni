@@ -35,6 +35,7 @@
 | `test/test-bonus-calcoli.js` | **creare** — test dei calcoli puri |
 | `supabase/migrations/20260917_bonus_schema.sql` | **creare** — colonna su `magazzino`, tre tabelle nuove, helper `current_staff_id()`, RLS |
 | `supabase/migrations/20260917_bonus_rpc.sql` | **creare** — `bonus_riga_calcola`, `registra_vendita_bonus`, `ricalcola_periodo_bonus` |
+| `supabase/migrations/20260917_bonus_magazzino_guard.sql` | **creare** — impedisce a chi non è il gestore di accendersi il bonus da solo su un articolo (vedi Task 4) |
 | `sql/verifica_bonus_parita.sql` | **creare** — stampa il bonus SQL sui casi di prova, da confrontare col JS |
 | `js/api.js` | **modificare** — funzioni di lettura/scrittura del bonus |
 | `test/test-bonus-api.js` | **creare** — test delle funzioni API con client Supabase finto |

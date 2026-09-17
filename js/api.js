@@ -481,24 +481,50 @@ ENI.API = (function() {
     }
 
     async function salvaRegolaBonus(modo, euroPezzo) {
+        var prima = await getRegolaBonus();
         await salvaImpostazioneApp('bonus_modo', modo);
         await salvaImpostazioneApp('bonus_euro_pezzo', Number(euroPezzo) || 0);
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Regola bonus. Prima: ' + prima.modo + ' / ' + prima.euroPezzo + ' EUR al pezzo' +
+            ' | Dopo: ' + modo + ' / ' + (Number(euroPezzo) || 0) + ' EUR al pezzo');
         return true;
     }
 
     // Sostituisce in blocco: le fasce sono poche e ragionarci per differenze
-    // costerebbe piu' di quanto valga.
+    // costerebbe piu' di quanto valga. Si rileggono pero' PRIMA di cancellare,
+    // sia per scriverle nel log sia per poterle rimettere se l'inserimento
+    // fallisce: altrimenti un errore a meta' lascerebbe il bonus senza fasce,
+    // cioe' a zero per tutti, senza che nessuno se ne accorga.
     async function salvaFasceBonus(fasce) {
+        var precedenti = await getClient()
+            .from('bonus_fasce').select('da_prezzo, percentuale').order('da_prezzo', { ascending: true });
+        if (precedenti.error) throw new Error(precedenti.error.message);
+        var vecchie = precedenti.data || [];
+
         var del = await getClient().from('bonus_fasce').delete().gte('da_prezzo', 0);
         if (del.error) throw new Error(del.error.message);
-        if (fasce && fasce.length) {
-            var ins = await getClient().from('bonus_fasce').insert(fasce.map(function(f) {
-                return { da_prezzo: Number(f.da_prezzo), percentuale: Number(f.percentuale) };
-            }));
-            if (ins.error) throw new Error(ins.error.message);
+
+        var nuove = (fasce || []).map(function(f) {
+            return { da_prezzo: Number(f.da_prezzo), percentuale: Number(f.percentuale) };
+        });
+
+        if (nuove.length) {
+            var ins = await getClient().from('bonus_fasce').insert(nuove);
+            if (ins.error) {
+                // Rimetti quelle di prima: meglio la configurazione vecchia che nessuna.
+                if (vecchie.length) {
+                    await getClient().from('bonus_fasce').insert(vecchie);
+                }
+                throw new Error(ins.error.message);
+            }
         }
-        await scriviLog('Modifica_Impostazioni', 'Bonus',
-            'Fasce bonus aggiornate: ' + ((fasce || []).length) + ' fasce');
+
+        function descrivi(lista) {
+            if (!lista.length) return 'nessuna';
+            return lista.map(function(f) { return 'da ' + f.da_prezzo + ' -> ' + f.percentuale + '%'; }).join(', ');
+        }
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Fasce bonus. Prima: ' + descrivi(vecchie) + ' | Dopo: ' + descrivi(nuove));
         return true;
     }
 
@@ -514,11 +540,22 @@ ENI.API = (function() {
     }
 
     async function setBonusArticolo(id, attivo) {
+        // Si rilegge lo stato precedente PRIMA di scrivere: accendere il bonus su
+        // un articolo cambia quanto si paga alle persone, e senza il valore vecchio
+        // il log direbbe solo che qualcosa e' cambiato, non cosa.
+        var prima = await getClient()
+            .from('magazzino').select('nome_prodotto, bonus_attivo').eq('id', id).maybeSingle();
+        if (prima.error) throw new Error(prima.error.message);
+
         var result = await getClient()
-            .from('magazzino')
-            .update({ bonus_attivo: !!attivo })
-            .eq('id', id);
+            .from('magazzino').update({ bonus_attivo: !!attivo }).eq('id', id);
         if (result.error) throw new Error(result.error.message);
+
+        var nome = (prima.data && prima.data.nome_prodotto) || id;
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Articolo "' + nome + '": bonus ' +
+            ((prima.data && prima.data.bonus_attivo) ? 'attivo' : 'spento') +
+            ' -> ' + (attivo ? 'attivo' : 'spento'));
         return true;
     }
 
@@ -591,23 +628,53 @@ ENI.API = (function() {
     }
 
     async function salvaPeriodoBonus(dati) {
+        // Il valore precedente serve al log: senza, una correzione del gestore
+        // sul totale pagato non lascerebbe traccia di quanto era prima.
+        var esistente = await getClient()
+            .from('bonus_periodi')
+            .select('bonus_totale, stato')
+            .eq('personale_id', dati.personale_id)
+            .eq('anno', dati.anno)
+            .eq('mese', dati.mese)
+            .maybeSingle();
+        if (esistente.error) throw new Error(esistente.error.message);
+        var prima = esistente.data || null;
+
         var result = await getClient()
             .from('bonus_periodi')
             .upsert(dati, { onConflict: 'personale_id,anno,mese' })
             .select().single();
         if (result.error) throw new Error(result.error.message);
+
         await scriviLog('Modifica_Bonus', 'Bonus',
-            'Periodo ' + dati.mese + '/' + dati.anno + ' -> ' + (dati.stato || 'aggiornato'));
+            'Periodo ' + dati.mese + '/' + dati.anno + '. Prima: bonus ' +
+            (prima ? prima.bonus_totale : '-') + ' EUR, stato ' + (prima ? prima.stato : '-') +
+            ' | Dopo: bonus ' + (dati.bonus_totale != null ? dati.bonus_totale : '-') +
+            ' EUR, stato ' + (dati.stato || 'aggiornato'));
         return result.data;
     }
 
     async function ricalcolaPeriodoBonus(personaleId, anno, mese) {
+        // Anche qui il "prima" si legge subito, non dopo: l'RPC aggiorna il
+        // periodo, quindi rileggerlo dopo mostrerebbe due volte lo stesso "dopo".
+        var esistente = await getClient()
+            .from('bonus_periodi')
+            .select('bonus_totale')
+            .eq('personale_id', personaleId)
+            .eq('anno', anno)
+            .eq('mese', mese)
+            .maybeSingle();
+        if (esistente.error) throw new Error(esistente.error.message);
+        var bonusPrima = esistente.data ? esistente.data.bonus_totale : 0;
+
         var result = await getClient().rpc('ricalcola_periodo_bonus', {
             p_personale_id: personaleId, p_anno: anno, p_mese: mese
         });
         if (result.error) throw new Error(result.error.message);
+
         await scriviLog('Modifica_Bonus', 'Bonus',
-            'Ricalcolato il periodo ' + mese + '/' + anno);
+            'Ricalcolato il periodo ' + mese + '/' + anno + '. Prima: bonus ' + bonusPrima +
+            ' EUR | Dopo: bonus ' + (result.data && result.data.bonus_totale) + ' EUR');
         return result.data;
     }
 

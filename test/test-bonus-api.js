@@ -90,6 +90,12 @@ const API = sandbox.ENI.API;
   await API.salvaRegolaBonus('percentuale', 0);
   check('salva la modalita in impostazioni_app',
     azioni.some(a => a.op === 'upsert' && a.tabella === 'impostazioni_app'));
+  const upsRegola = azioni.filter(a => a.op === 'upsert' && a.tabella === 'impostazioni_app');
+  check('la modalita si salva come stringa nuda, non come oggetto',
+    upsRegola.some(a => a.dati.chiave === 'bonus_modo' && typeof a.dati.valore === 'string'),
+    JSON.stringify(upsRegola.map(a => a.dati)));
+  check('l importo al pezzo si salva come numero nudo',
+    upsRegola.some(a => a.dati.chiave === 'bonus_euro_pezzo' && typeof a.dati.valore === 'number'));
 
   azioni.length = 0;
   await API.salvaFasceBonus([{ da_prezzo: 0, percentuale: 3 }, { da_prezzo: 10, percentuale: 5 }]);
