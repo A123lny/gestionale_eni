@@ -41,6 +41,9 @@ ENI.Modules.Magazzino = (function() {
                         return '<button class="chip" data-cat="' + c + '">' + c + '</button>';
                     }).join('') +
                 '</div>' +
+                '<label class="text-sm" style="display:inline-flex;align-items:center;gap:6px;margin-left:12px;">' +
+                    '<input type="checkbox" id="filtro-solo-bonus"> solo articoli a bonus' +
+                '</label>' +
             '</div>' +
 
             '<div id="magazzino-list"></div>';
@@ -74,6 +77,15 @@ ENI.Modules.Magazzino = (function() {
             _renderList();
         });
 
+        // Filtro "solo articoli a bonus"
+        var filtroSoloBonus = container.querySelector('#filtro-solo-bonus');
+        if (filtroSoloBonus) {
+            filtroSoloBonus.addEventListener('change', function() {
+                _paginaCorrente = 1;
+                _renderList();
+            });
+        }
+
         // Nuovo prodotto
         var btnNuovo = container.querySelector('#btn-nuovo-prodotto');
         if (btnNuovo) {
@@ -106,6 +118,31 @@ ENI.Modules.Magazzino = (function() {
         ENI.UI.delegate(container, 'click', '[data-prezzi-cliente]', function(e, el) {
             e.stopPropagation();
             _showPrezziCliente(el.dataset.prezziCliente);
+        });
+
+        // Interruttore bonus: si salva subito, senza un form di mezzo. Serve
+        // ad accendere in fretta molti articoli di fila; per correggerne uno
+        // singolo c'e' la scheda di modifica (Task 6).
+        //
+        // ENI.UI.delegate e non addEventListener: il container e' lo stesso
+        // nodo #main-content a ogni navigazione, e un listener diretto si
+        // accumulerebbe ogni volta che si rientra in Magazzino, facendo partire
+        // N salvataggi per un solo click. delegate ha la guardia anti-duplicati.
+        ENI.UI.delegate(container, 'change', '.bonus-toggle', async function(e, chk) {
+            var id = chk.dataset.bonusId;
+            var attivo = chk.checked;
+            chk.disabled = true;
+            try {
+                await ENI.API.setBonusArticolo(id, attivo);
+                var prodotto = _prodotti.filter(function(x) { return x.id === id; })[0];
+                if (prodotto) prodotto.bonus_attivo = attivo;
+                ENI.UI.success(attivo ? 'Articolo aggiunto al bonus' : 'Articolo tolto dal bonus');
+            } catch(err) {
+                chk.checked = !attivo;   // rimetti com'era: il salvataggio non e' andato
+                ENI.UI.error('Errore: ' + err.message);
+            } finally {
+                chk.disabled = false;
+            }
         });
 
         // Modifica articolo esistente
@@ -179,7 +216,10 @@ ENI.Modules.Magazzino = (function() {
         var listEl = document.getElementById('magazzino-list');
         if (!listEl) return;
 
+        var soloBonus = document.getElementById('filtro-solo-bonus');
+
         var filtered = _prodotti.filter(function(p) {
+            if (soloBonus && soloBonus.checked && !p.bonus_attivo) return false;
             var matchCat = _categoriaFiltro === 'Tutti' || p.categoria === _categoriaFiltro;
             var matchSearch = !_searchTerm ||
                 p.nome_prodotto.toLowerCase().indexOf(_searchTerm) !== -1 ||
@@ -227,6 +267,7 @@ ENI.Modules.Magazzino = (function() {
                 (isLavaggiView ? '' : '<th>Categoria</th>') +
                 (!isLavaggiView ? '<th>Giacenza</th>' : '') +
                 '<th>Prezzo</th>' +
+                '<th style="text-align:center;" title="L\'articolo dà bonus al dipendente che lo vende">\u{1F4B0} Bonus</th>' +
                 (canWrite ? '<th>Azioni</th>' : '') +
             '</tr></thead><tbody>';
 
@@ -258,6 +299,13 @@ ENI.Modules.Magazzino = (function() {
             }
 
             html += '<td>' + ENI.UI.formatValuta(p.prezzo_vendita) + '</td>';
+
+            // I servizi (Lavaggi) non hanno giacenza e non passano dal portale bonus
+            html += '<td style="text-align:center;">' +
+                (servizio ? '<span class="text-muted">—</span>' :
+                    '<input type="checkbox" class="bonus-toggle" data-bonus-id="' + p.id + '"' +
+                    (p.bonus_attivo ? ' checked' : '') + ' title="Dà bonus ai dipendenti">') +
+            '</td>';
 
             if (canWrite) {
                 html += '<td class="table-actions">';
