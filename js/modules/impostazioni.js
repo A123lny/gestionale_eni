@@ -114,6 +114,11 @@ ENI.Modules.Impostazioni = (function() {
                     // Sezione: Soglie & allerte
                     '<section class="settings-panel" data-panel="soglie">' + _sogliePanelHtml() + '</section>' +
 
+                    // Sezione: Bonus venduto (solo Super Admin)
+                    (ENI.State.isSuperAdmin()
+                        ? '<section class="settings-panel" data-panel="bonus">' + _bonusPanelHtml() + '</section>'
+                        : '') +
+
                     // Sezione: Backup & Esporta (solo Super Admin)
                     (ENI.State.isSuperAdmin()
                         ? '<section class="settings-panel" data-panel="backup">' + _backupPanelHtml() + '</section>'
@@ -324,6 +329,9 @@ ENI.Modules.Impostazioni = (function() {
         // Navigazione a sezioni (Moduli / Dati attività / Stampante / SMS)
         _initSettingsNav(container);
 
+        // Bonus venduto (solo Super Admin)
+        if (ENI.State.isSuperAdmin()) _bonusInit(container);
+
         // Dati attività: salvataggio (solo Super Admin) + caricamento
         var btnAtt = container.querySelector('#btn-salva-attivita');
         if (btnAtt) btnAtt.addEventListener('click', _salvaDatiAttivita);
@@ -429,6 +437,7 @@ ENI.Modules.Impostazioni = (function() {
         secs.push({ id: 'attivita', label: 'Dati attività', icon: '\u{1F3E2}' });
         secs.push({ id: 'accesso', label: 'Il mio accesso', icon: '\u{1F510}' });
         secs.push({ id: 'soglie', label: 'Soglie & allerte', icon: '\u{1F514}' });
+        if (ENI.State.isSuperAdmin()) secs.push({ id: 'bonus', label: 'Bonus venduto', icon: '\u{1F4B0}' });
         if (ENI.State.isSuperAdmin()) secs.push({ id: 'moduli', label: 'Moduli', icon: '\u{1F9E9}' });
         if (ENI.State.isSuperAdmin()) secs.push({ id: 'backup', label: 'Backup & Esporta', icon: '\u{1F4BE}' });
         secs.push({ id: 'stampante', label: 'Stampante & Scontrino', icon: '\u{1F5A8}️' });
@@ -777,6 +786,148 @@ ENI.Modules.Impostazioni = (function() {
         } finally {
             if (btn) btn.disabled = false;
         }
+    }
+
+    // --- Bonus venduto ---------------------------------------------------
+    // La regola e' unica per tutti gli articoli: in Magazzino c'e' solo
+    // l'interruttore acceso/spento. Qui si decide QUANTO si paga.
+
+    function _bonusPanelHtml() {
+        return '' +
+            '<div class="settings-card">' +
+                '<h3 class="settings-card-title">💰 Bonus venduto</h3>' +
+                '<p class="text-sm text-muted">Vale per tutti gli articoli con il bonus acceso in Magazzino. ' +
+                    'La fascia si sceglie sul <strong>prezzo del singolo pezzo</strong>.</p>' +
+
+                '<div class="form-group" style="margin-top:12px;">' +
+                    '<label class="form-label">Come si paga</label>' +
+                    '<select class="form-select" id="bonus-modo" style="max-width:280px;">' +
+                        '<option value="percentuale">Percentuale a fasce di prezzo</option>' +
+                        '<option value="euro">Euro fissi al pezzo</option>' +
+                    '</select>' +
+                '</div>' +
+
+                '<div id="bonus-blocco-euro" hidden>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Euro per ogni pezzo venduto</label>' +
+                        '<input type="number" step="0.01" min="0" class="form-input" ' +
+                            'id="bonus-euro-pezzo" style="max-width:160px;">' +
+                    '</div>' +
+                '</div>' +
+
+                '<div id="bonus-blocco-fasce" hidden>' +
+                    '<label class="form-label">Fasce di prezzo</label>' +
+                    '<table class="table" style="max-width:520px;">' +
+                        '<thead><tr><th>Da (€)</th><th>Percentuale</th><th></th></tr></thead>' +
+                        '<tbody id="bonus-fasce-body"></tbody>' +
+                    '</table>' +
+                    '<button type="button" class="btn btn-sm btn-outline" id="bonus-add-fascia">➕ Aggiungi fascia</button>' +
+                '</div>' +
+
+                '<div id="bonus-problemi" class="stock-alert" style="margin-top:12px;" hidden></div>' +
+                '<div id="bonus-esempio" class="text-sm text-muted" style="margin-top:12px;"></div>' +
+
+                '<div style="margin-top:16px;">' +
+                    '<button type="button" class="btn btn-primary" id="bonus-salva">💾 Salva</button>' +
+                '</div>' +
+            '</div>';
+    }
+
+    function _bonusFasciaRigaHtml(f) {
+        return '<tr class="bonus-fascia-row">' +
+            '<td><input type="number" step="0.01" min="0" class="form-input bonus-f-da" ' +
+                'value="' + (f && f.da_prezzo !== undefined ? f.da_prezzo : '') + '" style="max-width:120px;"></td>' +
+            '<td><input type="number" step="0.01" min="0" max="100" class="form-input bonus-f-perc" ' +
+                'value="' + (f && f.percentuale !== undefined ? f.percentuale : '') + '" style="max-width:110px;"> %</td>' +
+            '<td><button type="button" class="btn btn-sm bonus-f-del" ' +
+                'style="background:none;border:none;color:var(--color-danger);cursor:pointer;">✕</button></td>' +
+        '</tr>';
+    }
+
+    function _bonusLeggiForm(container) {
+        var fasce = [];
+        container.querySelectorAll('.bonus-fascia-row').forEach(function(tr) {
+            var da = parseFloat(tr.querySelector('.bonus-f-da').value);
+            var pc = parseFloat(tr.querySelector('.bonus-f-perc').value);
+            if (!isNaN(da) && !isNaN(pc)) fasce.push({ da_prezzo: da, percentuale: pc });
+        });
+        var modoEl = container.querySelector('#bonus-modo');
+        var euroEl = container.querySelector('#bonus-euro-pezzo');
+        return {
+            modo: modoEl ? modoEl.value : 'percentuale',
+            euroPezzo: euroEl ? (parseFloat(euroEl.value) || 0) : 0,
+            fasce: fasce
+        };
+    }
+
+    // L'esempio calcolato dal vivo e gli avvisi: servono a far vedere un errore
+    // di configurazione PRIMA che qualcuno venda e prenda zero senza capire.
+    function _bonusAggiorna(container) {
+        var regola = _bonusLeggiForm(container);
+        var isPerc = regola.modo === 'percentuale';
+        var bEuro = container.querySelector('#bonus-blocco-euro');
+        var bFasce = container.querySelector('#bonus-blocco-fasce');
+        if (bEuro) bEuro.hidden = isPerc;
+        if (bFasce) bFasce.hidden = !isPerc;
+
+        var problemi = ENI.BonusCalcoli.problemiConfigurazione(regola);
+        var pEl = container.querySelector('#bonus-problemi');
+        if (pEl) {
+            pEl.innerHTML = problemi.map(function(t) { return '⚠️ ' + ENI.UI.escapeHtml(t); }).join('<br>');
+            pEl.hidden = problemi.length === 0;
+        }
+
+        var eEl = container.querySelector('#bonus-esempio');
+        if (eEl) {
+            var esempi = [8, 15, 25, 40].map(function(p) {
+                return 'un pezzo da ' + ENI.UI.formatValuta(p) + ' rende ' +
+                    ENI.UI.formatValuta(ENI.BonusCalcoli.bonusRiga(p, 1, regola).bonus);
+            });
+            eEl.textContent = 'Esempio: ' + esempi.join('  ·  ');
+        }
+    }
+
+    async function _bonusInit(container) {
+        var panel = container.querySelector('[data-panel="bonus"]');
+        if (!panel) return;
+
+        try {
+            var regola = await ENI.API.getRegolaBonus();
+            panel.querySelector('#bonus-modo').value = regola.modo;
+            panel.querySelector('#bonus-euro-pezzo').value = regola.euroPezzo || '';
+            panel.querySelector('#bonus-fasce-body').innerHTML =
+                (regola.fasce || []).map(_bonusFasciaRigaHtml).join('');
+        } catch(e) {
+            ENI.UI.error('Impossibile leggere la regola del bonus: ' + e.message);
+        }
+
+        panel.addEventListener('input', function() { _bonusAggiorna(panel); });
+        panel.addEventListener('change', function() { _bonusAggiorna(panel); });
+
+        panel.querySelector('#bonus-add-fascia').addEventListener('click', function() {
+            panel.querySelector('#bonus-fasce-body').insertAdjacentHTML('beforeend', _bonusFasciaRigaHtml(null));
+        });
+
+        panel.addEventListener('click', function(e) {
+            var del = e.target.closest('.bonus-f-del');
+            if (!del) return;
+            var row = del.closest('.bonus-fascia-row');
+            if (row) row.remove();
+            _bonusAggiorna(panel);
+        });
+
+        panel.querySelector('#bonus-salva').addEventListener('click', async function() {
+            var regola = _bonusLeggiForm(panel);
+            try {
+                await ENI.API.salvaRegolaBonus(regola.modo, regola.euroPezzo);
+                await ENI.API.salvaFasceBonus(regola.modo === 'percentuale' ? regola.fasce : []);
+                ENI.UI.success('Regola del bonus salvata');
+            } catch(e) {
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
+
+        _bonusAggiorna(panel);
     }
 
     // ============================================================
