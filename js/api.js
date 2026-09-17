@@ -459,6 +459,158 @@ ENI.API = (function() {
         }, 0);
     }
 
+    // --- Bonus venduto ai dipendenti ---
+    //
+    // La vendita passa SOLO da registra_vendita_bonus: il dipendente non manda
+    // ne' il proprio nome ne' il prezzo, li decide il server. Vedi
+    // docs/superpowers/specs/2026-09-17-bonus-venduto-design.md
+
+    async function getRegolaBonus() {
+        var modo = await getImpostazioneApp('bonus_modo');
+        var euro = await getImpostazioneApp('bonus_euro_pezzo');
+        var fasce = await getClient()
+            .from('bonus_fasce')
+            .select('*')
+            .order('da_prezzo', { ascending: true });
+        if (fasce.error) throw new Error(fasce.error.message);
+        return {
+            modo: modo || 'percentuale',
+            euroPezzo: Number(euro) || 0,
+            fasce: fasce.data || []
+        };
+    }
+
+    async function salvaRegolaBonus(modo, euroPezzo) {
+        await salvaImpostazioneApp('bonus_modo', modo);
+        await salvaImpostazioneApp('bonus_euro_pezzo', Number(euroPezzo) || 0);
+        return true;
+    }
+
+    // Sostituisce in blocco: le fasce sono poche e ragionarci per differenze
+    // costerebbe piu' di quanto valga.
+    async function salvaFasceBonus(fasce) {
+        var del = await getClient().from('bonus_fasce').delete().gte('da_prezzo', 0);
+        if (del.error) throw new Error(del.error.message);
+        if (fasce && fasce.length) {
+            var ins = await getClient().from('bonus_fasce').insert(fasce.map(function(f) {
+                return { da_prezzo: Number(f.da_prezzo), percentuale: Number(f.percentuale) };
+            }));
+            if (ins.error) throw new Error(ins.error.message);
+        }
+        await scriviLog('Modifica_Impostazioni', 'Bonus',
+            'Fasce bonus aggiornate: ' + ((fasce || []).length) + ' fasce');
+        return true;
+    }
+
+    async function getArticoliBonus() {
+        var result = await getClient()
+            .from('magazzino')
+            .select('*')
+            .eq('bonus_attivo', true)
+            .eq('attivo', true)
+            .order('nome_prodotto', { ascending: true });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function setBonusArticolo(id, attivo) {
+        var result = await getClient()
+            .from('magazzino')
+            .update({ bonus_attivo: !!attivo })
+            .eq('id', id);
+        if (result.error) throw new Error(result.error.message);
+        return true;
+    }
+
+    async function registraVenditaBonus(magazzinoId, quantita, metodo) {
+        var result = await getClient().rpc('registra_vendita_bonus', {
+            p_magazzino_id: magazzinoId,
+            p_quantita: quantita,
+            p_metodo: metodo
+        });
+        if (result.error) throw new Error(result.error.message);
+        return result.data;
+    }
+
+    async function getMieiMovimentiBonus(anno, mese) {
+        var result = await getClient()
+            .from('bonus_movimenti')
+            .select('*')
+            .eq('anno', anno)
+            .eq('mese', mese)
+            .order('created_at', { ascending: false });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getMieiPeriodiBonus() {
+        var result = await getClient()
+            .from('bonus_periodi')
+            .select('*')
+            .order('anno', { ascending: false })
+            .order('mese', { ascending: false });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getMovimentiBonus(anno, mese) {
+        var result = await getClient()
+            .from('bonus_movimenti')
+            .select('*')
+            .eq('anno', anno)
+            .eq('mese', mese)
+            .order('created_at', { ascending: false });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function aggiornaMovimentoBonus(id, dati, descrizionePrecedente) {
+        dati.modificato_da = ENI.State.getUserId();
+        dati.modificato_at = new Date().toISOString();
+        var result = await getClient()
+            .from('bonus_movimenti').update(dati).eq('id', id).select().single();
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Movimento corretto. Prima: ' + (descrizionePrecedente || '?') +
+            ' | Dopo: ' + JSON.stringify(dati));
+        return result.data;
+    }
+
+    async function eliminaMovimentoBonus(id, descrizione) {
+        var result = await getClient().from('bonus_movimenti').delete().eq('id', id);
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Elimina_Bonus', 'Bonus', 'Movimento eliminato: ' + (descrizione || id));
+        return true;
+    }
+
+    async function getPeriodiBonus(anno, mese) {
+        var result = await getClient()
+            .from('bonus_periodi').select('*').eq('anno', anno).eq('mese', mese);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function salvaPeriodoBonus(dati) {
+        var result = await getClient()
+            .from('bonus_periodi')
+            .upsert(dati, { onConflict: 'personale_id,anno,mese' })
+            .select().single();
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Periodo ' + dati.mese + '/' + dati.anno + ' -> ' + (dati.stato || 'aggiornato'));
+        return result.data;
+    }
+
+    async function ricalcolaPeriodoBonus(personaleId, anno, mese) {
+        var result = await getClient().rpc('ricalcola_periodo_bonus', {
+            p_personale_id: personaleId, p_anno: anno, p_mese: mese
+        });
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Ricalcolato il periodo ' + mese + '/' + anno);
+        return result.data;
+    }
+
     async function getCassaMese(anno, mese) {
         var primoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-01';
         var ultimoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-' +
@@ -2916,6 +3068,20 @@ ENI.API = (function() {
         annullaCredito: annullaCredito,
         getCassaPerData: getCassaPerData,
         getTotaleLavaggiPerData: getTotaleLavaggiPerData,
+        getRegolaBonus: getRegolaBonus,
+        salvaRegolaBonus: salvaRegolaBonus,
+        salvaFasceBonus: salvaFasceBonus,
+        getArticoliBonus: getArticoliBonus,
+        setBonusArticolo: setBonusArticolo,
+        registraVenditaBonus: registraVenditaBonus,
+        getMieiMovimentiBonus: getMieiMovimentiBonus,
+        getMieiPeriodiBonus: getMieiPeriodiBonus,
+        getMovimentiBonus: getMovimentiBonus,
+        aggiornaMovimentoBonus: aggiornaMovimentoBonus,
+        eliminaMovimentoBonus: eliminaMovimentoBonus,
+        getPeriodiBonus: getPeriodiBonus,
+        salvaPeriodoBonus: salvaPeriodoBonus,
+        ricalcolaPeriodoBonus: ricalcolaPeriodoBonus,
         getCassaOggi: getCassaOggi,
         getCassaMese: getCassaMese,
         salvaCassa: salvaCassa,
