@@ -108,7 +108,7 @@ const API = sandbox.ENI.API;
   ['getRegolaBonus','salvaRegolaBonus','salvaFasceBonus','getArticoliBonus','setBonusArticolo',
    'registraVenditaBonus','getMieiMovimentiBonus','getMieiPeriodiBonus','getMovimentiBonus',
    'aggiornaMovimentoBonus','eliminaMovimentoBonus','getPeriodiBonus','salvaPeriodoBonus',
-   'ricalcolaPeriodoBonus'].forEach(function(n) {
+   'ricalcolaPeriodoBonus','aggiungiMovimentoBonus'].forEach(function(n) {
     check('API espone ' + n, typeof API[n] === 'function');
   });
 

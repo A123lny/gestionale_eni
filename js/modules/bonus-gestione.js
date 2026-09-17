@@ -241,6 +241,19 @@ ENI.Modules.BonusGestione = (function() {
         modal.querySelector('#bg-forza-salva').addEventListener('click', async function() {
             var val = parseFloat(modal.querySelector('#bg-forza-val').value);
             if (isNaN(val) || val < 0) { ENI.UI.warning('Importo non valido'); return; }
+
+            // Stessa guardia dell'aggiunta a mano: forzare il totale di un
+            // periodo gia' pagato ne cambia il maturato registrato, non
+            // quanto e' stato versato.
+            if (per && per.stato === 'pagato') {
+                var ok = await ENI.UI.confirm({
+                    title: 'Il mese è già stato pagato',
+                    message: 'Questo periodo risulta pagato: forzare il totale ne cambia il maturato registrato, non l\'importo già versato al dipendente.',
+                    confirmText: 'Forza comunque', cancelText: 'Annulla'
+                });
+                if (!ok) return;
+            }
+
             try {
                 await ENI.API.salvaPeriodoBonus({
                     personale_id: personaleId,
@@ -334,14 +347,16 @@ ENI.Modules.BonusGestione = (function() {
                     return;
                 }
                 try {
-                    // L'imponibile (il "Venduto" della riga) va ricalcolato dal
-                    // prezzo unitario memorizzato: senza, correggere la
-                    // quantita' lascerebbe il venduto del periodo sbagliato per
-                    // sempre, e l'avviso di disallineamento non se ne
-                    // accorgerebbe perche' confronta solo il bonus.
-                    var nuovoImponibile = ENI.BonusCalcoli.arrotonda(Number(m.prezzo_unitario || 0) * qta);
-                    await ENI.API.aggiornaMovimentoBonus(id,
-                        { quantita: qta, imponibile: nuovoImponibile, bonus_calcolato: bon },
+                    var dati = { quantita: qta, bonus_calcolato: bon };
+                    // L'imponibile si ritocca SOLO se la quantita' e' cambiata
+                    // davvero: su una riga aggiunta a mano prezzo_unitario e'
+                    // gia' arrotondato (venduto/quantita), e ricalcolarlo ad
+                    // ogni salvataggio - anche quando si corregge solo il
+                    // bonus - eroderebbe il venduto di un centesimo per volta.
+                    if (qta !== Number(m.quantita) && Number(m.prezzo_unitario) > 0) {
+                        dati.imponibile = ENI.BonusCalcoli.arrotonda(Number(m.prezzo_unitario) * qta);
+                    }
+                    await ENI.API.aggiornaMovimentoBonus(id, dati,
                         'qta ' + m.quantita + ', venduto ' + ENI.UI.formatValuta(m.imponibile) +
                         ', bonus ' + ENI.UI.formatValuta(m.bonus_calcolato));
                     ENI.UI.success('Riga corretta');
@@ -401,6 +416,19 @@ ENI.Modules.BonusGestione = (function() {
                 ENI.UI.warning('Valori non validi');
                 return;
             }
+
+            // Stesso effetto sul maturato di un'eliminazione, segno opposto:
+            // su un mese gia' pagato serve la stessa guardia.
+            var per = _periodoDi(personaleId);
+            if (per && per.stato === 'pagato') {
+                var ok = await ENI.UI.confirm({
+                    title: 'Il mese è già stato pagato',
+                    message: 'Questo periodo risulta pagato: aggiungere una riga ne cambia il maturato registrato, non l\'importo già versato al dipendente.',
+                    confirmText: 'Aggiungi comunque', cancelText: 'Annulla'
+                });
+                if (!ok) return;
+            }
+
             try {
                 await ENI.API.aggiungiMovimentoBonus({
                     personale_id: personaleId,
@@ -410,7 +438,8 @@ ENI.Modules.BonusGestione = (function() {
                     prezzo_unitario: ENI.BonusCalcoli.arrotonda(venduto / qta),
                     imponibile: venduto,
                     bonus_calcolato: bonus,
-                    modificato_da: ENI.State.getUserId()
+                    modificato_da: ENI.State.getUserId(),
+                    modificato_at: new Date().toISOString()
                 });
                 ENI.UI.success('Riga aggiunta');
                 ENI.UI.closeModal(modal);

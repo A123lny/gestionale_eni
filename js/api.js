@@ -672,7 +672,13 @@ ENI.API = (function() {
     // sistema. Nasce senza vendita agganciata: e' il modo di distinguerla,
     // e il motivo per cui vendita_id e' nullable.
     async function aggiungiMovimentoBonus(dati) {
-        dati.regola_modo = dati.regola_modo || 'euro';
+        if (!dati.regola_modo) {
+            // La colonna e' la fotografia di com'era la regola quel giorno: si
+            // legge quella vera invece di scriverne una a caso. Il fatto che la
+            // riga sia stata aggiunta a mano si riconosce da vendita_id nullo.
+            var regola = await getRegolaBonus();
+            dati.regola_modo = regola.modo;
+        }
         dati.regola_valore = Number(dati.regola_valore) || 0;
         var result = await getClient()
             .from('bonus_movimenti').insert(dati).select().single();

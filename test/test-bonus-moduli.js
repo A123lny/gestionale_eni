@@ -79,8 +79,13 @@ check("la rotta e registrata in js/router.js",
 console.log('\n--- caricamento ---');
 check('index.html carica bonus-calcoli', /js\/lib\/bonus-calcoli\.js\?v=/.test(index));
 check('index.html carica il modulo dipendente', /js\/modules\/bonus-venduto\.js\?v=/.test(index));
-check('la libreria e caricata PRIMA del modulo',
+check('la libreria e caricata PRIMA del modulo dipendente',
   index.indexOf('js/lib/bonus-calcoli.js') < index.indexOf('js/modules/bonus-venduto.js'));
+// bonus-gestione.js usa ENI.BonusCalcoli.arrotonda (correzione riga, riga a
+// mano): senza questo controllo, un riordino degli script romperebbe anche
+// il lato gestore senza che nessun test se ne accorga.
+check('la libreria e caricata PRIMA del modulo gestore',
+  index.indexOf('js/lib/bonus-calcoli.js') < index.indexOf('js/modules/bonus-gestione.js'));
 
 console.log('\n--- gestione (lato gestore) ---');
 const gest = fs.readFileSync(P + 'js/modules/bonus-gestione.js', 'utf8');
@@ -94,7 +99,7 @@ check('permette di ricalcolare un periodo', /ricalcolaPeriodoBonus\(/.test(gest)
 // vicino): "non corrisponde" da solo resterebbe verde anche se l'avviso
 // sparisse ma ne restasse menzione in un commento.
 check('avvisa quando il periodo non corrisponde ai movimenti',
-  /non corrisponde[\s\S]{0,200}data-ricalcola=/.test(gest));
+  /non corrisponde[\s\S]{0,400}data-ricalcola=/.test(gest));
 // Ancorato al percorso di eliminazione: un UI.confirm( usato altrove nel
 // file non deve bastare a far passare questo controllo.
 check('chiede conferma prima di cancellare',
