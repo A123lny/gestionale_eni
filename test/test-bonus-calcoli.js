@@ -78,6 +78,11 @@ check('valori non numerici -> bonus 0', B.bonusRiga('abc', 'x', PERC).bonus === 
 check('regola assente -> bonus 0', B.bonusRiga(25, 1, null).bonus === 0);
 check('modo sconosciuto -> bonus 0',
   B.bonusRiga(25, 1, { modo: 'boh', euroPezzo: 1, fasce: FASCE }).bonus === 0);
+check('euro al pezzo negativo -> bonus 0, mai un addebito',
+  B.bonusRiga(10, 1, { modo: 'euro', euroPezzo: -5, fasce: [] }).bonus === 0,
+  B.bonusRiga(10, 1, { modo: 'euro', euroPezzo: -5, fasce: [] }).bonus);
+check('nemmeno moltiplicando per la quantita',
+  B.bonusRiga(10, 3, { modo: 'euro', euroPezzo: -5, fasce: [] }).bonus === 0);
 
 console.log('\n--- diagnosi della configurazione ---');
 check('configurazione a percentuale sana: nessun problema',

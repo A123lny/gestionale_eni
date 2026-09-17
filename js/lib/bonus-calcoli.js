@@ -67,7 +67,11 @@
 
         if (regola.modo === 'euro') {
             var e = num(regola.euroPezzo);
-            return { bonus: arrotonda(e * q), regolaModo: 'euro', regolaValore: e };
+            // L'importo al pezzo vive in impostazioni_app, una chiave/valore
+            // generica senza vincoli: puo' arrivare negativo. Un bonus non
+            // deve mai diventare un addebito (la stessa difesa esiste anche
+            // lato SQL, per non disallineare i due calcoli).
+            return { bonus: Math.max(0, arrotonda(e * q)), regolaModo: 'euro', regolaValore: e };
         }
 
         if (regola.modo === 'percentuale') {
@@ -75,7 +79,10 @@
             if (!f) return { bonus: 0, regolaModo: 'percentuale', regolaValore: 0 };
             var perc = num(f.percentuale);
             return {
-                bonus: arrotonda(p * q * perc / 100),
+                // Stesso limite inferiore a zero: la percentuale e' vincolata
+                // a livello di database (0 < percentuale <= 100), ma teniamo
+                // la difesa anche qui per simmetria con il ramo 'euro'.
+                bonus: Math.max(0, arrotonda(p * q * perc / 100)),
                 regolaModo: 'percentuale',
                 regolaValore: perc
             };
