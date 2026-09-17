@@ -542,35 +542,19 @@ ENI.API = (function() {
         return true;
     }
 
+    // Tutti gli articoli su cui si prende il bonus, cioe' tutta la merce di
+    // magazzino tranne i Lavaggi (hanno il loro modulo) e gli articoli senza
+    // prezzo, che darebbero un bonus di zero e sporcherebbero l'elenco.
     async function getArticoliBonus() {
         var result = await getClient()
             .from('magazzino')
             .select('*')
-            .eq('bonus_attivo', true)
             .eq('attivo', true)
+            .neq('categoria', 'Lavaggi')
+            .gt('prezzo_vendita', 0)
             .order('nome_prodotto', { ascending: true });
         if (result.error) throw new Error(result.error.message);
         return result.data || [];
-    }
-
-    async function setBonusArticolo(id, attivo) {
-        // Si rilegge lo stato precedente PRIMA di scrivere: accendere il bonus su
-        // un articolo cambia quanto si paga alle persone, e senza il valore vecchio
-        // il log direbbe solo che qualcosa e' cambiato, non cosa.
-        var prima = await getClient()
-            .from('magazzino').select('nome_prodotto, bonus_attivo').eq('id', id).maybeSingle();
-        if (prima.error) throw new Error(prima.error.message);
-
-        var result = await getClient()
-            .from('magazzino').update({ bonus_attivo: !!attivo }).eq('id', id);
-        if (result.error) throw new Error(result.error.message);
-
-        var nome = (prima.data && prima.data.nome_prodotto) || id;
-        await scriviLog('Modifica_Bonus', 'Bonus',
-            'Articolo "' + nome + '": bonus ' +
-            ((prima.data && prima.data.bonus_attivo) ? 'attivo' : 'spento') +
-            ' -> ' + (attivo ? 'attivo' : 'spento'));
-        return true;
     }
 
     async function registraVenditaBonus(magazzinoId, quantita, metodo) {
@@ -3175,7 +3159,6 @@ ENI.API = (function() {
         salvaRegolaBonus: salvaRegolaBonus,
         salvaFasceBonus: salvaFasceBonus,
         getArticoliBonus: getArticoliBonus,
-        setBonusArticolo: setBonusArticolo,
         registraVenditaBonus: registraVenditaBonus,
         getMieiMovimentiBonus: getMieiMovimentiBonus,
         getMieiPeriodiBonus: getMieiPeriodiBonus,

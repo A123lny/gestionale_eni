@@ -19,6 +19,8 @@ function makeQuery(tabella) {
   const q = {
     select() { return q; },
     eq(c, v) { azioni.push({ op: 'eq', tabella, campo: c, valore: v }); return q; },
+    neq(c, v) { azioni.push({ op: 'neq', tabella, campo: c, valore: v }); return q; },
+    gt(c, v) { azioni.push({ op: 'gt', tabella, campo: c, valore: v }); return q; },
     gte() { return q; }, lte() { return q; }, lt() { return q; },
     order() { return q; }, limit() { return q; },
     single() { return Promise.resolve({ data: q._last || null, error: null }); },
@@ -104,13 +106,24 @@ const API = sandbox.ENI.API;
   check('inserisce le fasce nuove',
     azioni.some(a => a.op === 'insert' && a.tabella === 'bonus_fasce'));
 
+  console.log('\n--- il bonus vale su tutto il magazzino ---');
+  azioni.length = 0;
+  await API.getArticoliBonus();
+  check('esclude i Lavaggi',
+    azioni.some(a => a.op === 'neq' && a.tabella === 'magazzino' && a.campo === 'categoria' && a.valore === 'Lavaggi'));
+  check('esclude gli articoli senza prezzo',
+    azioni.some(a => a.op === 'gt' && a.tabella === 'magazzino' && a.campo === 'prezzo_vendita' && a.valore === 0));
+  check('esclude gli articoli non attivi',
+    azioni.some(a => a.op === 'eq' && a.tabella === 'magazzino' && a.campo === 'attivo' && a.valore === true));
+
   console.log('\n--- esportate ---');
-  ['getRegolaBonus','salvaRegolaBonus','salvaFasceBonus','getArticoliBonus','setBonusArticolo',
+  ['getRegolaBonus','salvaRegolaBonus','salvaFasceBonus','getArticoliBonus',
    'registraVenditaBonus','getMieiMovimentiBonus','getMieiPeriodiBonus','getMovimentiBonus',
    'aggiornaMovimentoBonus','eliminaMovimentoBonus','getPeriodiBonus','salvaPeriodoBonus',
    'ricalcolaPeriodoBonus','aggiungiMovimentoBonus'].forEach(function(n) {
     check('API espone ' + n, typeof API[n] === 'function');
   });
+  check('setBonusArticolo non esiste piu', typeof API.setBonusArticolo === 'undefined');
 
   console.log('\n' + pass + ' passati, ' + fail + ' falliti');
   process.exit(fail === 0 ? 0 : 1);

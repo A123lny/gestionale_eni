@@ -41,9 +41,6 @@ ENI.Modules.Magazzino = (function() {
                         return '<button class="chip" data-cat="' + c + '">' + c + '</button>';
                     }).join('') +
                 '</div>' +
-                '<label class="text-sm" style="display:inline-flex;align-items:center;gap:6px;margin-left:12px;">' +
-                    '<input type="checkbox" id="filtro-solo-bonus"> solo articoli a bonus' +
-                '</label>' +
             '</div>' +
 
             '<div id="magazzino-list"></div>';
@@ -77,15 +74,6 @@ ENI.Modules.Magazzino = (function() {
             _renderList();
         });
 
-        // Filtro "solo articoli a bonus"
-        var filtroSoloBonus = container.querySelector('#filtro-solo-bonus');
-        if (filtroSoloBonus) {
-            filtroSoloBonus.addEventListener('change', function() {
-                _paginaCorrente = 1;
-                _renderList();
-            });
-        }
-
         // Nuovo prodotto
         var btnNuovo = container.querySelector('#btn-nuovo-prodotto');
         if (btnNuovo) {
@@ -118,40 +106,6 @@ ENI.Modules.Magazzino = (function() {
         ENI.UI.delegate(container, 'click', '[data-prezzi-cliente]', function(e, el) {
             e.stopPropagation();
             _showPrezziCliente(el.dataset.prezziCliente);
-        });
-
-        // Interruttore bonus: si salva subito, senza un form di mezzo. Serve
-        // ad accendere in fretta molti articoli di fila; per correggerne uno
-        // singolo c'e' la scheda di modifica (Task 6).
-        //
-        // ENI.UI.delegate e non addEventListener: il container e' lo stesso
-        // nodo #main-content a ogni navigazione, e un listener diretto si
-        // accumulerebbe ogni volta che si rientra in Magazzino, facendo partire
-        // N salvataggi per un solo click. delegate ha la guardia anti-duplicati.
-        ENI.UI.delegate(container, 'change', '.bonus-toggle', async function(e, chk) {
-            var id = chk.dataset.bonusId;
-            var attivo = chk.checked;
-            chk.disabled = true;
-            try {
-                await ENI.API.setBonusArticolo(id, attivo);
-                var prodotto = _prodotti.filter(function(x) { return x.id === id; })[0];
-                if (prodotto) prodotto.bonus_attivo = attivo;
-                // Col filtro "solo bonus" attivo, un articolo appena spento non
-                // appartiene piu' alla lista che si sta guardando: va tolto subito,
-                // o il filtro mostra una riga che contraddice il filtro stesso.
-                // Fuori da quel caso non si ridisegna, per non far saltare la
-                // posizione a chi ne accende molti di fila.
-                var filtroBonus = document.getElementById('filtro-solo-bonus');
-                if (filtroBonus && filtroBonus.checked && !attivo) {
-                    _renderList();
-                }
-                ENI.UI.success(attivo ? 'Articolo aggiunto al bonus' : 'Articolo tolto dal bonus');
-            } catch(err) {
-                chk.checked = !attivo;   // rimetti com'era: il salvataggio non e' andato
-                ENI.UI.error('Errore: ' + err.message);
-            } finally {
-                chk.disabled = false;
-            }
         });
 
         // Modifica articolo esistente
@@ -225,10 +179,7 @@ ENI.Modules.Magazzino = (function() {
         var listEl = document.getElementById('magazzino-list');
         if (!listEl) return;
 
-        var soloBonus = document.getElementById('filtro-solo-bonus');
-
         var filtered = _prodotti.filter(function(p) {
-            if (soloBonus && soloBonus.checked && !p.bonus_attivo) return false;
             var matchCat = _categoriaFiltro === 'Tutti' || p.categoria === _categoriaFiltro;
             var matchSearch = !_searchTerm ||
                 p.nome_prodotto.toLowerCase().indexOf(_searchTerm) !== -1 ||
@@ -276,7 +227,6 @@ ENI.Modules.Magazzino = (function() {
                 (isLavaggiView ? '' : '<th>Categoria</th>') +
                 (!isLavaggiView ? '<th>Giacenza</th>' : '') +
                 '<th>Prezzo</th>' +
-                '<th style="text-align:center;" title="L\'articolo dà bonus ai dipendenti che lo vendono">\u{1F4B0} Bonus</th>' +
                 (canWrite ? '<th>Azioni</th>' : '') +
             '</tr></thead><tbody>';
 
@@ -308,13 +258,6 @@ ENI.Modules.Magazzino = (function() {
             }
 
             html += '<td>' + ENI.UI.formatValuta(p.prezzo_vendita) + '</td>';
-
-            // I servizi (Lavaggi) non hanno giacenza e non passano dal portale bonus
-            html += '<td style="text-align:center;">' +
-                (servizio ? '<span class="text-muted">—</span>' :
-                    '<input type="checkbox" class="bonus-toggle" data-bonus-id="' + p.id + '"' +
-                    (p.bonus_attivo ? ' checked' : '') + ' title="Dà bonus ai dipendenti">') +
-            '</td>';
 
             if (canWrite) {
                 html += '<td class="table-actions">';
@@ -710,10 +653,10 @@ ENI.Modules.Magazzino = (function() {
                     '</div>' +
                 '</div>' +
 
-                // Righe giacenza/scorta e bonus SEMPRE presenti nel markup: si
-                // nascondono/mostrano al volo col cambio di categoria (vedi
-                // listener su #mp-categoria piu' sotto), non si generano una
-                // volta per tutte sul valore iniziale.
+                // Riga giacenza/scorta SEMPRE presente nel markup: si nasconde/
+                // mostra al volo col cambio di categoria (vedi listener su
+                // #mp-categoria piu' sotto), non si genera una volta per tutte
+                // sul valore iniziale.
                 '<div class="form-row" id="mp-row-giacenza" style="display:' + (isServizio ? 'none' : '') + ';">' +
                     '<div class="form-group">' +
                         '<label class="form-label">Giacenza attuale</label>' +
@@ -735,11 +678,6 @@ ENI.Modules.Magazzino = (function() {
                             '<input type="checkbox" id="mp-attivo"' + (p.attivo ? ' checked' : '') + '> Articolo attivo' +
                         '</label>' +
                     '</div>' +
-                    '<div class="form-group" id="mp-row-bonus" style="display:' + (isServizio ? 'none' : '') + ';">' +
-                        '<label style="display:flex;align-items:center;gap:8px;">' +
-                            '<input type="checkbox" id="mp-bonus"' + (p.bonus_attivo ? ' checked' : '') + '> \u{1F4B0} Dà bonus ai dipendenti' +
-                        '</label>' +
-                    '</div>' +
                 '</div>' +
             '</form>';
 
@@ -751,18 +689,16 @@ ENI.Modules.Magazzino = (function() {
                 '<button class="btn btn-primary" id="btn-salva-modifica">\u{1F4BE} Salva</button>'
         });
 
-        // Mostra/nasconde giacenza e bonus in base alla categoria SCELTA ora,
-        // non a quella con cui l'articolo era stato aperto: se si ricategorizza
-        // in corsa da/verso Lavaggi, le sezioni devono seguire, sullo stesso
-        // modello di _toggleGiacenza nella scheda di creazione.
+        // Mostra/nasconde la giacenza in base alla categoria SCELTA ora, non a
+        // quella con cui l'articolo era stato aperto: se si ricategorizza in
+        // corsa da/verso Lavaggi, la sezione deve seguire, sullo stesso modello
+        // di _toggleGiacenza nella scheda di creazione.
         var catSelectModifica = modal.querySelector('#mp-categoria');
         var rowGiacenzaModifica = modal.querySelector('#mp-row-giacenza');
-        var rowBonusModifica = modal.querySelector('#mp-row-bonus');
 
         function _toggleSezioniModifica() {
             var isLavaggi = catSelectModifica.value === 'Lavaggi';
             rowGiacenzaModifica.style.display = isLavaggi ? 'none' : '';
-            rowBonusModifica.style.display = isLavaggi ? 'none' : '';
         }
 
         catSelectModifica.addEventListener('change', _toggleSezioniModifica);
@@ -792,7 +728,6 @@ ENI.Modules.Magazzino = (function() {
             };
             if (!servizio) {
                 dati.giacenza_minima = parseInt(modal.querySelector('#mp-scorta').value, 10) || (ENI.Config.CONSTANTS.SCORTA_MINIMA_DEFAULT || 5);
-                dati.bonus_attivo = modal.querySelector('#mp-bonus').checked;
             }
 
             var btn = modal.querySelector('#btn-salva-modifica');

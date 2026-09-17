@@ -132,5 +132,23 @@ check("la voce e' nei children della sezione Gestione Personale (altrimenti invi
 check('il click sulla lista di riepilogo usa UI.delegate, non si accumula ad ogni ricarica',
   /UI\.delegate\(lista,\s*'click'/.test(gest) && !/lista\.addEventListener\(/.test(gest));
 
+console.log('\n--- il bonus vale su tutto il magazzino ---');
+const apiSrcT11 = fs.readFileSync(P + 'js/api.js', 'utf8');
+const magSrcT11 = fs.readFileSync(P + 'js/modules/magazzino.js', 'utf8');
+check('non esiste piu un interruttore per articolo',
+  !/setBonusArticolo/.test(apiSrcT11) && !/bonus-toggle/.test(magSrcT11));
+check('l elenco esclude i Lavaggi', /\.neq\('categoria', 'Lavaggi'\)/.test(apiSrcT11));
+check('l elenco esclude gli articoli senza prezzo', /\.gt\('prezzo_vendita', 0\)/.test(apiSrcT11));
+check('nessun filtro residuo sul bonus in magazzino',
+  !/filtro-solo-bonus/.test(magSrcT11));
+check('la scheda articolo non manda piu bonus_attivo',
+  !/bonus_attivo/.test(magSrcT11));
+const migrT11 = fs.readFileSync(P + 'supabase/migrations/20260917_bonus_tutti_articoli.sql', 'utf8');
+check('la funzione di vendita rifiuta i Lavaggi', /categoria = 'Lavaggi'/.test(migrT11));
+check('la funzione di vendita non guarda piu bonus_attivo',
+  !/bonus_attivo is not true/.test(migrT11));
+check('il trigger di protezione viene tolto',
+  /drop trigger if exists magazzino_bonus_attivo_guard/.test(migrT11));
+
 console.log('\n' + pass + ' passati, ' + fail + ' falliti');
 process.exit(fail === 0 ? 0 : 1);
