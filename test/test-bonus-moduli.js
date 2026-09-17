@@ -82,5 +82,20 @@ check('index.html carica il modulo dipendente', /js\/modules\/bonus-venduto\.js\
 check('la libreria e caricata PRIMA del modulo',
   index.indexOf('js/lib/bonus-calcoli.js') < index.indexOf('js/modules/bonus-venduto.js'));
 
+console.log('\n--- gestione (lato gestore) ---');
+const gest = fs.readFileSync(P + 'js/modules/bonus-gestione.js', 'utf8');
+check('il modulo si registra come BonusGestione', /ENI\.Modules\.BonusGestione/.test(gest));
+check('legge i movimenti del mese', /getMovimentiBonus\(/.test(gest));
+check('permette di correggere una riga', /aggiornaMovimentoBonus\(/.test(gest));
+check('permette di cancellare una riga', /eliminaMovimentoBonus\(/.test(gest));
+check('permette di segnare come pagato', /salvaPeriodoBonus\(/.test(gest));
+check('permette di ricalcolare un periodo', /ricalcolaPeriodoBonus\(/.test(gest));
+check('avvisa quando il periodo non corrisponde ai movimenti',
+  /non corrisponde/.test(gest));
+check('chiede conferma prima di cancellare', /UI\.confirm\(/.test(gest));
+check('e riservato al super admin', /'bonus-gestione'/.test(config) &&
+  /MODULI_SUPER_ADMIN[\s\S]{0,200}'bonus-gestione'/.test(config));
+check('index.html carica il modulo gestore', /js\/modules\/bonus-gestione\.js\?v=/.test(index));
+
 console.log('\n' + pass + ' passati, ' + fail + ' falliti');
 process.exit(fail === 0 ? 0 : 1);
