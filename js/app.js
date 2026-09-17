@@ -163,6 +163,9 @@ ENI.App = (function() {
             if (item.id === 'timbra' && isSA) return false;
             // "Buste Paga" (voce dipendente): il super admin usa Gestione Personale → Buste Paga.
             if (item.id === 'buste-paga-mie' && isSA) return false;
+            // "Bonus venduto" è la vista del dipendente: il gestore usa
+            // Gestione Personale → Bonus.
+            if (item.id === 'bonus-venduto' && isSA) return false;
             return config.moduli.indexOf(item.id) !== -1 && ENI.State.isModuloAttivo(item.id);
         });
 
