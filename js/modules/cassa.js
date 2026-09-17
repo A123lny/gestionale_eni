@@ -15,6 +15,11 @@ ENI.Modules.Cassa = (function() {
     var _dataSelezionata = '';
     var _modalitaModifica = false;
 
+    // Incasso lavaggi della giornata, letto dal modulo Lavaggi e non dalle
+    // vendite: non tutti i lavaggi generano una vendita e i due totali
+    // finivano per non coincidere. null = lettura non riuscita.
+    var _totLavaggi = null;
+
     // ============================================================
     // RENDER PRINCIPALE
     // ============================================================
@@ -148,6 +153,15 @@ ENI.Modules.Cassa = (function() {
         } catch(e) {
             _cassa = null;
             _spese = [];
+        }
+
+        // Incasso lavaggi della giornata. Si legge sempre, anche a cassa chiusa:
+        // serve a far vedere subito se il valore salvato non corrisponde piu' ai
+        // lavaggi, con il pulsante "usa" per riallinearlo.
+        try {
+            _totLavaggi = await ENI.API.getTotaleLavaggiPerData(_dataSelezionata);
+        } catch(e) {
+            _totLavaggi = null;
         }
 
         // Carica totali POS vendita (se cassa non chiusa)
@@ -583,6 +597,11 @@ ENI.Modules.Cassa = (function() {
     // Valore che il modulo Vendite calcola per una categoria del venduto negozio.
     // null se per quel giorno non ci sono vendite da cui ricavarlo.
     function _vendutoDaVendite(catKey) {
+        // I lavaggi arrivano dal loro modulo, non dalle vendite: un lavaggio
+        // completato conta anche se non ha generato una vendita (cliente ad
+        // addebito mensile, inserimento walk-in gia' completato, ecc.).
+        if (catKey === 'Lavaggi') return _totLavaggi;
+
         if (!_posTotals || !_posTotals.numVendite) return null;
         return (catKey === '__ALTRO__')
             ? _altroVarieValue()
@@ -602,14 +621,15 @@ ENI.Modules.Cassa = (function() {
         var v = (salvato !== null) ? salvato : (daVendite !== null ? daVendite : 0);
         var vStr = v ? v.toFixed(2) : '0';
 
-        // Suggerimento solo quando le Vendite dicono qualcosa di diverso
+        // Suggerimento solo quando il modulo di origine dice qualcosa di diverso
+        var fonte = (catKey === 'Lavaggi') ? 'Lavaggi' : 'Vendite';
         var hint = '';
         if (daVendite !== null && Math.abs(daVendite - v) > 0.005) {
             hint = '<span class="text-xs" style="display:block;color:var(--color-gray-500);font-weight:400;">' +
-                       'Vendite: ' + ENI.UI.formatValuta(daVendite) +
+                       fonte + ': ' + ENI.UI.formatValuta(daVendite) +
                        ' <button type="button" class="btn-sync-venduto" data-sync-venduto="' + name + '"' +
                        ' data-sync-valore="' + daVendite.toFixed(2) + '"' +
-                       ' title="Riprendi il valore dal modulo Vendite"' +
+                       ' title="Riprendi il valore dal modulo ' + fonte + '"' +
                        ' style="background:none;border:none;color:var(--color-primary);cursor:pointer;padding:0 2px;font-size:12px;">↻ usa</button>' +
                    '</span>';
         }

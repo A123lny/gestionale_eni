@@ -438,6 +438,27 @@ ENI.API = (function() {
         return getCassaPerData(ENI.UI.oggiISO());
     }
 
+    // Incasso lavaggi di una giornata: somma dei lavaggi COMPLETATI, cioe'
+    // esattamente la stessa regola del KPI "Incasso" del modulo Lavaggi.
+    //
+    // La Cassa ricavava questo numero dalle vendite, ma non tutti i lavaggi
+    // generano una vendita: il 16/09 i due di Ippo/Zonzini no, e la cassa
+    // segnava 88 EUR contro i 148 EUR dei lavaggi. Leggendo direttamente dai
+    // lavaggi i due totali non possono piu' divergere, qualunque sia il modo
+    // in cui il lavaggio e' stato creato o pagato.
+    async function getTotaleLavaggiPerData(data) {
+        var result = await getClient()
+            .from('lavaggi')
+            .select('prezzo')
+            .eq('data', data)
+            .eq('stato', 'Completato');
+
+        if (result.error) throw new Error(result.error.message);
+        return (result.data || []).reduce(function(s, l) {
+            return s + Number(l.prezzo || 0);
+        }, 0);
+    }
+
     async function getCassaMese(anno, mese) {
         var primoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-01';
         var ultimoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-' +
@@ -2894,6 +2915,7 @@ ENI.API = (function() {
         incassaCredito: incassaCredito,
         annullaCredito: annullaCredito,
         getCassaPerData: getCassaPerData,
+        getTotaleLavaggiPerData: getTotaleLavaggiPerData,
         getCassaOggi: getCassaOggi,
         getCassaMese: getCassaMese,
         salvaCassa: salvaCassa,
