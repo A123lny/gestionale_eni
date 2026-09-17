@@ -56,7 +56,11 @@ function moduliDiRuolo(nomeRuolo) {
 }
 check('bonus-venduto e concesso al ruolo Admin', /'bonus-venduto'/.test(moduliDiRuolo('Admin')));
 check('bonus-venduto e concesso al ruolo Cassiere', /'bonus-venduto'/.test(moduliDiRuolo('Cassiere')));
-check('bonus-venduto e concesso al ruolo Lavaggi', /'bonus-venduto'/.test(moduliDiRuolo('Lavaggi')));
+// L'operatore Lavaggi non ha accesso in lettura al magazzino: senza quello
+// l'elenco articoli del modulo gli torna sempre vuoto, senza errore - un
+// vicolo cieco inspiegabile. Il modulo resta solo per chi puo' leggere il
+// magazzino: Admin e Cassiere.
+check('bonus-venduto NON e concesso al ruolo Lavaggi', !/'bonus-venduto'/.test(moduliDiRuolo('Lavaggi')));
 
 // Il dipendente non scrive nelle tabelle: passa dall'RPC. Se 'bonus-venduto'
 // finisse in un array 'scrivere' per errore, questo e' il controllo che se ne
@@ -147,7 +151,7 @@ check('nessun filtro residuo sul bonus in magazzino',
   !/filtro-solo-bonus/.test(magSrcT11));
 check('la scheda articolo non manda piu bonus_attivo',
   !/bonus_attivo/.test(magSrcT11));
-const migrT11 = fs.readFileSync(P + 'supabase/migrations/20260917_bonus_tutti_articoli.sql', 'utf8');
+const migrT11 = fs.readFileSync(P + 'supabase/migrations/20260917_bonus_3_tutti_articoli.sql', 'utf8');
 check('la funzione di vendita rifiuta i Lavaggi', /categoria = 'Lavaggi'/.test(migrT11));
 check('la funzione di vendita non guarda piu bonus_attivo',
   !/bonus_attivo is not true/.test(migrT11));

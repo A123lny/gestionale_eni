@@ -798,9 +798,11 @@ ENI.Modules.Impostazioni = (function() {
 
     function _bonusPanelHtml() {
         return '' +
-            '<div class="settings-card">' +
-                '<h3 class="settings-card-title">💰 Bonus venduto</h3>' +
-                '<p class="text-sm text-muted">Vale per tutti gli articoli con il bonus acceso in Magazzino. ' +
+            '<div class="card mb-4">' +
+                '<div class="card-header"><h3 class="card-title">💰 Bonus venduto</h3></div>' +
+                '<div class="card-body">' +
+                '<p class="text-sm text-muted" style="margin-top:0;">Vale su tutta la merce di magazzino, tranne i lavaggi ' +
+                    '(che hanno il loro modulo e la loro strada verso la cassa). ' +
                     'La fascia si sceglie sul <strong>prezzo del singolo pezzo</strong>.</p>' +
 
                 '<div class="form-group" style="margin-top:12px;">' +
@@ -833,6 +835,7 @@ ENI.Modules.Impostazioni = (function() {
 
                 '<div style="margin-top:16px;">' +
                     '<button type="button" class="btn btn-primary" id="bonus-salva">💾 Salva</button>' +
+                '</div>' +
                 '</div>' +
             '</div>';
     }
@@ -971,7 +974,11 @@ ENI.Modules.Impostazioni = (function() {
 
             try {
                 await ENI.API.salvaRegolaBonus(regola.modo, regola.euroPezzo);
-                await ENI.API.salvaFasceBonus(regola.modo === 'percentuale' ? regola.fasce : []);
+                // Le fasce si salvano SEMPRE, anche in modalita' euro: se le
+                // svuotassimo qui, tornare a "percentuale" piu' avanti
+                // ritroverebbe la tabella vuota e ogni vendita accrediterebbe
+                // zero finche' qualcuno non se ne accorge.
+                await ENI.API.salvaFasceBonus(regola.fasce);
                 ENI.UI.success('Regola del bonus salvata');
             } catch(e) {
                 ENI.UI.error('Errore: ' + e.message);

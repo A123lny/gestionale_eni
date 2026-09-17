@@ -105,7 +105,12 @@ ENI.Modules.BonusVenduto = (function() {
                     '🛒 Ho venduto' +
                 '</button>' +
                 (_articoli.length ? '' :
-                    '<div class="text-sm text-muted" style="margin-top:6px;">Nessun articolo a bonus: chiedi al gestore di attivarne.</div>') +
+                    // Il bonus vale su tutta la merce di magazzino (tranne i lavaggi):
+                    // non esiste piu' un interruttore da "attivare" articolo per
+                    // articolo. Se l'elenco torna vuoto e' quasi certo che la
+                    // lettura del magazzino non funzioni per questo utente (es. un
+                    // ruolo senza permesso), non che manchi una configurazione.
+                    '<div class="text-sm text-muted" style="margin-top:6px;">Non riesco a leggere nessun articolo di magazzino: segnalalo al gestore.</div>') +
             '</div>' +
 
             '<h3 style="margin-top:20px;">Le mie vendite di ' + NOMI_MESE[_mese() - 1] + '</h3>' +
@@ -231,11 +236,15 @@ ENI.Modules.BonusVenduto = (function() {
             }
 
             sel.disabled = false;
-            sel.innerHTML = visibili.map(function(a) {
-                return '<option value="' + ENI.UI.escapeHtml(a.id) + '">' + ENI.UI.escapeHtml(a.nome_prodotto) +
-                       ' — ' + ENI.UI.formatValuta(a.prezzo_vendita) +
-                       ' · giac. ' + String(a.giacenza) + '</option>';
-            }).join('');
+            // Opzione vuota in cima: su centinaia di articoli, senza, il primo in
+            // ordine alfabetico risulterebbe gia' selezionato da solo, e basterebbe
+            // un tocco sbagliato su "Registra" per vendere l'articolo sbagliato.
+            sel.innerHTML = '<option value="">— scegli un articolo —</option>' +
+                visibili.map(function(a) {
+                    return '<option value="' + ENI.UI.escapeHtml(a.id) + '">' + ENI.UI.escapeHtml(a.nome_prodotto) +
+                           ' — ' + ENI.UI.formatValuta(a.prezzo_vendita) +
+                           ' · giac. ' + String(a.giacenza) + '</option>';
+                }).join('');
             if (visibili.some(function(a) { return a.id === precedente; })) {
                 sel.value = precedente;
             }

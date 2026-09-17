@@ -5,16 +5,19 @@
 -- non sta in questa tabella, e i servizi di Lavaggio, che hanno gia' il proprio
 -- modulo e la propria strada verso la cassa.
 --
--- DA LANCIARE DOPO 20260917_bonus_schema.sql, 20260917_bonus_rpc.sql e
--- 20260917_bonus_magazzino_guard.sql (quest'ultima e' proprio quella che
--- questo file disfa: il suo trigger e la sua funzione guardia).
+-- DA LANCIARE DOPO 20260917_bonus_1_schema.sql e 20260917_bonus_2_rpc.sql.
+--
+-- La migration 20260917_bonus_magazzino_guard.sql non esiste piu': creava un
+-- trigger che questo file toglie immediatamente dopo, quindi lanciarla sarebbe
+-- stato lavoro sprecato. Il "drop trigger if exists" qui sotto resta comunque
+-- dov'era, cosi' se il gestore l'avesse gia' lanciata prima di questa
+-- correzione il trigger viene disfatto lo stesso.
 -- Non tocca nessun dato: sostituisce una funzione e toglie un trigger.
 --
--- ATTENZIONE: rilanciare 20260917_bonus_rpc.sql o
--- 20260917_bonus_magazzino_guard.sql DOPO questa riporta indietro il vecchio
--- comportamento (di nuovo il controllo su bonus_attivo, di nuovo il trigger
--- che blocca l'update): dal portale non sarebbe piu' vendibile niente, perche'
--- bonus_attivo non lo mette a true nessuno dall'interfaccia.
+-- ATTENZIONE: rilanciare 20260917_bonus_2_rpc.sql DOPO questa riporta indietro
+-- il vecchio comportamento (di nuovo il controllo su bonus_attivo): dal
+-- portale non sarebbe piu' vendibile niente, perche' bonus_attivo non lo
+-- mette a true nessuno dall'interfaccia.
 
 -- 1) Via il trigger: non c'e' piu' nessun interruttore da proteggere ---------
 drop trigger if exists magazzino_bonus_attivo_guard on public.magazzino;

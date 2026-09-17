@@ -55,7 +55,10 @@ ENI.Config = {
         },
         Lavaggi: {
             label: 'Operatore Lavaggi',
-            moduli: ['lavaggi', 'mie-richieste', 'timbra', 'buste-paga-mie', 'bonus-venduto'],
+            // 'bonus-venduto' escluso apposta: la lettura di magazzino e' concessa
+            // solo ad Admin e Cassiere, quindi l'operatore Lavaggi vedrebbe sempre
+            // l'elenco articoli vuoto (senza errore) e il modulo inutilizzabile.
+            moduli: ['lavaggi', 'mie-richieste', 'timbra', 'buste-paga-mie'],
             scrivere: ['lavaggi', 'mie-richieste']
         }
     },

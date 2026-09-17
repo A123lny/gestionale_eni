@@ -63,11 +63,46 @@ ENI.Modules.BonusGestione = (function() {
             _personale = await ENI.API.getPersonale();
             _movimenti = await ENI.API.getMovimentiBonus(_anno, _mese);
             _periodi   = await ENI.API.getPeriodiBonus(_anno, _mese);
+            await _chiudiPeriodiMancanti();
         } catch(e) {
             if (lista) lista.innerHTML = '<div class="stock-alert">Errore: ' + ENI.UI.escapeHtml(e.message) + '</div>';
             return;
         }
         _render();
+    }
+
+    // Chiusura del mese: il periodo nasce alla prima apertura della scheda dopo
+    // che il mese e' finito, con i valori congelati. Da quel momento non si
+    // ricalcola piu' da solo: lo fa solo un gesto del gestore.
+    // Senza questo, lo stato 'da_pagare' non esisterebbe mai e il dipendente non
+    // vedrebbe mai il riquadro "Da ricevere in busta".
+    async function _chiudiPeriodiMancanti() {
+        if (_isMeseInCorso()) return;   // un mese non finito non si chiude
+
+        var daCreare = _personale.filter(function(p) {
+            return _totaliDi(p.id).pezzi > 0 && !_periodoDi(p.id);
+        });
+        if (!daCreare.length) return;
+
+        for (var i = 0; i < daCreare.length; i++) {
+            var p = daCreare[i];
+            var t = _totaliDi(p.id);
+            try {
+                await ENI.API.salvaPeriodoBonus({
+                    personale_id: p.id,
+                    anno: _anno, mese: _mese,
+                    venduto: t.venduto,
+                    bonus_totale: t.bonus,
+                    forzato: false,
+                    stato: 'da_pagare',
+                    updated_at: new Date().toISOString()
+                });
+            } catch (e) {
+                ENI.UI.error('Non sono riuscito a chiudere il mese di ' +
+                    p.nome_completo + ': ' + e.message);
+            }
+        }
+        _periodi = await ENI.API.getPeriodiBonus(_anno, _mese);
     }
 
     function _totaliDi(personaleId) {
@@ -200,8 +235,16 @@ ENI.Modules.BonusGestione = (function() {
 
     async function _ricalcola(personaleId) {
         try {
-            await ENI.API.ricalcolaPeriodoBonus(personaleId, _anno, _mese);
-            ENI.UI.success('Periodo ricalcolato');
+            var res = await ENI.API.ricalcolaPeriodoBonus(personaleId, _anno, _mese);
+            // La funzione del database esclude i periodi forzati (and forzato is
+            // false nell'UPDATE): senza guardare "aggiornato" qui, chi preme
+            // leggerebbe sempre "fatto" anche quando non e' cambiato niente, e
+            // l'avviso rosso resterebbe li' senza spiegazione.
+            if (res && res.aggiornato === false) {
+                ENI.UI.warning('Il totale è forzato a mano: togli la forzatura ("✏️ Forza totale" → 🔓) prima di ricalcolare.');
+            } else {
+                ENI.UI.success('Periodo ricalcolato');
+            }
             await _load();
         } catch(err) {
             ENI.UI.error('Errore: ' + err.message);
