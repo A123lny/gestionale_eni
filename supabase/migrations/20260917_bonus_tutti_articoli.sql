@@ -5,8 +5,16 @@
 -- non sta in questa tabella, e i servizi di Lavaggio, che hanno gia' il proprio
 -- modulo e la propria strada verso la cassa.
 --
--- DA LANCIARE DOPO 20260917_bonus_schema.sql e 20260917_bonus_rpc.sql.
+-- DA LANCIARE DOPO 20260917_bonus_schema.sql, 20260917_bonus_rpc.sql e
+-- 20260917_bonus_magazzino_guard.sql (quest'ultima e' proprio quella che
+-- questo file disfa: il suo trigger e la sua funzione guardia).
 -- Non tocca nessun dato: sostituisce una funzione e toglie un trigger.
+--
+-- ATTENZIONE: rilanciare 20260917_bonus_rpc.sql o
+-- 20260917_bonus_magazzino_guard.sql DOPO questa riporta indietro il vecchio
+-- comportamento (di nuovo il controllo su bonus_attivo, di nuovo il trigger
+-- che blocca l'update): dal portale non sarebbe piu' vendibile niente, perche'
+-- bonus_attivo non lo mette a true nessuno dall'interfaccia.
 
 -- 1) Via il trigger: non c'e' piu' nessun interruttore da proteggere ---------
 drop trigger if exists magazzino_bonus_attivo_guard on public.magazzino;
@@ -33,7 +41,7 @@ declare
   v_imponib  numeric(10,2);
   -- Il database gira in UTC: current_date fra mezzanotte e le 02:00 italiane
   -- e' ancora ieri, e il movimento finirebbe nel mese precedente, che puo'
-  -- essere gia' chiuso e pagato.
+  -- essere gia' chiuso e pagato. Stesso pattern di 20260827_timbrature.sql.
   v_oggi     date := (now() at time zone 'Europe/Rome')::date;
   v_vendita  jsonb;
   v_mov_id   uuid;
@@ -79,6 +87,7 @@ begin
   v_imponib := round(v_art.prezzo_vendita * p_quantita, 2);
   v_calc    := public.bonus_riga_calcola(v_art.prezzo_vendita, p_quantita);
 
+  -- Vendita atomica: codice, testata, righe, scarico giacenza
   v_vendita := public.salva_vendita(
     jsonb_build_object(
       'data',             v_oggi,

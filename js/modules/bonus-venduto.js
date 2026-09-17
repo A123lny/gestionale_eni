@@ -138,17 +138,29 @@ ENI.Modules.BonusVenduto = (function() {
     // Il dipendente deve sapere quanto prende PRIMA di confermare: su un bonus
     // da un euro e mezzo e' la differenza fra una cosa che motiva e un numero
     // che scopre a fine mese.
-    function _formVendita() {
-        var opzioni = _articoli.map(function(a) {
-            return '<option value="' + ENI.UI.escapeHtml(a.id) + '">' + ENI.UI.escapeHtml(a.nome_prodotto) +
-                   ' — ' + ENI.UI.formatValuta(a.prezzo_vendita) +
-                   ' · giac. ' + String(a.giacenza) + '</option>';
-        }).join('');
+    // Con tutto il magazzino a bonus le voci sono centinaia: senza ricerca
+    // il menu a tendina non e' usabile da un telefono, al banco.
+    function _opzioni(filtro) {
+        var f = (filtro || '').toLowerCase().trim();
+        var visibili = _articoli.filter(function(a) {
+            if (!f) return true;
+            return String(a.nome_prodotto || '').toLowerCase().indexOf(f) !== -1 ||
+                   String(a.codice || '').toLowerCase().indexOf(f) !== -1 ||
+                   String(a.barcode || '').toLowerCase().indexOf(f) !== -1;
+        });
+        return visibili;
+    }
 
+    function _formVendita() {
         var body =
             '<div class="form-group">' +
+                '<label class="form-label">Cerca</label>' +
+                '<input type="text" class="form-input" id="bv-cerca" ' +
+                    'placeholder="nome, codice o barcode" autocomplete="off">' +
+            '</div>' +
+            '<div class="form-group">' +
                 '<label class="form-label form-label-required">Articolo</label>' +
-                '<select class="form-select" id="bv-articolo">' + opzioni + '</select>' +
+                '<select class="form-select" id="bv-articolo"></select>' +
             '</div>' +
             '<div class="form-row">' +
                 '<div class="form-group">' +
@@ -199,6 +211,41 @@ ENI.Modules.BonusVenduto = (function() {
             var b = a ? ENI.BonusCalcoli.bonusRiga(a.prezzo_vendita, q, _regola).bonus : 0;
             modal.querySelector('#bv-bonus').textContent = ENI.UI.formatValuta(b);
         }
+
+        // Ridisegna le <option> a ogni digitazione nel campo di ricerca. Se
+        // l'articolo scelto resta tra i visibili la selezione non si perde;
+        // altrimenti il menu ricade sul primo risultato (o su "nessun
+        // articolo trovato", che disabilita il selettore invece di lasciarlo
+        // vuoto e muto). In ogni caso si richiama aggiorna(), perche' prezzo,
+        // tetto e anteprima del bonus dipendono da cosa resta selezionato.
+        function _disegnaOpzioni(filtro) {
+            var sel = modal.querySelector('#bv-articolo');
+            var precedente = sel.value;
+            var visibili = _opzioni(filtro);
+
+            if (!visibili.length) {
+                sel.innerHTML = '<option value="">— nessun articolo trovato —</option>';
+                sel.disabled = true;
+                aggiorna();
+                return;
+            }
+
+            sel.disabled = false;
+            sel.innerHTML = visibili.map(function(a) {
+                return '<option value="' + ENI.UI.escapeHtml(a.id) + '">' + ENI.UI.escapeHtml(a.nome_prodotto) +
+                       ' — ' + ENI.UI.formatValuta(a.prezzo_vendita) +
+                       ' · giac. ' + String(a.giacenza) + '</option>';
+            }).join('');
+            if (visibili.some(function(a) { return a.id === precedente; })) {
+                sel.value = precedente;
+            }
+            aggiorna();
+        }
+
+        modal.querySelector('#bv-cerca').addEventListener('input', function(e) {
+            _disegnaOpzioni(e.target.value);
+        });
+        _disegnaOpzioni('');
 
         modal.querySelector('#bv-articolo').addEventListener('change', aggiorna);
         modal.querySelector('#bv-qta').addEventListener('input', aggiorna);

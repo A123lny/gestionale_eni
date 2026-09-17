@@ -550,7 +550,10 @@ ENI.API = (function() {
             .from('magazzino')
             .select('*')
             .eq('attivo', true)
-            .neq('categoria', 'Lavaggi')
+            // I Lavaggi si escludono per categoria, ma un articolo vecchio puo'
+            // averla nulla: con neq quelle righe sparirebbero, perche' in SQL il
+            // confronto con null non e' mai vero. Cosi' restano.
+            .or('categoria.is.null,categoria.neq.Lavaggi')
             .gt('prezzo_vendita', 0)
             .order('nome_prodotto', { ascending: true });
         if (result.error) throw new Error(result.error.message);

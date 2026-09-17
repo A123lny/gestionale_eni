@@ -137,8 +137,12 @@ const apiSrcT11 = fs.readFileSync(P + 'js/api.js', 'utf8');
 const magSrcT11 = fs.readFileSync(P + 'js/modules/magazzino.js', 'utf8');
 check('non esiste piu un interruttore per articolo',
   !/setBonusArticolo/.test(apiSrcT11) && !/bonus-toggle/.test(magSrcT11));
-check('l elenco esclude i Lavaggi', /\.neq\('categoria', 'Lavaggi'\)/.test(apiSrcT11));
-check('l elenco esclude gli articoli senza prezzo', /\.gt\('prezzo_vendita', 0\)/.test(apiSrcT11));
+// Ancorati al corpo di getArticoliBonus: senza la finestra, la stringa
+// basterebbe a farli passare anche se il filtro finisse in un'altra funzione.
+check('l elenco esclude i Lavaggi (ma non gli articoli con categoria nulla)',
+  /function getArticoliBonus\(\)[\s\S]{0,700}?\.or\('categoria\.is\.null,categoria\.neq\.Lavaggi'\)/.test(apiSrcT11));
+check('l elenco esclude gli articoli senza prezzo',
+  /function getArticoliBonus\(\)[\s\S]{0,700}?\.gt\('prezzo_vendita', 0\)/.test(apiSrcT11));
 check('nessun filtro residuo sul bonus in magazzino',
   !/filtro-solo-bonus/.test(magSrcT11));
 check('la scheda articolo non manda piu bonus_attivo',

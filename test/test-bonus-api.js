@@ -21,6 +21,7 @@ function makeQuery(tabella) {
     eq(c, v) { azioni.push({ op: 'eq', tabella, campo: c, valore: v }); return q; },
     neq(c, v) { azioni.push({ op: 'neq', tabella, campo: c, valore: v }); return q; },
     gt(c, v) { azioni.push({ op: 'gt', tabella, campo: c, valore: v }); return q; },
+    or(cond) { azioni.push({ op: 'or', tabella, condizione: cond }); return q; },
     gte() { return q; }, lte() { return q; }, lt() { return q; },
     order() { return q; }, limit() { return q; },
     single() { return Promise.resolve({ data: q._last || null, error: null }); },
@@ -109,12 +110,19 @@ const API = sandbox.ENI.API;
   console.log('\n--- il bonus vale su tutto il magazzino ---');
   azioni.length = 0;
   await API.getArticoliBonus();
-  check('esclude i Lavaggi',
-    azioni.some(a => a.op === 'neq' && a.tabella === 'magazzino' && a.campo === 'categoria' && a.valore === 'Lavaggi'));
+  check('esclude i Lavaggi (ma non gli articoli con categoria nulla)',
+    azioni.some(a => a.op === 'or' && a.tabella === 'magazzino' &&
+      a.condizione === 'categoria.is.null,categoria.neq.Lavaggi'));
   check('esclude gli articoli senza prezzo',
     azioni.some(a => a.op === 'gt' && a.tabella === 'magazzino' && a.campo === 'prezzo_vendita' && a.valore === 0));
   check('esclude gli articoli non attivi',
     azioni.some(a => a.op === 'eq' && a.tabella === 'magazzino' && a.campo === 'attivo' && a.valore === true));
+  // Il residuo peggiore: se fosse rimasto un filtro su bonus_attivo l'elenco
+  // sarebbe vuoto per tutti, e senza questo controllo i test passerebbero
+  // comunque perche' nessuno guarda cosa NON c'e' tra i filtri registrati.
+  check('l elenco non filtra piu su bonus_attivo',
+    !azioni.some(a => a.campo === 'bonus_attivo'),
+    JSON.stringify(azioni.filter(a => a.op === 'eq')));
 
   console.log('\n--- esportate ---');
   ['getRegolaBonus','salvaRegolaBonus','salvaFasceBonus','getArticoliBonus',
