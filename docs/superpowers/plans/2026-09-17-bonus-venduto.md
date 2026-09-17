@@ -151,6 +151,21 @@ check('non introduce code binarie', B.arrotonda(0.1 + 0.2) === 0.3);
 check('7 pezzi da 13,33 al 5% fanno 4,67',
   B.bonusRiga(13.33, 7, PERC).bonus === 4.67, B.bonusRiga(13.33, 7, PERC).bonus);
 
+// I mezzi centesimi: qui il database arrotonda per eccesso e il JavaScript deve
+// fare lo stesso, o il dipendente vede una cifra e ne incassa un'altra.
+// Con Math.round sul valore binario questi cinque davano tutti un centesimo in meno.
+check('2,135 arrotonda a 2,14 come fa il database', B.arrotonda(2.135) === 2.14, B.arrotonda(2.135));
+check('10 pezzi da 7,25 al 3% fanno 2,18',
+  B.bonusRiga(7.25, 10, PERC).bonus === 2.18, B.bonusRiga(7.25, 10, PERC).bonus);
+check('3 pezzi da 13,70 al 5% fanno 2,06',
+  B.bonusRiga(13.70, 3, PERC).bonus === 2.06, B.bonusRiga(13.70, 3, PERC).bonus);
+check('9 pezzi da 10,50 al 5% fanno 4,73',
+  B.bonusRiga(10.50, 9, PERC).bonus === 4.73, B.bonusRiga(10.50, 9, PERC).bonus);
+check('6 pezzi da 10,95 al 5% fanno 3,29',
+  B.bonusRiga(10.95, 6, PERC).bonus === 3.29, B.bonusRiga(10.95, 6, PERC).bonus);
+check('un pezzo da 30,50 al 7% fa 2,14',
+  B.bonusRiga(30.50, 1, PERC).bonus === 2.14, B.bonusRiga(30.50, 1, PERC).bonus);
+
 console.log('\n--- niente deve esplodere ---');
 check('nessuna fascia applicabile -> bonus 0', B.bonusRiga(3, 1,
   { modo: 'percentuale', euroPezzo: 0, fasce: [{ da_prezzo: 10, percentuale: 5 }] }).bonus === 0);
@@ -220,11 +235,24 @@ Creare `js/lib/bonus-calcoli.js`:
         return isFinite(n) ? n : 0;
     }
 
-    // Due decimali. Il +Number.EPSILON evita che 1.005 scenda a 1.00 per via
-    // della rappresentazione binaria.
+    /**
+     * Due decimali, arrotondando per eccesso sui mezzi come fa il database.
+     *
+     * Si arrotonda sulla rappresentazione DECIMALE, non su quella binaria. In
+     * binario 2,135 vale in realta' 2,13499999..., quindi Math.round darebbe
+     * 2,13 mentre Postgres, che lavora su decimali esatti, scrive 2,14. Con un
+     * solo centesimo di scarto il dipendente vedrebbe un'anteprima diversa da
+     * quello che incassa: sull'intervallo dei prezzi reali le combinazioni che
+     * divergevano erano 312. toFixed(6) ricostruisce il decimale voluto perche'
+     * l'errore binario sta molto piu' in la' della sesta cifra.
+     */
     function arrotonda(n) {
         n = num(n);
-        return Math.round((n + Number.EPSILON) * 100) / 100;
+        var segno = n < 0 ? -1 : 1;
+        var parti = Math.abs(n).toFixed(6).split('.');
+        var centesimi = Number(parti[0]) * 100 + Number(parti[1].slice(0, 2));
+        if (Number(parti[1].slice(2)) >= 5000) centesimi += 1;
+        return segno * centesimi / 100;
     }
 
     function fasceOrdinate(fasce) {
@@ -723,7 +751,10 @@ declare
   v_art      public.magazzino%rowtype;
   v_calc     jsonb;
   v_imponib  numeric(10,2);
-  v_oggi     date := current_date;
+  -- Il database gira in UTC: current_date fra mezzanotte e le 02:00 italiane
+  -- e' ancora ieri, e il movimento finirebbe nel mese precedente, che puo'
+  -- essere gia' chiuso e pagato. Stesso pattern di 20260827_timbrature.sql.
+  v_oggi     date := (now() at time zone 'Europe/Rome')::date;
   v_vendita  jsonb;
   v_mov_id   uuid;
 begin
@@ -741,7 +772,11 @@ begin
     raise exception 'La quantita'' deve essere almeno 1';
   end if;
 
-  select * into v_art from public.magazzino where id = p_magazzino_id;
+  -- for update: senza il lock due chiamate in parallelo leggono la stessa
+  -- giacenza e passano entrambe il controllo. movimenta_giacenza non solleva
+  -- errore quando la scorta non basta, fa greatest(0, ...) in silenzio: si
+  -- pagherebbe il bonus due volte per un pezzo solo.
+  select * into v_art from public.magazzino where id = p_magazzino_id for update;
   if not found then
     raise exception 'Articolo non trovato';
   end if;
@@ -763,7 +798,7 @@ begin
   v_vendita := public.salva_vendita(
     jsonb_build_object(
       'data',             v_oggi,
-      'ora',              to_char(now(), 'HH24:MI:SS'),
+      'ora',              to_char(now() at time zone 'Europe/Rome', 'HH24:MI:SS'),
       'operatore_id',     v_staff,
       'operatore_nome',   (select nome_completo from public.personale where id = v_staff),
       'subtotale',        v_imponib,
@@ -859,6 +894,7 @@ select
     (public.bonus_riga_calcola(c.prezzo, c.quantita) ->> 'bonus')::numeric   as bonus_sql,
     (public.bonus_riga_calcola(c.prezzo, c.quantita) ->> 'regola_valore')::numeric as perc_sql
 from (values
+    -- estremi delle fasce
     (9.99::numeric,  1),
     (10.00,          1),
     (10.50,          1),
@@ -868,7 +904,15 @@ from (values
     (30.00,          1),
     (50.00,          1),
     (13.33,          7),
-    (8.00,           1)
+    (8.00,           1),
+    -- mezzi centesimi: e' QUI che i due calcoli divergevano di un centesimo.
+    -- Senza queste righe la verifica darebbe verde su una parita' inesistente.
+    (30.50,          1),
+    (7.25,          10),
+    (13.70,          3),
+    (10.50,          9),
+    (10.95,          6),
+    (10.10,          9)
 ) as c(prezzo, quantita)
 order by c.prezzo, c.quantita;
 ```
@@ -883,7 +927,8 @@ In fondo a `test/test-bonus-calcoli.js`, **prima** della riga `console.log('\n' 
 // il client mostra l'anteprima, il server scrive il valore definitivo, e se
 // divergono il dipendente vede una cifra e ne incassa un'altra.
 if (process.argv.indexOf('--parita') !== -1) {
-  const CASI = [[9.99,1],[10,1],[10.5,1],[12,3],[25,1],[29.99,1],[30,1],[50,1],[13.33,7],[8,1]];
+  const CASI = [[9.99,1],[10,1],[10.5,1],[12,3],[25,1],[29.99,1],[30,1],[50,1],[13.33,7],[8,1],
+                [30.5,1],[7.25,10],[13.7,3],[10.5,9],[10.95,6],[10.1,9]];
   console.log('\nprezzo\tqta\tbonus_js\tperc_js');
   CASI.forEach(function(c) {
     const x = B.bonusRiga(c[0], c[1], PERC);
