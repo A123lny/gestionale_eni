@@ -39,16 +39,16 @@
 | `js/api.js` | **modificare** — funzioni di lettura/scrittura del bonus |
 | `test/test-bonus-api.js` | **creare** — test delle funzioni API con client Supabase finto |
 | `js/modules/impostazioni.js` | **modificare** — sezione "Bonus venduto" |
-| `js/modules/magazzino.js` | **modificare** — interruttore bonus nell'elenco e filtro |
+| `js/modules/magazzino.js` | **modificare** — scheda di modifica articolo (Task 6), interruttore bonus nell'elenco e filtro (Task 7) |
 | `js/modules/bonus-venduto.js` | **creare** — portale dipendente: portafoglio, "ho venduto", elenco |
 | `js/modules/bonus-gestione.js` | **creare** — Gestione Personale: riepilogo per mese, correzioni, pagamento |
 | `test/test-bonus-moduli.js` | **creare** — test di cablaggio sui tre moduli |
 | `js/config.js` | **modificare** — voci di menu e permessi di ruolo |
 | `index.html` | **modificare** — tag `<script>` e `?v=` |
 
-**Ordine obbligato:** Task 1 (calcoli) → Task 2 e 3 (database) → Task 4 (API) → Task 5, 6, 7, 8 (schermate, indipendenti fra loro).
+**Ordine obbligato:** Task 1 (calcoli) → Task 2 e 3 (database) → Task 4 (API) → Task 5, 6, 7, 8, 9 (schermate, indipendenti fra loro).
 
-**Nota su Magazzino:** oggi il modulo ha solo il form "nuovo prodotto" e la rettifica di giacenza. **Non esiste una scheda di modifica articolo.** La Task 6 aggiunge quindi un interruttore direttamente nella riga dell'elenco, non un campo in una scheda che non c'è. Costruire un editor completo di prodotto è fuori da questo piano.
+**Nota su Magazzino:** oggi il modulo ha solo il form "nuovo prodotto" e la rettifica di giacenza, **nessuna scheda di modifica articolo**: un refuso nel nome o un decimale sbagliato nel prezzo obbligano a disattivare l'articolo e rifarlo, perdendo lo storico. La **Task 6** colma questo buco ed è utile a prescindere dal bonus; la funzione `ENI.API.aggiornaProdotto` esiste già in `js/api.js:881` e non la chiama nessuno, quindi è solo lavoro di interfaccia. La **Task 7** aggiunge in più l'interruttore bonus direttamente nella riga dell'elenco: serve per accendere e spegnere in fretta molti articoli senza aprire una scheda alla volta. Le due cose convivono, e il campo bonus c'è in entrambe.
 
 ---
 
@@ -1464,7 +1464,242 @@ EOF
 
 ---
 
-### Task 6: Magazzino — interruttore bonus
+### Task 6: Magazzino — scheda di modifica prodotto
+
+Oggi un articolo si può solo creare. Se qualcuno sbaglia una lettera nel nome o
+un decimale nel prezzo non c'è modo di correggerlo: l'unica via è disattivarlo e
+rifarlo, perdendo lo storico. Questa task chiude quel buco, ed è indipendente
+dal bonus — solo, il campo `bonus_attivo` nasce qui insieme agli altri.
+
+**Files:**
+- Modify: `js/modules/magazzino.js` (colonna azioni nella riga prodotto; nuova funzione `_showFormModificaProdotto`)
+- Modify: `index.html` (alzare `?v=` di `js/modules/magazzino.js`)
+
+**Interfaces:**
+- Consumes: `ENI.API.aggiornaProdotto(id, dati)` — **esiste già** in `js/api.js:881` ed è già esportata; non va scritta.
+- Produces: niente per le altre task.
+
+**La giacenza NON si tocca da qui.** Esiste già la rettifica +/- con il suo
+percorso e il suo log: un campo libero in questo form la scavalcherebbe, e la
+giacenza tornerebbe a essere un numero che qualcuno ha scritto invece del
+risultato dei movimenti. Nel form la giacenza si vede in sola lettura, con
+accanto il rimando alla rettifica.
+
+- [ ] **Step 1: Aggiungere il pulsante di modifica nella riga**
+
+Nella cella delle azioni della riga prodotto, accanto ai pulsanti già presenti:
+
+```javascript
+                '<button class="btn btn-sm btn-modifica-prod" data-prod-id="' + p.id + '" ' +
+                    'title="Modifica l\'articolo" style="background:none;border:none;cursor:pointer;">✏️</button>' +
+```
+
+- [ ] **Step 2: Agganciare il click**
+
+Accanto agli altri listener della lista:
+
+```javascript
+        container.addEventListener('click', function(e) {
+            var btn = e.target.closest('.btn-modifica-prod');
+            if (!btn) return;
+            var prodotto = _prodotti.filter(function(x) { return x.id === btn.dataset.prodId; })[0];
+            if (prodotto) _showFormModificaProdotto(prodotto);
+        });
+```
+
+Se la variabile che tiene i prodotti caricati non si chiama `_prodotti`,
+adeguare il nome a quello usato dal modulo.
+
+- [ ] **Step 3: Scrivere il form**
+
+Aggiungere in `js/modules/magazzino.js`, accanto a `_showFormNuovoProdotto`:
+
+```javascript
+    // Modifica di un articolo esistente.
+    //
+    // La GIACENZA non e' modificabile qui di proposito: si cambia solo con la
+    // rettifica +/-, che passa dalla funzione atomica movimenta_giacenza e
+    // lascia traccia. Un campo libero la trasformerebbe di nuovo in un numero
+    // scritto a mano invece che nel risultato dei movimenti.
+    function _showFormModificaProdotto(p) {
+        var isServizio = _isServizio(p);
+
+        var body =
+            '<form id="form-modifica-prodotto">' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label form-label-required">Codice</label>' +
+                        '<input type="text" class="form-input" id="mp-codice" value="' +
+                            ENI.UI.escapeHtml(p.codice || '') + '">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label form-label-required">Nome Prodotto</label>' +
+                        '<input type="text" class="form-input" id="mp-nome" value="' +
+                            ENI.UI.escapeHtml(p.nome_prodotto || '') + '">' +
+                    '</div>' +
+                '</div>' +
+
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Barcode (EAN)</label>' +
+                        '<input type="text" class="form-input" id="mp-barcode" value="' +
+                            ENI.UI.escapeHtml(p.barcode || '') + '">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Categoria</label>' +
+                        '<select class="form-select" id="mp-categoria">' +
+                            ENI.Config.CATEGORIE_MAGAZZINO.map(function(c) {
+                                return '<option value="' + c + '"' +
+                                    (c === p.categoria ? ' selected' : '') + '>' + c + '</option>';
+                            }).join('') +
+                        '</select>' +
+                    '</div>' +
+                '</div>' +
+
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Fornitore</label>' +
+                        '<input type="text" class="form-input" id="mp-fornitore" value="' +
+                            ENI.UI.escapeHtml(p.fornitore || '') + '">' +
+                    '</div>' +
+                '</div>' +
+
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Prezzo Acquisto €</label>' +
+                        '<input type="number" step="0.01" min="0" class="form-input" id="mp-prezzo-acquisto" value="' +
+                            (p.prezzo_acquisto != null ? p.prezzo_acquisto : '') + '">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label form-label-required">Prezzo Vendita €</label>' +
+                        '<input type="number" step="0.01" min="0" class="form-input" id="mp-prezzo-vendita" value="' +
+                            (p.prezzo_vendita != null ? p.prezzo_vendita : '') + '">' +
+                    '</div>' +
+                '</div>' +
+
+                (isServizio ? '' :
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Giacenza attuale</label>' +
+                        '<input type="text" class="form-input" value="' + (p.giacenza != null ? p.giacenza : 0) + '" disabled>' +
+                        '<div class="text-xs text-muted" style="margin-top:4px;">' +
+                            'Si cambia solo con la rettifica +/− dall\'elenco, così resta traccia del movimento.' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Scorta Minima</label>' +
+                        '<input type="number" min="0" class="form-input" id="mp-scorta" value="' +
+                            (p.giacenza_minima != null ? p.giacenza_minima : 0) + '">' +
+                    '</div>' +
+                '</div>') +
+
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label style="display:flex;align-items:center;gap:8px;">' +
+                            '<input type="checkbox" id="mp-attivo"' + (p.attivo ? ' checked' : '') + '> Articolo attivo' +
+                        '</label>' +
+                    '</div>' +
+                    (isServizio ? '' :
+                    '<div class="form-group">' +
+                        '<label style="display:flex;align-items:center;gap:8px;">' +
+                            '<input type="checkbox" id="mp-bonus"' + (p.bonus_attivo ? ' checked' : '') + '> 💰 Dà bonus ai dipendenti' +
+                        '</label>' +
+                    '</div>') +
+                '</div>' +
+            '</form>';
+
+        var modal = ENI.UI.showModal({
+            title: '✏️ Modifica articolo',
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-primary" id="btn-salva-modifica">💾 Salva</button>'
+        });
+
+        modal.querySelector('#btn-salva-modifica').addEventListener('click', async function() {
+            var codice = modal.querySelector('#mp-codice').value.trim();
+            var nome = modal.querySelector('#mp-nome').value.trim();
+            var prezzoVendita = parseFloat(modal.querySelector('#mp-prezzo-vendita').value);
+
+            if (!codice || !nome || isNaN(prezzoVendita) || prezzoVendita <= 0) {
+                ENI.UI.warning('Compila codice, nome e prezzo vendita');
+                return;
+            }
+
+            var dati = {
+                codice: codice,
+                nome_prodotto: nome,
+                barcode: modal.querySelector('#mp-barcode').value.trim() || null,
+                categoria: modal.querySelector('#mp-categoria').value,
+                fornitore: modal.querySelector('#mp-fornitore').value.trim() || null,
+                prezzo_acquisto: parseFloat(modal.querySelector('#mp-prezzo-acquisto').value) || 0,
+                prezzo_vendita: prezzoVendita,
+                attivo: modal.querySelector('#mp-attivo').checked,
+                updated_at: new Date().toISOString()
+            };
+            if (!isServizio) {
+                dati.giacenza_minima = parseInt(modal.querySelector('#mp-scorta').value, 10) || 0;
+                dati.bonus_attivo = modal.querySelector('#mp-bonus').checked;
+            }
+
+            var btn = modal.querySelector('#btn-salva-modifica');
+            btn.disabled = true;
+            try {
+                await ENI.API.aggiornaProdotto(p.id, dati);
+                ENI.UI.closeModal(modal);
+                ENI.UI.success('Articolo "' + nome + '" aggiornato');
+                await _loadProdotti();
+            } catch(e) {
+                btn.disabled = false;
+                ENI.UI.error('Errore: ' + e.message);
+            }
+        });
+    }
+```
+
+- [ ] **Step 4: Verificare la sintassi**
+
+Run: `node --check js/modules/magazzino.js`
+Expected: nessun output.
+
+- [ ] **Step 5: Prova manuale**
+
+Aprire Magazzino e, su un articolo esistente:
+- correggere una lettera del nome → salva → il nome cambia nell'elenco
+- cambiare il prezzo di vendita → salva → il nuovo prezzo compare in elenco
+- verificare che il campo Giacenza sia grigio e non modificabile, con la nota sotto
+- togliere la spunta "Articolo attivo" → l'articolo sparisce dall'elenco attivo
+- riaprire un articolo della categoria Lavaggi: le sezioni giacenza e bonus non ci sono
+
+**Attenzione al codice:** se `magazzino.codice` ha un vincolo di unicità, salvare
+un codice già usato da un altro articolo dà un errore del database. Il messaggio
+arriva all'utente tramite `ENI.UI.error`, quindi non si perde; se risulta poco
+comprensibile, tradurlo in "Esiste già un articolo con questo codice".
+
+- [ ] **Step 6: Alzare la versione e commit**
+
+In `index.html`, alzare di uno il `?v=` di `js/modules/magazzino.js`.
+
+```bash
+git add js/modules/magazzino.js index.html
+git commit -F - <<'EOF'
+feat(magazzino): scheda di modifica articolo
+
+Finora un articolo si poteva solo creare: per correggere un refuso nel nome
+o un decimale nel prezzo bisognava disattivarlo e rifarlo, perdendo lo
+storico. Il form riusa aggiornaProdotto, che esisteva gia' in api.js e non
+veniva chiamata da nessuna parte.
+
+La giacenza resta in sola lettura: si cambia solo con la rettifica +/-, che
+passa da movimenta_giacenza e lascia traccia.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+EOF
+```
+
+---
+
+### Task 7: Magazzino — interruttore bonus
 
 **Files:**
 - Modify: `js/modules/magazzino.js` (intestazione tabella e riga prodotto, ~riga 226-260; filtri in cima all'elenco)
@@ -1569,7 +1804,7 @@ EOF
 
 ---
 
-### Task 7: Portale dipendente
+### Task 8: Portale dipendente
 
 **Files:**
 - Create: `js/modules/bonus-venduto.js`
@@ -1900,7 +2135,7 @@ Alzare di uno il `?v=` di `js/config.js` e `js/app.js`.
 - [ ] **Step 7: Eseguire i test**
 
 Run: `node test/test-bonus-moduli.js`
-Expected: PASS (la parte "Gestione Personale" arriva con la Task 8).
+Expected: PASS (la parte "Gestione Personale" arriva con la Task 9).
 
 Run: `node --check js/modules/bonus-venduto.js && node --check js/config.js && node --check js/app.js`
 Expected: nessun output.
@@ -1923,7 +2158,7 @@ EOF
 
 ---
 
-### Task 8: Gestione Personale — scheda Bonus
+### Task 9: Gestione Personale — scheda Bonus
 
 **Files:**
 - Create: `js/modules/bonus-gestione.js`
@@ -2290,7 +2525,7 @@ EOF
 
 ---
 
-### Task 9: Collaudo e pubblicazione
+### Task 10: Collaudo e pubblicazione
 
 **Files:** nessuno da modificare, salvo correzioni emerse dal collaudo.
 
@@ -2339,38 +2574,42 @@ git push origin main
 | Requisito del progetto | Dove è coperto |
 |---|---|
 | Euro al pezzo / percentuale a fasce di prezzo | Task 1 (`bonusRiga`), Task 3 (`bonus_riga_calcola`), Task 5 (configurazione) |
-| Fascia sul prezzo del pezzo, estremo incluso | Task 1 Step 2 (test `10,00 SALE alla fascia da 10`), Task 3, Task 9 Step 1 |
-| Regola unica, nessuna eccezione per articolo | Task 2 (`magazzino` ha solo `bonus_attivo`), Task 6 |
-| Solo articoli scelti dal gestore | Task 2 (colonna + indice), Task 6 (interruttore), Task 3 (l'RPC rifiuta gli altri) |
-| Prezzo dal magazzino, niente sconti | Task 3 Step 1 (punto 4 dell'RPC), Task 7 (campo `readonly`), Task 4 (test sui nomi dei parametri) |
+| Fascia sul prezzo del pezzo, estremo incluso | Task 1 Step 2 (test `10,00 SALE alla fascia da 10`), Task 3, Task 10 Step 1 |
+| Regola unica, nessuna eccezione per articolo | Task 2 (`magazzino` ha solo `bonus_attivo`), Task 7 |
+| Solo articoli scelti dal gestore | Task 2 (colonna + indice), Task 7 (interruttore), Task 3 (l'RPC rifiuta gli altri) |
+| Prezzo dal magazzino, niente sconti | Task 3 Step 1 (punto 4 dell'RPC), Task 8 (campo `readonly`), Task 4 (test sui nomi dei parametri) |
 | Autore dall'accesso utente | Task 3 (`current_staff_id()`), Task 4 (test "NON manda il dipendente") |
-| Bonus visibile su ogni riga | Task 2 (`bonus_calcolato`), Task 7 (tabella), Task 8 (righe modificabili) |
-| Anteprima prima di confermare | Task 7 Step 3 (`#bv-bonus`), Task 7 Step 1 (test) |
+| Bonus visibile su ogni riga | Task 2 (`bonus_calcolato`), Task 8 (tabella), Task 9 (righe modificabili) |
+| Anteprima prima di confermare | Task 8 Step 3 (`#bv-bonus`), Task 8 Step 1 (test) |
 | Copia storica di prezzo, modo e valore | Task 2 (colonne), Task 3 (insert), commento nella migration |
-| Portafoglio in tempo reale | Task 7 (`_load()` dopo ogni vendita) |
-| Mese chiuso congelato | Task 3 (`ricalcola_periodo_bonus` non si autoinvoca), Task 8 (avviso con ricalcolo a richiesta) |
-| Tutto correggibile dal gestore | Task 8 (correggi, cancella, aggiungi, forza, riapri) |
+| Portafoglio in tempo reale | Task 8 (`_load()` dopo ogni vendita) |
+| Mese chiuso congelato | Task 3 (`ricalcola_periodo_bonus` non si autoinvoca), Task 9 (avviso con ricalcolo a richiesta) |
+| Tutto correggibile dal gestore | Task 9 (correggi, cancella, aggiungi, forza, riapri) |
 | Ogni modifica nel log | Task 4 (`scriviLog` in ogni funzione di scrittura), Task 4 Step 1 (test) |
-| Dipendente vede solo il proprio | Task 2 (policy), Task 9 Step 3 (verifica pratica) |
-| Dipendente non scrive nei movimenti | Task 2 (nessuna policy di insert), Task 9 Step 3 |
+| Dipendente vede solo il proprio | Task 2 (policy), Task 10 Step 3 (verifica pratica) |
+| Dipendente non scrive nei movimenti | Task 2 (nessuna policy di insert), Task 10 Step 3 |
 | Diagnosi degli errori di configurazione | Task 1 (`problemiConfigurazione`), Task 5 (`#bonus-problemi`) |
-| Parità fra calcolo JS e SQL | Task 3 Step 2-3, Task 9 Step 1 |
-| Voce nascosta al super admin | Task 7 Step 5, Task 7 Step 1 (test) |
+| Parità fra calcolo JS e SQL | Task 3 Step 2-3, Task 10 Step 1 |
+| Voce nascosta al super admin | Task 8 Step 5, Task 8 Step 1 (test) |
 | Esportazione xlsx | **Non coperta.** Vedi sotto |
 
-**Scoperto e non coperto:** l'esportazione xlsx della scheda Bonus, citata nel
-progetto, non ha una task. Il modello da seguire è `_esportaMagazzino()` in
+**Fuori dal primo rilascio, d'accordo con il gestore:** l'esportazione xlsx
+della scheda Bonus. Quando si farà, il modello è `_esportaMagazzino()` in
 `js/modules/magazzino.js:340`, che usa la libreria globale `XLSX` già caricata
 da `index.html`; è una funzione privata di quel modulo, quindi va riscritta nel
-modulo del bonus sullo stesso schema, non importata. È un'aggiunta piccola e
-indipendente: si può fare come Task 10 dopo il collaudo, o lasciarla fuori dal
-primo rilascio. **Da decidere con il gestore.**
+modulo del bonus sullo stesso schema, non importata.
+
+**Aggiunto su richiesta del gestore:** la Task 6 (scheda di modifica articolo in
+Magazzino) non nasce dal progetto del bonus. È un buco che esisteva già — un
+refuso nel nome costringeva a rifare l'articolo da capo — ed è stato incluso qui
+perché è lo stesso modulo che si tocca e perché `aggiornaProdotto` era già
+pronta e inutilizzata.
 
 **Verificato prima di scrivere il piano:**
 - `impostazioni_app.valore` è di tipo `jsonb`: la lettura `valore #>> '{}'` nella
   Task 3 è corretta sia per la stringa `bonus_modo` sia per il numero
   `bonus_euro_pezzo`.
-- `magazzino.js` ha `_isServizio(p)` (riga 147), usato nella Task 6 per il
+- `magazzino.js` ha `_isServizio(p)` (riga 147), usato nella Task 7 per il
   trattino sui servizi.
 - `salva_vendita(jsonb, jsonb, text)` esiste in
   `supabase/migrations/20260812_a4_salva_vendita.sql` e restituisce il jsonb
