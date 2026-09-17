@@ -4,37 +4,42 @@ Data: 2026-09-17
 
 ## A cosa serve
 
-Riconoscere ai dipendenti una quota sul venduto di **articoli scelti dal
-gestore**, tipicamente pezzi nuovi che si vogliono spingere, di valore fra i 10
-e i 30 euro. Il dipendente vede il proprio portafoglio bonus crescere in tempo
+Riconoscere ai dipendenti una quota sul venduto di **tutta la merce di
+magazzino**, tipicamente pezzi da 10-30 euro. Il dipendente vede il proprio portafoglio bonus crescere in tempo
 reale e riceve il maturato in busta paga il mese successivo.
 
-Non è un rifacimento del modulo Vendite: le vendite ordinarie (tergicristalli,
-AdBlue, bar) continuano a passare da lì e **non danno bonus**.
+Restano fuori soltanto il **carburante**, che non sta in magazzino e ha i suoi
+moduli, e i **servizi di Lavaggio**, che hanno gia' il proprio modulo e la
+propria strada verso la cassa: venderli anche da qui aprirebbe una seconda via
+per la stessa vendita.
+
+Non e' un rifacimento del modulo Vendite: quello resta la cassa del negozio.
+Il portale bonus e' la strada con cui il dipendente registra una vendita fatta
+da lui, e serve a dargliene atto.
 
 ## Decisioni prese con il gestore
 
 | Tema | Decisione |
 |---|---|
-| Su quali articoli | Solo quelli con l'interruttore acceso in Magazzino |
+| Su quali articoli | **Tutti** quelli di Magazzino, tranne la categoria Lavaggi. Nessuna selezione per articolo |
 | Come si calcola | **Euro al pezzo** oppure **percentuale a fasce di prezzo**, scelta unica per tutti |
 | Su cosa si misura la fascia | Sul **prezzo del singolo pezzo**, non sul venduto del mese |
-| Eccezioni per articolo | Nessuna: una regola sola, uguale per tutti gli articoli |
+| Eccezioni per articolo | Nessuna: una regola sola, e vale su tutto il magazzino |
 | Soglie diverse per persona | Nessuna, uguali per tutti |
 | Dove si vede il bonus | Su ogni riga, in euro |
 | Periodo | Mensile, azzerato il 1° |
 | Origine del dato | Il dipendente registra la vendita dal proprio portale; la vendita nasce da lì |
 | Prezzo | Preso dal **Magazzino**, non modificabile: niente sconti |
 | Autore | Preso dall'**accesso utente**, non dichiarato dal client |
-| Elenco nel portale | Solo articoli con bonus attivo |
+| Elenco nel portale | Tutti gli articoli attivi con un prezzo, tranne i Lavaggi |
 | Portafoglio | Ricalcolato in tempo reale a ogni vendita |
 | Pagamento | Il mese chiuso diventa "da pagare", resta tale finché il gestore non salda |
 | Modificabilità | **Tutto correggibile dal gestore, sempre**, anche a mese chiuso e dopo il pagamento. Ogni modifica finisce nel log |
 
 ## Come si calcola
 
-Due modalità, si sceglie una volta nelle Impostazioni e vale per tutti gli
-articoli a bonus.
+Due modalita', si sceglie una volta nelle Impostazioni e vale per tutto il
+magazzino.
 
 ### Euro al pezzo
 
@@ -89,14 +94,14 @@ punto è del mese.
 
 ### Modifiche a tabelle esistenti
 
-`magazzino` — una colonna sola:
+**Nessuna.** Il bonus vale su tutto il magazzino, quindi non serve nessun campo
+per marcare gli articoli. L'unico criterio e' la categoria: si escludono i
+Lavaggi, e il carburante non sta in questa tabella.
 
-| Colonna | Tipo | Significato |
-|---|---|---|
-| `bonus_attivo` | boolean, default false | l'articolo entra nel bonus |
-
-Niente altro sull'articolo: il **come** si paga sta nelle Impostazioni, uguale
-per tutti.
+(La colonna `bonus_attivo`, nata da una versione precedente del progetto in cui
+il gestore sceglieva gli articoli uno per uno, resta sul database ma **non e'
+piu' letta da nessuno**. Non si cancella perche' togliere una colonna in
+produzione non si disfa.)
 
 ### Impostazioni
 
@@ -212,7 +217,8 @@ registra_vendita_bonus(
 Cosa fa, in ordine:
 
 1. ricava `personale_id` da `auth.uid()` — **non** lo accetta come parametro
-2. rifiuta se l'articolo non esiste, non è attivo o non ha `bonus_attivo`
+2. rifiuta se l'articolo non esiste, non e' attivo, e' della categoria Lavaggi
+   o ha prezzo zero
 3. rifiuta se la quantità non è intera e ≥ 1, o se la giacenza non basta
 4. prende il prezzo **da `magazzino.prezzo_vendita`**, non dal client
 5. legge la regola dalle Impostazioni e calcola il bonus della riga
@@ -255,10 +261,15 @@ In fondo un esempio calcolato dal vivo — *"un pezzo da 25 € rende 1,25 €"*
 gli avvisi di configurazione: fasce sovrapposte, buco sotto la prima fascia,
 nessuna fascia inserita.
 
-### Magazzino → scheda articolo
+### Magazzino
 
-Un interruttore, "dà bonus ai dipendenti". Nell'elenco magazzino una spunta li
-segnala a colpo d'occhio, con un filtro per vedere solo quelli.
+**Niente da fare.** Il bonus vale su tutto, quindi non c'e' nessun interruttore
+da accendere ne' nessun elenco da tenere aggiornato: un articolo caricato oggi
+da' bonus da oggi.
+
+Resta invece la **scheda di modifica articolo**, nata durante questo lavoro e
+utile a prescindere dal bonus: prima un refuso nel nome o un decimale sbagliato
+nel prezzo obbligavano a disattivare l'articolo e rifarlo, perdendo lo storico.
 
 ### Portale dipendente → 💰 Bonus venduto
 
