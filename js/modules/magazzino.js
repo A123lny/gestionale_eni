@@ -108,6 +108,15 @@ ENI.Modules.Magazzino = (function() {
             _showPrezziCliente(el.dataset.prezziCliente);
         });
 
+        // Modifica articolo esistente
+        // delegate e non addEventListener: il container e' sempre lo stesso nodo
+        // #main-content, e un listener diretto si accumulerebbe a ogni rientro nel
+        // modulo, aprendo tante finestre quante sono le visite.
+        ENI.UI.delegate(container, 'click', '.btn-modifica-prod', function(e, el) {
+            var prodotto = _prodotti.filter(function(x) { return x.id === el.dataset.prodId; })[0];
+            if (prodotto) _showFormModificaProdotto(prodotto);
+        });
+
         // Toggle alert sotto scorta
         ENI.UI.delegate(container, 'click', '#toggle-stock-alert', function(e, el) {
             var detailEl = document.getElementById('stock-alert-detail');
@@ -258,6 +267,8 @@ ENI.Modules.Magazzino = (function() {
                     html += '<button class="btn btn-sm btn-outline" data-giacenza-action="add" data-prodotto-id="' + p.id + '">+</button>' +
                             '<button class="btn btn-sm btn-outline" data-giacenza-action="remove" data-prodotto-id="' + p.id + '">-</button>';
                 }
+                html += '<button class="btn btn-sm btn-modifica-prod" data-prod-id="' + p.id + '" ' +
+                    'title="Modifica l\'articolo" style="background:none;border:none;cursor:pointer;">✏️</button>';
                 html += '</td>';
             }
 
@@ -575,6 +586,168 @@ ENI.Modules.Magazzino = (function() {
             }
 
             ENI.UI.closeModal(modal);
+        });
+    }
+
+    // --- Form Modifica Prodotto ---
+
+    // Modifica di un articolo esistente.
+    //
+    // La GIACENZA non e' modificabile qui di proposito: si cambia solo con la
+    // rettifica +/-, che passa dalla funzione atomica movimenta_giacenza e
+    // lascia traccia. Un campo libero la trasformerebbe di nuovo in un numero
+    // scritto a mano invece che nel risultato dei movimenti.
+    function _showFormModificaProdotto(p) {
+        var isServizio = _isServizio(p);
+
+        var body =
+            '<form id="form-modifica-prodotto">' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label form-label-required">Codice</label>' +
+                        '<input type="text" class="form-input" id="mp-codice" value="' +
+                            ENI.UI.escapeHtml(p.codice || '') + '">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label form-label-required">Nome Prodotto</label>' +
+                        '<input type="text" class="form-input" id="mp-nome" value="' +
+                            ENI.UI.escapeHtml(p.nome_prodotto || '') + '">' +
+                    '</div>' +
+                '</div>' +
+
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Barcode (EAN)</label>' +
+                        '<input type="text" class="form-input" id="mp-barcode" value="' +
+                            ENI.UI.escapeHtml(p.barcode || '') + '">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Categoria</label>' +
+                        '<select class="form-select" id="mp-categoria">' +
+                            ENI.Config.CATEGORIE_MAGAZZINO.map(function(c) {
+                                return '<option value="' + c + '"' +
+                                    (c === p.categoria ? ' selected' : '') + '>' + c + '</option>';
+                            }).join('') +
+                        '</select>' +
+                    '</div>' +
+                '</div>' +
+
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Fornitore</label>' +
+                        '<input type="text" class="form-input" id="mp-fornitore" value="' +
+                            ENI.UI.escapeHtml(p.fornitore || '') + '">' +
+                    '</div>' +
+                '</div>' +
+
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Prezzo Acquisto €</label>' +
+                        '<input type="number" step="0.01" min="0" class="form-input" id="mp-prezzo-acquisto" value="' +
+                            (p.prezzo_acquisto != null ? p.prezzo_acquisto : '') + '">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label form-label-required">Prezzo Vendita €</label>' +
+                        '<input type="number" step="0.01" min="0" class="form-input" id="mp-prezzo-vendita" value="' +
+                            (p.prezzo_vendita != null ? p.prezzo_vendita : '') + '">' +
+                    '</div>' +
+                '</div>' +
+
+                // Riga giacenza/scorta SEMPRE presente nel markup: si nasconde/
+                // mostra al volo col cambio di categoria (vedi listener su
+                // #mp-categoria piu' sotto), non si genera una volta per tutte
+                // sul valore iniziale.
+                '<div class="form-row" id="mp-row-giacenza" style="display:' + (isServizio ? 'none' : '') + ';">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Giacenza attuale</label>' +
+                        '<input type="text" class="form-input" value="' + (p.giacenza != null ? p.giacenza : 0) + '" disabled>' +
+                        '<div class="text-xs text-muted" style="margin-top:4px;">' +
+                            'Si cambia solo con la rettifica +/− dall\'elenco, così resta traccia del movimento.' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Scorta Minima</label>' +
+                        '<input type="number" min="0" class="form-input" id="mp-scorta" value="' +
+                            (p.giacenza_minima != null ? p.giacenza_minima : 0) + '">' +
+                    '</div>' +
+                '</div>' +
+
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label style="display:flex;align-items:center;gap:8px;">' +
+                            '<input type="checkbox" id="mp-attivo"' + (p.attivo ? ' checked' : '') + '> Articolo attivo' +
+                        '</label>' +
+                    '</div>' +
+                '</div>' +
+            '</form>';
+
+        var modal = ENI.UI.showModal({
+            title: '✏️ Modifica articolo',
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-primary" id="btn-salva-modifica">\u{1F4BE} Salva</button>'
+        });
+
+        // Mostra/nasconde la giacenza in base alla categoria SCELTA ora, non a
+        // quella con cui l'articolo era stato aperto: se si ricategorizza in
+        // corsa da/verso Lavaggi, la sezione deve seguire, sullo stesso modello
+        // di _toggleGiacenza nella scheda di creazione.
+        var catSelectModifica = modal.querySelector('#mp-categoria');
+        var rowGiacenzaModifica = modal.querySelector('#mp-row-giacenza');
+
+        function _toggleSezioniModifica() {
+            var isLavaggi = catSelectModifica.value === 'Lavaggi';
+            rowGiacenzaModifica.style.display = isLavaggi ? 'none' : '';
+        }
+
+        catSelectModifica.addEventListener('change', _toggleSezioniModifica);
+
+        modal.querySelector('#btn-salva-modifica').addEventListener('click', async function() {
+            var codice = modal.querySelector('#mp-codice').value.trim();
+            var nome = modal.querySelector('#mp-nome').value.trim();
+            var prezzoVendita = parseFloat(modal.querySelector('#mp-prezzo-vendita').value);
+            var categoria = modal.querySelector('#mp-categoria').value;
+            var servizio = (categoria === 'Lavaggi');
+
+            if (!codice || !nome || isNaN(prezzoVendita) || prezzoVendita <= 0) {
+                ENI.UI.warning('Compila codice, nome e prezzo vendita');
+                return;
+            }
+
+            var dati = {
+                codice: codice,
+                nome_prodotto: nome,
+                barcode: modal.querySelector('#mp-barcode').value.trim() || null,
+                categoria: categoria,
+                fornitore: modal.querySelector('#mp-fornitore').value.trim() || null,
+                prezzo_acquisto: parseFloat(modal.querySelector('#mp-prezzo-acquisto').value) || 0,
+                prezzo_vendita: prezzoVendita,
+                attivo: modal.querySelector('#mp-attivo').checked,
+                updated_at: new Date().toISOString()
+            };
+            if (!servizio) {
+                dati.giacenza_minima = parseInt(modal.querySelector('#mp-scorta').value, 10) || (ENI.Config.CONSTANTS.SCORTA_MINIMA_DEFAULT || 5);
+            }
+
+            var btn = modal.querySelector('#btn-salva-modifica');
+            btn.disabled = true;
+            try {
+                await ENI.API.aggiornaProdotto(p.id, dati);
+                ENI.UI.closeModal(modal);
+                ENI.UI.success('Articolo "' + nome + '" aggiornato');
+                await _loadProdotti();
+            } catch(e) {
+                btn.disabled = false;
+                // Codice duplicato: il vincolo di unicita' sul DB da' un errore
+                // poco leggibile, lo traduciamo per l'utente.
+                var msg = (e && e.message) || '';
+                if (msg.indexOf('duplicate key') !== -1 || msg.indexOf('magazzino_codice') !== -1 || msg.indexOf('unique') !== -1) {
+                    ENI.UI.error('Esiste già un articolo con questo codice');
+                } else {
+                    ENI.UI.error('Errore: ' + msg);
+                }
+            }
         });
     }
 

@@ -459,6 +459,240 @@ ENI.API = (function() {
         }, 0);
     }
 
+    // --- Bonus venduto ai dipendenti ---
+    //
+    // Qui dentro NON si registrano vendite. Dal 19/09/2026 la vendita si fa dal
+    // modulo Vendite, e un innesco sul database crea il movimento bonus per
+    // ogni riga che ne ha diritto, attribuendolo alla sessione che ha venduto.
+    // Queste funzioni leggono, e scrivono solo le correzioni del gestore.
+    // Vedi docs/superpowers/specs/2026-09-17-bonus-venduto-design.md
+
+    async function getRegolaBonus() {
+        var modo = await getImpostazioneApp('bonus_modo');
+        var euro = await getImpostazioneApp('bonus_euro_pezzo');
+        var fasce = await getClient()
+            .from('bonus_fasce')
+            .select('*')
+            .order('da_prezzo', { ascending: true });
+        if (fasce.error) throw new Error(fasce.error.message);
+        return {
+            modo: modo || 'percentuale',
+            euroPezzo: Number(euro) || 0,
+            fasce: fasce.data || []
+        };
+    }
+
+    async function salvaRegolaBonus(modo, euroPezzo) {
+        var prima = await getRegolaBonus();
+        await salvaImpostazioneApp('bonus_modo', modo);
+        await salvaImpostazioneApp('bonus_euro_pezzo', Number(euroPezzo) || 0);
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Regola bonus. Prima: ' + prima.modo + ' / ' + prima.euroPezzo + ' EUR al pezzo' +
+            ' | Dopo: ' + modo + ' / ' + (Number(euroPezzo) || 0) + ' EUR al pezzo');
+        return true;
+    }
+
+    // Sostituisce in blocco: le fasce sono poche e ragionarci per differenze
+    // costerebbe piu' di quanto valga. Si rileggono pero' PRIMA di cancellare,
+    // sia per scriverle nel log sia per poterle rimettere se l'inserimento
+    // fallisce: altrimenti un errore a meta' lascerebbe il bonus senza fasce,
+    // cioe' a zero per tutti, senza che nessuno se ne accorga.
+    async function salvaFasceBonus(fasce) {
+        var precedenti = await getClient()
+            .from('bonus_fasce').select('da_prezzo, percentuale').order('da_prezzo', { ascending: true });
+        if (precedenti.error) throw new Error(precedenti.error.message);
+        var vecchie = precedenti.data || [];
+
+        var del = await getClient().from('bonus_fasce').delete().gte('da_prezzo', 0);
+        if (del.error) throw new Error(del.error.message);
+
+        var nuove = (fasce || []).map(function(f) {
+            return { da_prezzo: Number(f.da_prezzo), percentuale: Number(f.percentuale) };
+        });
+
+        if (nuove.length) {
+            var ins = await getClient().from('bonus_fasce').insert(nuove);
+            if (ins.error) {
+                // Rimetti quelle di prima: meglio la configurazione vecchia che
+                // nessuna. Se fallisce anche questo la tabella resta vuota, cioe'
+                // bonus a zero per tutti: va detto, non nascosto dietro l'errore
+                // originale.
+                if (vecchie.length) {
+                    var rip = await getClient().from('bonus_fasce').insert(vecchie);
+                    if (rip.error) {
+                        await scriviLog('Modifica_Bonus', 'Bonus',
+                            'ATTENZIONE: fasce bonus perse. Inserimento fallito (' +
+                            ins.error.message + ') e ripristino fallito (' +
+                            rip.error.message + '). Fasce da reinserire: ' +
+                            JSON.stringify(vecchie));
+                        throw new Error(
+                            'Le fasce non sono state salvate e NON si sono potute ripristinare: ' +
+                            'il bonus e\' rimasto senza fasce. Reinseriscile subito. Dettaglio: ' +
+                            ins.error.message);
+                    }
+                }
+                throw new Error(ins.error.message);
+            }
+        }
+
+        function descrivi(lista) {
+            if (!lista.length) return 'nessuna';
+            return lista.map(function(f) { return 'da ' + f.da_prezzo + ' -> ' + f.percentuale + '%'; }).join(', ');
+        }
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Fasce bonus. Prima: ' + descrivi(vecchie) + ' | Dopo: ' + descrivi(nuove));
+        return true;
+    }
+
+    // Tutti gli articoli su cui si prende il bonus, cioe' tutta la merce di
+    // magazzino tranne i Lavaggi (hanno il loro modulo) e gli articoli senza
+    // prezzo, che darebbero un bonus di zero e sporcherebbero l'elenco.
+    async function getArticoliBonus() {
+        var result = await getClient()
+            .from('magazzino')
+            .select('*')
+            .eq('attivo', true)
+            // I Lavaggi si escludono per categoria, ma un articolo vecchio puo'
+            // averla nulla: con neq quelle righe sparirebbero, perche' in SQL il
+            // confronto con null non e' mai vero. Cosi' restano.
+            .or('categoria.is.null,categoria.neq.Lavaggi')
+            .gt('prezzo_vendita', 0)
+            .order('nome_prodotto', { ascending: true });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getMieiMovimentiBonus(anno, mese) {
+        var result = await getClient()
+            .from('bonus_movimenti')
+            .select('*')
+            .eq('anno', anno)
+            .eq('mese', mese)
+            .order('created_at', { ascending: false });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getMieiPeriodiBonus() {
+        var result = await getClient()
+            .from('bonus_periodi')
+            .select('*')
+            .order('anno', { ascending: false })
+            .order('mese', { ascending: false });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function getMovimentiBonus(anno, mese) {
+        var result = await getClient()
+            .from('bonus_movimenti')
+            .select('*')
+            .eq('anno', anno)
+            .eq('mese', mese)
+            .order('created_at', { ascending: false });
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function aggiornaMovimentoBonus(id, dati, descrizionePrecedente) {
+        dati.modificato_da = ENI.State.getUserId();
+        dati.modificato_at = new Date().toISOString();
+        var result = await getClient()
+            .from('bonus_movimenti').update(dati).eq('id', id).select().single();
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Movimento corretto. Prima: ' + (descrizionePrecedente || '?') +
+            ' | Dopo: ' + JSON.stringify(dati));
+        return result.data;
+    }
+
+    async function eliminaMovimentoBonus(id, descrizione) {
+        var result = await getClient().from('bonus_movimenti').delete().eq('id', id);
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Elimina_Bonus', 'Bonus', 'Movimento eliminato: ' + (descrizione || id));
+        return true;
+    }
+
+    async function getPeriodiBonus(anno, mese) {
+        var result = await getClient()
+            .from('bonus_periodi').select('*').eq('anno', anno).eq('mese', mese);
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
+    async function salvaPeriodoBonus(dati) {
+        // Il valore precedente serve al log: senza, una correzione del gestore
+        // sul totale pagato non lascerebbe traccia di quanto era prima.
+        var esistente = await getClient()
+            .from('bonus_periodi')
+            .select('bonus_totale, stato')
+            .eq('personale_id', dati.personale_id)
+            .eq('anno', dati.anno)
+            .eq('mese', dati.mese)
+            .maybeSingle();
+        if (esistente.error) throw new Error(esistente.error.message);
+        var prima = esistente.data || null;
+
+        var result = await getClient()
+            .from('bonus_periodi')
+            .upsert(dati, { onConflict: 'personale_id,anno,mese' })
+            .select().single();
+        if (result.error) throw new Error(result.error.message);
+
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Periodo ' + dati.mese + '/' + dati.anno + '. Prima: bonus ' +
+            (prima ? prima.bonus_totale : '-') + ' EUR, stato ' + (prima ? prima.stato : '-') +
+            ' | Dopo: bonus ' + (dati.bonus_totale != null ? dati.bonus_totale : '-') +
+            ' EUR, stato ' + (dati.stato || 'aggiornato'));
+        return result.data;
+    }
+
+    // Riga inserita a mano dal gestore, per una vendita avvenuta fuori dal
+    // sistema. Nasce senza vendita agganciata: e' il modo di distinguerla,
+    // e il motivo per cui vendita_id e' nullable.
+    async function aggiungiMovimentoBonus(dati) {
+        if (!dati.regola_modo) {
+            // La colonna e' la fotografia di com'era la regola quel giorno: si
+            // legge quella vera invece di scriverne una a caso. Il fatto che la
+            // riga sia stata aggiunta a mano si riconosce da vendita_id nullo.
+            var regola = await getRegolaBonus();
+            dati.regola_modo = regola.modo;
+        }
+        dati.regola_valore = Number(dati.regola_valore) || 0;
+        var result = await getClient()
+            .from('bonus_movimenti').insert(dati).select().single();
+        if (result.error) throw new Error(result.error.message);
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Riga aggiunta a mano: ' + dati.nome_prodotto + ' x' + dati.quantita +
+            ' - bonus ' + ENI.UI.formatValuta(dati.bonus_calcolato) +
+            ' (' + dati.mese + '/' + dati.anno + ')');
+        return result.data;
+    }
+
+    async function ricalcolaPeriodoBonus(personaleId, anno, mese) {
+        // Anche qui il "prima" si legge subito, non dopo: l'RPC aggiorna il
+        // periodo, quindi rileggerlo dopo mostrerebbe due volte lo stesso "dopo".
+        var esistente = await getClient()
+            .from('bonus_periodi')
+            .select('bonus_totale')
+            .eq('personale_id', personaleId)
+            .eq('anno', anno)
+            .eq('mese', mese)
+            .maybeSingle();
+        if (esistente.error) throw new Error(esistente.error.message);
+        var bonusPrima = esistente.data ? esistente.data.bonus_totale : 0;
+
+        var result = await getClient().rpc('ricalcola_periodo_bonus', {
+            p_personale_id: personaleId, p_anno: anno, p_mese: mese
+        });
+        if (result.error) throw new Error(result.error.message);
+
+        await scriviLog('Modifica_Bonus', 'Bonus',
+            'Ricalcolato il periodo ' + mese + '/' + anno + '. Prima: bonus ' + bonusPrima +
+            ' EUR | Dopo: bonus ' + (result.data && result.data.bonus_totale) + ' EUR');
+        return result.data;
+    }
+
     async function getCassaMese(anno, mese) {
         var primoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-01';
         var ultimoGiorno = anno + '-' + String(mese).padStart(2, '0') + '-' +
@@ -2916,6 +3150,19 @@ ENI.API = (function() {
         annullaCredito: annullaCredito,
         getCassaPerData: getCassaPerData,
         getTotaleLavaggiPerData: getTotaleLavaggiPerData,
+        getRegolaBonus: getRegolaBonus,
+        salvaRegolaBonus: salvaRegolaBonus,
+        salvaFasceBonus: salvaFasceBonus,
+        getArticoliBonus: getArticoliBonus,
+        getMieiMovimentiBonus: getMieiMovimentiBonus,
+        getMieiPeriodiBonus: getMieiPeriodiBonus,
+        getMovimentiBonus: getMovimentiBonus,
+        aggiornaMovimentoBonus: aggiornaMovimentoBonus,
+        eliminaMovimentoBonus: eliminaMovimentoBonus,
+        getPeriodiBonus: getPeriodiBonus,
+        salvaPeriodoBonus: salvaPeriodoBonus,
+        ricalcolaPeriodoBonus: ricalcolaPeriodoBonus,
+        aggiungiMovimentoBonus: aggiungiMovimentoBonus,
         getCassaOggi: getCassaOggi,
         getCassaMese: getCassaMese,
         salvaCassa: salvaCassa,
