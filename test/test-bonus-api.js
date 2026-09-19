@@ -52,20 +52,20 @@ sandbox.ENI.State = { getUserId: () => 'u1', getUserName: () => 'Test', cacheGet
 const API = sandbox.ENI.API;
 
 (async () => {
-  console.log('\n--- la vendita passa SOLO dalla funzione del server ---');
-  rpcChiamate.length = 0;
-  await API.registraVenditaBonus('art-1', 2, 'contanti');
-  const r = rpcChiamate.find(x => x.nome === 'registra_vendita_bonus');
-  check('chiama registra_vendita_bonus', !!r);
-  check('manda articolo, quantita e metodo',
-    r && r.args.p_magazzino_id === 'art-1' && r.args.p_quantita === 2 && r.args.p_metodo === 'contanti',
-    r && JSON.stringify(r.args));
-  check('NON manda il dipendente: lo decide il server',
-    r && Object.keys(r.args).every(k => !/personale|operatore|staff/i.test(k)),
-    r && Object.keys(r.args).join(','));
-  check('NON manda il prezzo: lo decide il server',
-    r && Object.keys(r.args).every(k => !/prezzo|importo|totale/i.test(k)),
-    r && Object.keys(r.args).join(','));
+  console.log('\n--- il bonus non si registra piu da qui ---');
+  // Dal 19/09/2026 la vendita si fa SOLO dal modulo Vendite, e il bonus lo
+  // crea un innesco sul database. Le due funzioni di vendita del bonus sono
+  // state tolte apposta: se restassero, resterebbe una seconda strada per
+  // registrare la stessa vendita - il doppione che si voleva eliminare.
+  check('registraVenditaBonus non esiste piu', typeof API.registraVenditaBonus === 'undefined');
+  check('registraVenditaBonusLibera non esiste piu',
+    typeof API.registraVenditaBonusLibera === 'undefined');
+  const apiSrc = fs.readFileSync(P + 'js/api.js', 'utf8');
+  check('e non ne resta traccia nemmeno nel sorgente',
+    !/registra_vendita_bonus/.test(apiSrc));
+  check('nessuna funzione del bonus scrive a mano in bonus_movimenti',
+    !/from\('bonus_movimenti'\)[\s\S]{0,120}?\.insert\(/.test(
+      apiSrc.replace(/async function aggiungiMovimentoBonus[\s\S]*?\n    }\n/, '')));
 
   console.log('\n--- letture del dipendente ---');
   azioni.length = 0;
@@ -126,7 +126,7 @@ const API = sandbox.ENI.API;
 
   console.log('\n--- esportate ---');
   ['getRegolaBonus','salvaRegolaBonus','salvaFasceBonus','getArticoliBonus',
-   'registraVenditaBonus','getMieiMovimentiBonus','getMieiPeriodiBonus','getMovimentiBonus',
+   'getMieiMovimentiBonus','getMieiPeriodiBonus','getMovimentiBonus',
    'aggiornaMovimentoBonus','eliminaMovimentoBonus','getPeriodiBonus','salvaPeriodoBonus',
    'ricalcolaPeriodoBonus','aggiungiMovimentoBonus'].forEach(function(n) {
     check('API espone ' + n, typeof API[n] === 'function');

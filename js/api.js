@@ -461,9 +461,11 @@ ENI.API = (function() {
 
     // --- Bonus venduto ai dipendenti ---
     //
-    // La vendita passa SOLO da registra_vendita_bonus: il dipendente non manda
-    // ne' il proprio nome ne' il prezzo, li decide il server. Vedi
-    // docs/superpowers/specs/2026-09-17-bonus-venduto-design.md
+    // Qui dentro NON si registrano vendite. Dal 19/09/2026 la vendita si fa dal
+    // modulo Vendite, e un innesco sul database crea il movimento bonus per
+    // ogni riga che ne ha diritto, attribuendolo alla sessione che ha venduto.
+    // Queste funzioni leggono, e scrivono solo le correzioni del gestore.
+    // Vedi docs/superpowers/specs/2026-09-17-bonus-venduto-design.md
 
     async function getRegolaBonus() {
         var modo = await getImpostazioneApp('bonus_modo');
@@ -558,16 +560,6 @@ ENI.API = (function() {
             .order('nome_prodotto', { ascending: true });
         if (result.error) throw new Error(result.error.message);
         return result.data || [];
-    }
-
-    async function registraVenditaBonus(magazzinoId, quantita, metodo) {
-        var result = await getClient().rpc('registra_vendita_bonus', {
-            p_magazzino_id: magazzinoId,
-            p_quantita: quantita,
-            p_metodo: metodo
-        });
-        if (result.error) throw new Error(result.error.message);
-        return result.data;
     }
 
     async function getMieiMovimentiBonus(anno, mese) {
@@ -3162,7 +3154,6 @@ ENI.API = (function() {
         salvaRegolaBonus: salvaRegolaBonus,
         salvaFasceBonus: salvaFasceBonus,
         getArticoliBonus: getArticoliBonus,
-        registraVenditaBonus: registraVenditaBonus,
         getMieiMovimentiBonus: getMieiMovimentiBonus,
         getMieiPeriodiBonus: getMieiPeriodiBonus,
         getMovimentiBonus: getMovimentiBonus,

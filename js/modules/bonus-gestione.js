@@ -340,19 +340,47 @@ ENI.Modules.BonusGestione = (function() {
         var pers = _personale.filter(function(p) { return p.id === personaleId; })[0];
         var righe = _movimenti.filter(function(m) { return m.personale_id === personaleId; });
 
+        // Le due caselle della tabella sono strette per stare in riga, ma
+        // .form-input nasce per i moduli a tutta larghezza: 12px di imbottitura
+        // per lato, bordo, carattere da 16px e - sui campi numerici - le
+        // frecce del selettore. Dentro 90px al numero restavano pochi pixel e
+        // veniva tagliato. Qui si stringe l'imbottitura, si tolgono le frecce
+        // (inutili su un importo) e si allineano le cifre a destra, come si
+        // legge il denaro.
+        var stile =
+            '<style>' +
+            '.bg-qta, .bg-bonus { padding:6px 8px; min-height:36px; text-align:right; font-size:15px; }' +
+            '.bg-qta::-webkit-outer-spin-button, .bg-qta::-webkit-inner-spin-button,' +
+            '.bg-bonus::-webkit-outer-spin-button, .bg-bonus::-webkit-inner-spin-button' +
+            ' { -webkit-appearance:none; margin:0; }' +
+            '.bg-qta, .bg-bonus { -moz-appearance:textfield; }' +
+            '</style>';
+
         var body = righe.length
-            ? '<div class="table-wrapper"><table class="table"><thead><tr>' +
+            ? stile + '<div class="table-wrapper"><table class="table"><thead><tr>' +
                 '<th>Data</th><th>Articolo</th><th>Q.tà</th><th>Venduto</th><th>Bonus</th><th></th>' +
               '</tr></thead><tbody>' +
               righe.map(function(m) {
                   return '<tr>' +
                       '<td>' + ENI.UI.formatData(m.created_at) + '</td>' +
+                      // Tre origini diverse, e al gestore serve distinguerle:
+                      // senza vendita = l'ha aggiunta lui; con vendita ma senza
+                      // articolo = venduta al banco prima che la merce fosse
+                      // caricata, quindi il prezzo l'ha scritto il dipendente e
+                      // non viene dal listino. E' l'unico caso in cui vale la
+                      // pena ricontrollare la cifra.
                       '<td>' + ENI.UI.escapeHtml(m.nome_prodotto) +
-                          (!m.vendita_id ? ' <span class="badge badge-gray text-xs">a mano</span>' : '') + '</td>' +
-                      '<td><input type="number" min="1" class="form-input bg-qta" style="max-width:70px;" ' +
+                          (!m.vendita_id
+                              ? ' <span class="badge badge-gray text-xs">a mano</span>'
+                              : (!m.magazzino_id
+                                  ? ' <span class="badge badge-scaduto text-xs" ' +
+                                    'title="Venduto al banco prima di essere caricato in magazzino: il prezzo l\'ha scritto il dipendente">' +
+                                    '⚠️ fuori magazzino</span>'
+                                  : '')) + '</td>' +
+                      '<td><input type="number" min="1" class="form-input bg-qta" style="width:64px;" ' +
                           'data-id="' + m.id + '" value="' + m.quantita + '"></td>' +
                       '<td>' + ENI.UI.formatValuta(m.imponibile) + '</td>' +
-                      '<td><input type="number" step="0.01" min="0" class="form-input bg-bonus" style="max-width:90px;" ' +
+                      '<td><input type="number" step="0.01" min="0" class="form-input bg-bonus" style="width:88px;" ' +
                           'data-id="' + m.id + '" value="' + Number(m.bonus_calcolato).toFixed(2) + '"></td>' +
                       '<td>' +
                           '<button class="btn btn-sm bg-salva" data-id="' + m.id + '" title="Salva">💾</button>' +

@@ -1,14 +1,21 @@
 /**
  * Bonus venduto: calcoli puri. Niente DOM, niente chiamate al database.
  *
- * Due modalita', scelte una volta nelle Impostazioni e valide per tutti gli
- * articoli con il bonus acceso:
+ * Due modalita', scelte una volta nelle Impostazioni e valide per tutta la
+ * merce di magazzino:
  *   - euro al pezzo: un importo fisso per pezzo venduto
- *   - percentuale:   la percentuale dipende dalla fascia di PREZZO DEL PEZZO
- *                    (non dal venduto del mese), e si applica all'imponibile
+ *   - percentuale:   la percentuale dipende dalla fascia in cui cade il
+ *                    TOTALE DELLA VENDITA (prezzo x quantita'), e si applica
+ *                    a quello stesso totale
+ *
+ * Fino al 19/09/2026 la fascia si sceglieva sul prezzo del SINGOLO PEZZO: il
+ * gestore l'ha cambiata perche' ragionava sullo scontrino, non sull'articolo.
+ * Conseguenza voluta: 3 flaconi da 12 EUR allo stesso cliente fanno 36 EUR e
+ * prendono la fascia dei 36; gli stessi 3 flaconi a tre clienti diversi
+ * restano tre vendite da 12 e prendono la fascia dei 12.
  *
  * Una fascia vale dal proprio da_prezzo INCLUSO fino al da_prezzo della
- * successiva ESCLUSO; l'ultima e' aperta. Un pezzo da 10,00 EUR con fasce
+ * successiva ESCLUSO; l'ultima e' aperta. Una vendita da 10,00 EUR con fasce
  * 0/10/30 cade nella fascia che parte da 10.
  */
 (function(global) {
@@ -51,9 +58,14 @@
         });
     }
 
-    /** La fascia applicabile a quel prezzo, o null se non ce n'e' nessuna. */
-    function fasciaPerPrezzo(prezzo, fasce) {
-        var p = num(prezzo);
+    /**
+     * La fascia in cui cade quell'importo, o null se non ce n'e' nessuna.
+     * L'importo e' il TOTALE della vendita, non il prezzo di un pezzo: il nome
+     * lo dice, perche' chiamarla "perPrezzo" e' esattamente l'equivoco che ha
+     * fatto sbagliare i conti a chi la leggeva.
+     */
+    function fasciaPerImporto(importo, fasce) {
+        var p = num(importo);
         var ord = fasceOrdinate(fasce);
         var scelta = null;
         for (var i = 0; i < ord.length; i++) {
@@ -88,7 +100,9 @@
         }
 
         if (regola.modo === 'percentuale') {
-            var f = fasciaPerPrezzo(p, regola.fasce);
+            // La fascia la decide il totale della vendita, non il prezzo del
+            // pezzo: 3 flaconi da 12 EUR cadono nella fascia dei 36, non dei 12.
+            var f = fasciaPerImporto(p * q, regola.fasce);
             if (!f) return { bonus: 0, regolaModo: 'percentuale', regolaValore: 0 };
             var perc = num(f.percentuale);
             return {
@@ -152,7 +166,7 @@
 
     ENI.BonusCalcoli = {
         arrotonda: arrotonda,
-        fasciaPerPrezzo: fasciaPerPrezzo,
+        fasciaPerImporto: fasciaPerImporto,
         bonusRiga: bonusRiga,
         problemiConfigurazione: problemiConfigurazione
     };

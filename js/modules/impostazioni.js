@@ -801,9 +801,29 @@ ENI.Modules.Impostazioni = (function() {
             '<div class="card mb-4">' +
                 '<div class="card-header"><h3 class="card-title">💰 Bonus venduto</h3></div>' +
                 '<div class="card-body">' +
+
+                // Interruttore generale. Non nasconde soltanto le voci di menu:
+                // spegnendolo, l'innesco sul database SMETTE di creare movimenti
+                // (legge lo stesso elenco 'moduli_disabilitati'). Altrimenti i
+                // bonus continuerebbero ad accumularsi in silenzio su ogni
+                // vendita, e riaccendendo il modulo il gestore si troverebbe un
+                // maturato da pagare che non aveva mai deciso di far partire.
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;' +
+                    'padding:12px;border:1.5px solid var(--color-gray-300);border-radius:8px;margin-bottom:16px;">' +
+                    '<div>' +
+                        '<div style="font-weight:600;">Modulo attivo</div>' +
+                        '<div class="text-sm text-muted" id="bonus-stato-testo"></div>' +
+                    '</div>' +
+                    '<label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">' +
+                        '<input type="checkbox" id="bonus-attivo-toggle">' +
+                        '<span class="text-sm">Acceso</span>' +
+                    '</label>' +
+                '</div>' +
+
                 '<p class="text-sm text-muted" style="margin-top:0;">Vale su tutta la merce di magazzino, tranne i lavaggi ' +
                     '(che hanno il loro modulo e la loro strada verso la cassa). ' +
-                    'La fascia si sceglie sul <strong>prezzo del singolo pezzo</strong>.</p>' +
+                    'La fascia si sceglie sul <strong>totale della vendita</strong> (prezzo × quantità), ' +
+                    'non sul prezzo del singolo pezzo: 3 pezzi da 12 € fanno 36 € e prendono la fascia dei 36.</p>' +
 
                 '<div class="form-group" style="margin-top:12px;">' +
                     '<label class="form-label">Come si paga</label>' +
@@ -823,11 +843,17 @@ ENI.Modules.Impostazioni = (function() {
 
                 '<div id="bonus-blocco-fasce" hidden>' +
                     '<label class="form-label">Fasce di prezzo</label>' +
-                    '<table class="table" style="max-width:520px;">' +
-                        '<thead><tr><th>Da (€)</th><th>Percentuale</th><th></th></tr></thead>' +
+                    '<table class="table" style="max-width:620px;">' +
+                        '<thead><tr><th>Da (€)</th><th>A (€)</th><th>Percentuale</th><th></th></tr></thead>' +
                         '<tbody id="bonus-fasce-body"></tbody>' +
                     '</table>' +
                     '<button type="button" class="btn btn-sm btn-outline" id="bonus-add-fascia">➕ Aggiungi fascia</button>' +
+                    '<p class="text-sm text-muted" style="margin-top:8px;">' +
+                        'Scrivi dove finisce una fascia in «A» e la fascia successiva si apre da sola. ' +
+                        'Il valore in «A» <strong>è già della fascia successiva</strong>: ' +
+                        'una vendita di esattamente quell\'importo prende la percentuale della riga sotto. ' +
+                        'Fine di una fascia e inizio di quella dopo sono lo stesso numero, scritto una volta sola: ' +
+                        'cambiane uno e l\'altro si sposta. L\'ultima riga vale «in su».</p>' +
                 '</div>' +
 
                 '<div id="bonus-problemi" class="stock-alert" style="margin-top:12px;" hidden></div>' +
@@ -844,11 +870,117 @@ ENI.Modules.Impostazioni = (function() {
         return '<tr class="bonus-fascia-row">' +
             '<td><input type="number" step="0.01" min="0" class="form-input bonus-f-da" ' +
                 'value="' + (f && f.da_prezzo !== undefined ? f.da_prezzo : '') + '" style="max-width:120px;"></td>' +
+            // La "A" non ha un valore proprio: la riempie _bonusAggancia leggendo
+            // l'inizio della riga sotto. Nasce vuota apposta.
+            '<td><input type="number" step="0.01" min="0" class="form-input bonus-f-a" ' +
+                'style="max-width:120px;"></td>' +
             '<td><input type="number" step="0.01" min="0" max="100" class="form-input bonus-f-perc" ' +
                 'value="' + (f && f.percentuale !== undefined ? f.percentuale : '') + '" style="max-width:110px;"> %</td>' +
             '<td><button type="button" class="btn btn-sm bonus-f-del" ' +
                 'style="background:none;border:none;color:var(--color-danger);cursor:pointer;">✕</button></td>' +
         '</tr>';
+    }
+
+    function _bonusRighe(container) {
+        return Array.prototype.slice.call(container.querySelectorAll('.bonus-fascia-row'));
+    }
+
+    /**
+     * Riempie la colonna "A" di ogni riga con l'inizio della riga successiva.
+     *
+     * La fine di una fascia NON e' un dato: e' l'inizio di quella dopo, mostrato
+     * una seconda volta perche' il gestore ragiona per intervalli. Ricavandola
+     * ogni volta invece di memorizzarla, un buco fra due fasce e' impossibile
+     * per costruzione. L'ultima riga non ha una successiva: e' la fascia aperta,
+     * e la sua "A" resta vuota con scritto "in su" - ma si puo' scrivere, ed e'
+     * scrivendola che si apre la fascia dopo (vedi _bonusPropagaFine).
+     */
+    function _bonusAggancia(container) {
+        var righe = _bonusRighe(container);
+        righe.forEach(function(tr, i) {
+            var a = tr.querySelector('.bonus-f-a');
+            if (!a) return;
+            var succ = righe[i + 1];
+            if (!succ) {
+                a.placeholder = 'in su';
+                if (a !== document.activeElement) a.value = '';
+                return;
+            }
+            a.placeholder = '';
+            // Non riscrivere la casella su cui il gestore sta digitando: il
+            // valore sarebbe lo stesso, ma in alcuni browser riassegnare .value
+            // sposta il cursore in fondo e scrivere "10,50" diventa impossibile.
+            if (a !== document.activeElement) {
+                a.value = succ.querySelector('.bonus-f-da').value;
+            }
+        });
+    }
+
+    /** Una fascia appena aperta e mai compilata: la percentuale e' ancora vuota. */
+    function _bonusRigaIntonsa(tr) {
+        return tr.querySelector('.bonus-f-perc').value.trim() === '';
+    }
+
+    /**
+     * Scrivere la fine di una fascia sposta l'inizio di quella dopo.
+     *
+     * Sull'ultima riga la fascia dopo non c'e' ancora: scriverne la fine la
+     * CREA. Senza questo, con una fascia sola la sua "A" non avrebbe una riga
+     * successiva da cui prendere valore, e per dire "da 0 a 10" bisognerebbe
+     * prima indovinare "Aggiungi fascia" - l'inverso di come si ragiona.
+     * Cancellare la fine richiude la fascia appena aperta, ma solo se nessuno
+     * ci ha ancora scritto una percentuale: quella sarebbe lavoro buttato.
+     */
+    function _bonusPropagaFine(input) {
+        var tr = input.closest('.bonus-fascia-row');
+        if (!tr) return;
+        var succ = tr.nextElementSibling;
+        var haSucc = !!(succ && succ.classList.contains('bonus-fascia-row'));
+        var val = input.value.trim();
+
+        if (!haSucc) {
+            if (val === '') return;
+            tr.parentNode.insertAdjacentHTML('beforeend', _bonusFasciaRigaHtml(null));
+            succ = tr.nextElementSibling;
+        } else if (val === '' && _bonusRigaIntonsa(succ)) {
+            succ.remove();
+            return;
+        }
+        succ.querySelector('.bonus-f-da').value = val;
+    }
+
+    /**
+     * Rimette le righe in ordine di prezzo. Serve perche' la "A" si legge dalla
+     * riga successiva: con le fasce scritte in disordine mostrerebbe numeri veri
+     * ma senza senso (una fascia che "finisce" prima di cominciare). Il calcolo
+     * del bonus ordina per conto suo, quindi questo e' solo per gli occhi.
+     * Si fa sul change (uscita dal campo), non a ogni tasto, o le righe
+     * ballerebbero sotto le dita.
+     */
+    function _bonusRiordina(container) {
+        var body = container.querySelector('#bonus-fasce-body');
+        if (!body) return;
+        var righe = _bonusRighe(container);
+        if (righe.length < 2) return;
+
+        var attivo = document.activeElement;
+        var ordinate = righe.slice().sort(function(x, y) {
+            var vx = parseFloat(x.querySelector('.bonus-f-da').value);
+            var vy = parseFloat(y.querySelector('.bonus-f-da').value);
+            // Le righe non ancora compilate restano in fondo, nell'ordine in cui
+            // sono state aggiunte: spostarle mentre si scrive sarebbe peggio.
+            if (isNaN(vx) && isNaN(vy)) return righe.indexOf(x) - righe.indexOf(y);
+            if (isNaN(vx)) return 1;
+            if (isNaN(vy)) return -1;
+            return vx - vy;
+        });
+
+        var cambiato = ordinate.some(function(tr, i) { return tr !== righe[i]; });
+        if (!cambiato) return;
+
+        ordinate.forEach(function(tr) { body.appendChild(tr); });
+        // Riattaccare un nodo lo toglie e lo rimette: il fuoco si perde.
+        if (attivo && body.contains(attivo)) attivo.focus();
     }
 
     function _bonusLeggiForm(container) {
@@ -902,17 +1034,70 @@ ENI.Modules.Impostazioni = (function() {
 
         var eEl = container.querySelector('#bonus-esempio');
         if (eEl) {
-            var esempi = [8, 15, 25, 40].map(function(p) {
-                return 'un pezzo da ' + ENI.UI.formatValuta(p) + ' rende ' +
-                    ENI.UI.formatValuta(ENI.BonusCalcoli.bonusRiga(p, 1, regola).bonus);
+            // Esempi sul TOTALE della vendita, che e' quello che sceglie la
+            // fascia: il caso "3 pezzi" c'e' apposta, perche' e' dove la regola
+            // nuova si stacca dalla vecchia e dove si sbagliava a occhio.
+            var esempi = [[8, 1], [15, 1], [12, 3], [40, 1]].map(function(c) {
+                var tot = c[0] * c[1];
+                return (c[1] > 1 ? c[1] + ' × ' + ENI.UI.formatValuta(c[0]) + ' = ' : 'una vendita da ') +
+                    ENI.UI.formatValuta(tot) + ' rende ' +
+                    ENI.UI.formatValuta(ENI.BonusCalcoli.bonusRiga(c[0], c[1], regola).bonus);
             });
             eEl.textContent = 'Esempio: ' + esempi.join('  ·  ');
         }
     }
 
+    // Le due voci di menu del bonus: quella del dipendente e quella del gestore.
+    // Si accendono e si spengono insieme - un modulo mezzo acceso non ha senso.
+    var BONUS_MODULI = ['bonus-venduto', 'bonus-gestione'];
+
+    function _bonusModuloAttivo() {
+        var spenti = ENI.State.getModuliDisabilitati();
+        return spenti.indexOf('bonus-venduto') === -1;
+    }
+
+    function _bonusMostraStato(panel, attivo) {
+        var t = panel.querySelector('#bonus-stato-testo');
+        if (t) {
+            t.textContent = attivo
+                ? 'I dipendenti vedono la loro pagina e ogni vendita matura il bonus.'
+                : 'Spento: le voci di menu sono nascoste e nessuna vendita matura bonus.';
+        }
+        var chk = panel.querySelector('#bonus-attivo-toggle');
+        if (chk) chk.checked = attivo;
+    }
+
+    async function _bonusToggleModulo(panel, acceso) {
+        var spenti = ENI.State.getModuliDisabilitati();
+        BONUS_MODULI.forEach(function(id) {
+            var i = spenti.indexOf(id);
+            if (acceso) { if (i !== -1) spenti.splice(i, 1); }
+            else { if (i === -1) spenti.push(id); }
+        });
+
+        var chk = panel.querySelector('#bonus-attivo-toggle');
+        if (chk) chk.disabled = true;
+        try {
+            await ENI.API.salvaModuliDisabilitati(spenti);
+            ENI.State.setModuliDisabilitati(spenti);
+            _bonusMostraStato(panel, acceso);
+            ENI.UI.success(acceso ? 'Bonus venduto acceso' : 'Bonus venduto spento');
+            if (ENI.App.refreshSidebar) ENI.App.refreshSidebar();
+        } catch (err) {
+            _bonusMostraStato(panel, !acceso);   // rimetti l'interruttore com'era
+            ENI.UI.error('Errore: ' + (err.message || err));
+        }
+        if (chk) chk.disabled = false;
+    }
+
     async function _bonusInit(container) {
         var panel = container.querySelector('[data-panel="bonus"]');
         if (!panel) return;
+
+        _bonusMostraStato(panel, _bonusModuloAttivo());
+        panel.querySelector('#bonus-attivo-toggle').addEventListener('change', function(e) {
+            _bonusToggleModulo(panel, e.target.checked);
+        });
 
         _bonusCaricato = false;
         try {
@@ -920,8 +1105,13 @@ ENI.Modules.Impostazioni = (function() {
             panel.querySelector('#bonus-modo').value = regola.modo;
             panel.querySelector('#bonus-euro-pezzo').value =
                 (regola.euroPezzo || regola.euroPezzo === 0) ? regola.euroPezzo : '';
-            panel.querySelector('#bonus-fasce-body').innerHTML =
-                (regola.fasce || []).map(_bonusFasciaRigaHtml).join('');
+            // Senza fasce configurate la tabella sarebbe un rettangolo vuoto, con
+            // niente in cui scrivere: si parte da una riga bianca, cosi' c'e'
+            // sempre un punto da cui cominciare.
+            var fasceCaricate = regola.fasce || [];
+            panel.querySelector('#bonus-fasce-body').innerHTML = fasceCaricate.length
+                ? fasceCaricate.map(_bonusFasciaRigaHtml).join('')
+                : _bonusFasciaRigaHtml(null);
             _bonusCaricato = true;
         } catch(e) {
             // Form inutilizzabile finche' non si riesce a leggere: com'e' adesso
@@ -940,11 +1130,28 @@ ENI.Modules.Impostazioni = (function() {
             return;   // niente listener: il pannello resta in sola lettura
         }
 
-        panel.addEventListener('input', function() { _bonusAggiorna(panel); });
-        panel.addEventListener('change', function() { _bonusAggiorna(panel); });
+        panel.addEventListener('input', function(e) {
+            // Prima si propaga, poi si riaggancia: il valore appena scritto in
+            // "A" diventa l'inizio della riga sotto, e da li' torna identico
+            // nella "A". Le due caselle restano lo stesso numero.
+            if (e.target.classList && e.target.classList.contains('bonus-f-a')) {
+                _bonusPropagaFine(e.target);
+            }
+            _bonusAggancia(panel);
+            _bonusAggiorna(panel);
+        });
+        panel.addEventListener('change', function() {
+            _bonusRiordina(panel);
+            _bonusAggancia(panel);
+            _bonusAggiorna(panel);
+        });
 
         panel.querySelector('#bonus-add-fascia').addEventListener('click', function() {
             panel.querySelector('#bonus-fasce-body').insertAdjacentHTML('beforeend', _bonusFasciaRigaHtml(null));
+            // La riga che fino a un attimo fa era l'ultima non e' piu' aperta:
+            // la sua "A" va riaccesa, altrimenti resta spenta su "in su".
+            _bonusAggancia(panel);
+            _bonusAggiorna(panel);
         });
 
         panel.addEventListener('click', function(e) {
@@ -952,6 +1159,9 @@ ENI.Modules.Impostazioni = (function() {
             if (!del) return;
             var row = del.closest('.bonus-fascia-row');
             if (row) row.remove();
+            // Tolta una riga di mezzo, le due che la circondavano si richiudono
+            // da sole: la "A" di sopra diventa l'inizio di quella di sotto.
+            _bonusAggancia(panel);
             _bonusAggiorna(panel);
         });
 
@@ -985,6 +1195,7 @@ ENI.Modules.Impostazioni = (function() {
             }
         });
 
+        _bonusAggancia(panel);
         _bonusAggiorna(panel);
     }
 
