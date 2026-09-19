@@ -213,6 +213,17 @@ ENI.Auth = (function() {
 
         try { await ENI.API.logoutAuth(); } catch (e) {}
 
+        // Via l'indirizzo della sezione in cui eravamo. Senza, l'hash resta
+        // quello di prima: chi entra dopo con meno permessi (es. si esce da
+        // Impostazioni come gestore e rientra un Cassiere) si becca subito
+        // "Non hai i permessi per accedere a questa sezione" senza aver fatto
+        // niente. replaceState invece di toccare location.hash: non aggiunge
+        // una voce nella cronologia e non fa scattare il router, che a questo
+        // punto rimanderebbe comunque al login.
+        try {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        } catch (e) {}
+
         renderLogin();
     }
 

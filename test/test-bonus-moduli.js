@@ -347,5 +347,16 @@ check('la migration 9 conserva tutte le guardie della 8',
   /vendita_dettaglio_id/.test(migr9) &&
   /when others/.test(migr9));
 
+console.log('\n--- uscire e rientrare con un altro utente ---');
+// Il logout non ripuliva l'indirizzo: restando su #/impostazioni, chi entrava
+// dopo con meno permessi si prendeva "Non hai i permessi per accedere a questa
+// sezione" prima ancora di toccare qualcosa. Vale per qualunque sezione
+// riservata, non solo per il bonus.
+const auth = fs.readFileSync(P + 'js/auth.js', 'utf8');
+check("il logout ripulisce l'indirizzo della sezione",
+  /async function logout[\s\S]{0,1600}?history\.replaceState\(/.test(auth));
+check('senza aggiungere una voce nella cronologia ne far scattare il router',
+  !/async function logout[\s\S]{0,1600}?location\.hash\s*=/.test(auth));
+
 console.log('\n' + pass + ' passati, ' + fail + ' falliti');
 process.exit(fail === 0 ? 0 : 1);
