@@ -63,9 +63,16 @@ const API = sandbox.ENI.API;
   const apiSrc = fs.readFileSync(P + 'js/api.js', 'utf8');
   check('e non ne resta traccia nemmeno nel sorgente',
     !/registra_vendita_bonus/.test(apiSrc));
-  check('nessuna funzione del bonus scrive a mano in bonus_movimenti',
-    !/from\('bonus_movimenti'\)[\s\S]{0,120}?\.insert\(/.test(
-      apiSrc.replace(/async function aggiungiMovimentoBonus[\s\S]*?\n    }\n/, '')));
+  // I movimenti li crea l'innesco sul database. L'UNICA scrittura diretta
+  // ammessa da qui e' la riga che il gestore aggiunge a mano dalla sua scheda.
+  // Contare invece di ritagliare il sorgente: la versione precedente tagliava
+  // la funzione cercando "}" seguita da \n, e bastava il passaggio a CRLF del
+  // merge per farla fallire senza che nulla fosse cambiato davvero.
+  const scrittureDirette = (apiSrc.match(/from\('bonus_movimenti'\)[\s\S]{0,160}?\.insert\(/g) || []).length;
+  check("l'unica scrittura diretta in bonus_movimenti e la riga aggiunta a mano",
+    scrittureDirette === 1 &&
+    /async function aggiungiMovimentoBonus[\s\S]{0,600}?from\('bonus_movimenti'\)[\s\S]{0,160}?\.insert\(/.test(apiSrc),
+    'scritture dirette trovate: ' + scrittureDirette);
 
   console.log('\n--- letture del dipendente ---');
   azioni.length = 0;
