@@ -188,7 +188,12 @@ ENI.Modules.Vendita = (function() {
         if (btnSvuota) {
             btnSvuota.addEventListener('click', function() {
                 if (_carrello.length === 0) return;
-                ENI.UI.confirm('Vuoi svuotare il carrello?', function() {
+                // UI.confirm restituisce una promessa e IGNORA il secondo
+                // argomento: passandogli una richiamata, il carrello non si
+                // svuotava mai - si apriva il riquadro, si premeva Conferma e
+                // non succedeva niente.
+                ENI.UI.confirm('Vuoi svuotare il carrello?').then(function(ok) {
+                    if (!ok) return;
                     _carrello = [];
                     _scontoGlobale = 0;
                     _renderCarrello();
@@ -996,7 +1001,12 @@ ENI.Modules.Vendita = (function() {
                 msg += '.\nResto in contanti: ' + ENI.UI.formatValuta(resto);
             }
 
-            ENI.UI.confirm(msg, function() {
+            // Stesso difetto, ma qui costava molto di piu': la richiamata non
+            // veniva mai eseguita, quindi un buono cartaceo che copriva tutto
+            // il totale NON concludeva la vendita. L'operatore premeva Conferma
+            // e non succedeva niente.
+            ENI.UI.confirm(msg).then(function(ok) {
+                if (!ok) return;
                 _completaVendita('buono_cartaceo', 0, 0, resto, { id: buono.id, taglio: taglio, ean: buono.codice_ean }, null);
             });
         } else {
@@ -1106,14 +1116,18 @@ ENI.Modules.Vendita = (function() {
     function _processWalletPayment(clienteId, nome, saldo, totali) {
         if (saldo >= totali.totale) {
             // Saldo sufficiente
+            // Stesso difetto del POS: la richiamata non veniva mai eseguita,
+            // quindi pagare col wallet quando il saldo bastava non concludeva
+            // la vendita. Col saldo insufficiente invece funzionava, perche'
+            // quel ramo usa un modale suo con i pulsanti agganciati a mano.
             ENI.UI.confirm(
                 'Scalare ' + ENI.UI.formatValuta(totali.totale) + ' dal wallet di ' + nome + '?\n' +
                 'Saldo attuale: ' + ENI.UI.formatValuta(saldo) + '\n' +
-                'Saldo dopo: ' + ENI.UI.formatValuta(saldo - totali.totale),
-                function() {
-                    _completaVendita('wallet_digitale', 0, 0, 0, null, { clientePortaleId: clienteId, importo: totali.totale, nome: nome });
-                }
-            );
+                'Saldo dopo: ' + ENI.UI.formatValuta(saldo - totali.totale)
+            ).then(function(ok) {
+                if (!ok) return;
+                _completaVendita('wallet_digitale', 0, 0, 0, null, { clientePortaleId: clienteId, importo: totali.totale, nome: nome });
+            });
         } else {
             // Saldo insufficiente: pagamento misto
             var differenza = Math.round((totali.totale - saldo) * 100) / 100;
@@ -1205,13 +1219,18 @@ ENI.Modules.Vendita = (function() {
         });
     }
 
+    // UI.confirm restituisce una PROMESSA e ignora il secondo argomento: con la
+    // richiamata, questa vendita non si concludeva mai. Il POS del negozio e'
+    // rimasto inutilizzabile da febbraio a settembre 2026 - 1.029 vendite a
+    // contanti, 0 col POS - e chi pagava con la carta finiva registrato come
+    // contante, l'unica strada che funzionava.
     function _pagamentoPOS(totali) {
         ENI.UI.confirm(
-            'Confermi pagamento POS di ' + ENI.UI.formatValuta(totali.totale) + '?',
-            function() {
-                _completaVendita('pos', 0, totali.totale, 0);
-            }
-        );
+            'Confermi pagamento POS di ' + ENI.UI.formatValuta(totali.totale) + '?'
+        ).then(function(ok) {
+            if (!ok) return;
+            _completaVendita('pos', 0, totali.totale, 0);
+        });
     }
 
     function _pagamentoMisto(totali) {
@@ -1638,6 +1657,10 @@ ENI.Modules.Vendita = (function() {
         var html = '<div class="table-wrapper"><table class="table">' +
             '<thead><tr><th>Data/Ora</th><th>Codice</th><th>Operatore</th><th>Totale</th><th>Metodo</th><th>Stato</th><th>Azioni</th></tr></thead><tbody>';
 
+        // Nota: il numero di celle di ogni riga non cambia: il pulsante Annulla
+        // sta dentro la cella Azioni che c'e' gia'. Nessun rischio di
+        // disallineare la tabella.
+
         pageItems.forEach(function(v) {
             var statoClass = '';
             var statoLabel = v.stato;
@@ -1658,6 +1681,13 @@ ENI.Modules.Vendita = (function() {
                 '<td>' +
                     '<button class="btn btn-sm btn-outline" data-view-vendita="' + v.id + '">Dettaglio</button>' +
                     (v.stato === 'completata' ? ' <button class="btn btn-sm btn-outline" data-reso-vendita="' + v.id + '" style="color: var(--color-warning);">Reso</button>' : '') +
+                    // Annullamento riservato all'Admin: un reso lascia una traccia
+                    // visibile (il documento di reso, col rimborso), un annullamento
+                    // fa sparire la vendita dai totali e basta. Fra i due e' quello
+                    // che conviene tenere in poche mani.
+                    (v.stato === 'completata' && _puoAnnullare()
+                        ? ' <button class="btn btn-sm btn-outline" data-annulla-vendita="' + v.id + '" style="color: var(--color-danger);">Annulla</button>'
+                        : '') +
                 '</td>' +
             '</tr>';
         });
@@ -1672,6 +1702,9 @@ ENI.Modules.Vendita = (function() {
         });
         listEl.querySelectorAll('[data-reso-vendita]').forEach(function(b) {
             b.addEventListener('click', function() { _showFormReso(b.getAttribute('data-reso-vendita')); });
+        });
+        listEl.querySelectorAll('[data-annulla-vendita]').forEach(function(b) {
+            b.addEventListener('click', function() { _annullaVendita(b.getAttribute('data-annulla-vendita')); });
         });
 
         // Paginazione
@@ -1856,6 +1889,51 @@ ENI.Modules.Vendita = (function() {
             _renderResiList();
         } catch(e) {
             listEl.innerHTML = '<div class="text-center text-muted">Errore caricamento resi</div>';
+        }
+    }
+
+    // --- Annullamento vendita ---
+    //
+    // La funzione ENI.API.annullaVendita esisteva da sempre ma non la chiamava
+    // nessuno: dallo storico si poteva solo fare un Reso. E' un buco che si
+    // vedeva soprattutto col bonus venduto, dove l'innesco che toglie il bonus
+    // a una vendita annullata non poteva scattare, perche' annullare non era
+    // possibile. Annullare rimette anche la giacenza e scrive nel log.
+
+    function _puoAnnullare() {
+        return ENI.State.canWrite('vendita') && ENI.State.getUserRole() === 'Admin';
+    }
+
+    async function _annullaVendita(venditaId) {
+        try {
+            var vendita = await ENI.API.getById('vendite', venditaId);
+            if (!vendita) { ENI.UI.error('Vendita non trovata'); return; }
+            if (vendita.stato !== 'completata') {
+                ENI.UI.warning('Questa vendita non è più completata: non si può annullare.');
+                return;
+            }
+
+            var ok = await ENI.UI.confirm({
+                title: '⚠️ Annullare la vendita ' + vendita.codice + '?',
+                message: 'Importo: ' + ENI.UI.formatValuta(vendita.totale) + '\n' +
+                    'Operatore: ' + (vendita.operatore_nome || '-') + '\n\n' +
+                    'La vendita esce dal venduto di giornata, la merce torna in magazzino ' +
+                    'e l\'eventuale bonus del dipendente viene tolto.\n\n' +
+                    'Se invece il cliente ha restituito la merce e vuoi tenerne traccia ' +
+                    'col rimborso, usa Reso.',
+                confirmText: 'Annulla la vendita',
+                cancelText: 'Lascia stare'
+            });
+            if (!ok) return;
+
+            ENI.UI.showLoading();
+            await ENI.API.annullaVendita(venditaId, vendita);
+            ENI.UI.hideLoading();
+            ENI.UI.success('Vendita ' + vendita.codice + ' annullata');
+            await _loadStorico();
+        } catch(e) {
+            ENI.UI.hideLoading();
+            ENI.UI.error('Errore: ' + e.message);
         }
     }
 
