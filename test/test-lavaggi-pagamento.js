@@ -144,6 +144,26 @@ const C = sandbox.ENI.Config;
   check('gestito il caso da_incassare', /da_incassare/.test(lavSrc));
   check('differito -> fattura automatica', /_clientePagaDifferito/.test(lavSrc));
 
+  // --- 7. Incassare in ritardo un lavaggio gia' completato ---
+  // Il badge diceva "apri le azioni per sistemarlo", ma fra le azioni di un
+  // lavaggio completato c'erano solo Modifica ed Elimina: era un vicolo cieco.
+  // Ora il badge stesso e' il comando.
+  check('il badge "da incassare" e cliccabile',
+    /da-incassare[\s\S]{0,400}?data-incassa-id=|data-incassa-id=[\s\S]{0,400}?da incassare/.test(lavSrc));
+  check('il click e agganciato', /\[data-incassa-id\]/.test(lavSrc));
+  check('il badge non manda piu alle azioni, che non avevano nulla',
+    !/apri le azioni per sistemarlo/.test(lavSrc));
+
+  // Deve riusare la stessa strada del completamento: un lavaggio incassato in
+  // ritardo dev'essere identico in tutto a uno incassato subito - stessa
+  // vendita, stesso collegamento, stesso comportamento se poi lo si annulla.
+  check('riusa il percorso di incasso esistente, non ne scrive un altro',
+    /function _incassaOra[\s\S]{0,1600}?_registraIncasso\(/.test(lavSrc));
+  check('non crea una seconda vendita se il lavaggio risulta gia incassato',
+    /function _incassaOra[\s\S]{0,900}?getVenditaPerLavaggio\(/.test(lavSrc));
+  check('e lo dice, invece di non fare niente in silenzio',
+    /function _incassaOra[\s\S]{0,900}?getVenditaPerLavaggio\([\s\S]{0,300}?UI\.(warning|info)\(/.test(lavSrc));
+
   console.log('\n' + pass + ' passati, ' + fail + ' falliti');
   process.exit(fail === 0 ? 0 : 1);
 })().catch(e => { console.error('ERRORE: ' + e.stack); process.exit(1); });

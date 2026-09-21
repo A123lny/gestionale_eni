@@ -152,6 +152,11 @@ ENI.Modules.Lavaggi = (function() {
             _eliminaLavaggio(el.dataset.eliminaId);
         });
 
+        ENI.UI.delegate(container, 'click', '[data-incassa-id]', function(e, el) {
+            e.stopPropagation();
+            _incassaOra(el.dataset.incassaId);
+        });
+
         // Listino actions
         ENI.UI.delegate(container, 'click', '#btn-nuovo-tipo', function() {
             _showFormListino(null);
@@ -295,7 +300,12 @@ ENI.Modules.Lavaggi = (function() {
     function _pagamentoBadge(l) {
         if (l.stato !== 'Completato' || !l.stato_pagamento) return '';
         if (l.stato_pagamento === 'da_incassare') {
-            return ' <span class="badge badge-scaduto" title="Incasso non registrato: apri le azioni per sistemarlo">⚠️ da incassare</span>';
+            // Il badge E' il comando. Prima rimandava alle azioni, dove pero'
+            // su un lavaggio completato ci sono solo Modifica ed Elimina:
+            // era un vicolo cieco, e l'incasso restava in sospeso.
+            return ' <span class="badge badge-scaduto" role="button" tabindex="0" ' +
+                   'data-incassa-id="' + l.id + '" style="cursor:pointer;" ' +
+                   'title="Clicca per registrare l\'incasso">⚠️ da incassare</span>';
         }
         if (l.stato_pagamento === 'fattura') {
             return ' <span class="badge badge-corporate" title="Cliente ad addebito differito: si fattura a fine mese">\u{1F9FE} a fattura</span>';
@@ -1191,6 +1201,38 @@ ENI.Modules.Lavaggi = (function() {
             console.error('Articolo magazzino non trovato, procedo senza:', e);
         }
         return await ENI.API.salvaVenditaDaLavaggio(lavaggio, prodotto, metodo);
+    }
+
+    // Incasso registrato in ritardo, cliccando il badge "da incassare".
+    //
+    // Non riscrive niente: chiama lo stesso _registraIncasso del completamento,
+    // cosi' un lavaggio incassato tre ore dopo e' identico in tutto a uno
+    // incassato subito - stessa vendita collegata, stesso comportamento se poi
+    // lo si annulla. L'unica differenza e' il controllo qui sotto: qui c'e'
+    // qualcuno che ha premuto e aspetta una risposta, quindi il caso "risulta
+    // gia' incassato" va detto, non lasciato passare in silenzio come fa
+    // _registraIncasso quando gira da solo dopo il completamento.
+    async function _incassaOra(id) {
+        var lavaggio = _lavaggi.filter(function(l) { return l.id === id; })[0];
+        if (!lavaggio) { ENI.UI.error('Lavaggio non trovato: ricarica la pagina'); return; }
+
+        try {
+            var esistente = await ENI.API.getVenditaPerLavaggio(id);
+            if (esistente) {
+                // Incassarlo due volte sarebbe l'errore peggiore: soldi contati
+                // due volte in cassa e giacenza scalata due volte.
+                ENI.UI.warning('Questo lavaggio risulta già incassato con la vendita ' +
+                    (esistente.codice || '') + ': non ne creo una seconda.');
+                await ENI.API.setStatoPagamentoLavaggio(id, esistente.metodo_pagamento || 'contanti');
+                await _loadLavaggi();
+                return;
+            }
+        } catch(e) {
+            ENI.UI.error('Non riesco a verificare se è già incassato: ' + e.message);
+            return;
+        }
+
+        await _registraIncasso(id, lavaggio);
     }
 
     async function _registraIncasso(id, lavaggio) {
