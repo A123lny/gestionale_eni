@@ -143,6 +143,33 @@
     flex: 1;
 }
 
+/* --- FIELDSET: gruppi di campi dentro un modulo --- */
+/*
+   Il reset in cima a base.css azzera il padding di OGNI elemento, fieldset
+   compreso. Restava quindi il bordo predefinito del browser (quello scavato,
+   grigio) ma senza un filo di spazio dentro: il testo dei campi finiva
+   addosso alla cornice e la scritta del titolo sembrava tagliata.
+
+   Qui prendono lo stesso aspetto delle card, cosi' "Cliente", "Documento" e
+   "Righe documento" nella fattura manuale si leggono come i riquadri del
+   resto del gestionale. Niente margin: la spaziatura fra un gruppo e l'altro
+   la decidono le classi di utilita' (mb-3) usate nel markup.
+*/
+fieldset {
+    background-color: var(--bg-card);
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+}
+
+legend {
+    padding: 0 var(--space-2);
+    margin-left: calc(var(--space-2) * -1);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+}
+
 /* --- KPI CARD --- */
 .kpi-card {
     background-color: var(--bg-card);

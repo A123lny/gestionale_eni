@@ -45,7 +45,16 @@ ENI.Fatturazione.Manuale = (function() {
                     '<div id="fatt-m-box-anagrafica">' +
                         '<div class="form-group" style="position:relative;">' +
                             '<input type="text" class="form-input" id="fatt-m-cerca" placeholder="Cerca cliente per nome, P.IVA/COE o targa...">' +
-                            '<div id="fatt-m-cerca-results" class="pos-search-results" style="display:none;position:absolute;z-index:10;width:100%;"></div>' +
+                            // pos-search-dropdown e' la classe vera, quella che usano
+                            // Vendite e Buoni: sfondo bianco, bordo, ombra, z-index 1000
+                            // e - la cosa che serviva qui - altezza massima con
+                            // scorrimento. Prima c'era "pos-search-results", un nome
+                            // senza nessuna regola nel CSS: il riquadro nasceva
+                            // trasparente, senza bordo e alto quanto l'elenco, quindi
+                            // copriva la pagina e i nomi si leggevano sopra il modulo.
+                            // Posizione e larghezza le mette la classe: ripeterle qui
+                            // inline le farebbe litigare.
+                            '<div id="fatt-m-cerca-results" class="pos-search-dropdown" style="display:none;"></div>' +
                         '</div>' +
                         '<div id="fatt-m-cliente-info" style="display:none;"></div>' +
                     '</div>' +

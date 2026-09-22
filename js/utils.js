@@ -50,7 +50,10 @@ ENI.Utils = (function() {
                             '</div>';
                     } else {
                         resultsEl.innerHTML = clienti.map(function(c) {
-                            return '<div class="pos-search-item pos-search-cliente" data-sel-id="' + c.id + '">' +
+                            // Nessuna "pos-search-cliente": era un nome scritto e
+                            // mai letto, ne' dal CSS ne' dal codice - i click
+                            // passano da [data-sel-id].
+                            return '<div class="pos-search-item" data-sel-id="' + c.id + '">' +
                                 '<div>' +
                                     '<span class="pos-search-item-name">' + ENI.UI.escapeHtml(c.nome_ragione_sociale) + '</span>' +
                                     (c.targa ? '<br><span class="pos-search-item-code">' + ENI.UI.escapeHtml(c.targa) + '</span>' : '') +
