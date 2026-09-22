@@ -78,20 +78,30 @@ ENI.Modules.Lavaggi = (function() {
         }
     }
 
+    // Tutto in delega sul contenitore, niente ascoltatori sui singoli elementi.
+    //
+    // Il router riusa sempre lo stesso nodo #main-content, ma render() ne
+    // ricostruisce il contenuto: rientrando nei Lavaggi dopo essere stati
+    // altrove, il campo data e i due pulsanti sono elementi NUOVI. Prima qui
+    // c'era una guardia anti-doppioni basata su un flag appiccicato al
+    // contenitore, che il nodo si portava dietro per sempre: al secondo giro
+    // questa funzione usciva alla prima riga e quei tre comandi restavano
+    // muti. Cambiare giorno non ricaricava l'elenco finche' non si ricaricava
+    // tutta la pagina.
+    //
+    // La delega non ha quel problema: e' agganciata al contenitore, che non
+    // viene mai sostituito, e ENI.UI.delegate ha gia' la sua guardia per
+    // contenitore + evento + selettore, quindi richiamarla e' innocuo.
     function _setupEvents(container) {
-        if (container._lavaggiEventsSetup) return;
-        container._lavaggiEventsSetup = true;
-
-        var dateInput = container.querySelector('#lavaggi-data');
-        if (dateInput) {
-            dateInput.addEventListener('change', function(e) {
-                _dataSelezionata = e.target.value;
-                var parts = _dataSelezionata.split('-');
-                _annoCorrente = parseInt(parts[0], 10);
-                _meseCorrente = parseInt(parts[1], 10);
-                _loadLavaggi();
-            });
-        }
+        // 'change' risale il DOM come 'click', quindi la delega funziona anche
+        // per il campo data.
+        ENI.UI.delegate(container, 'change', '#lavaggi-data', function(e, el) {
+            _dataSelezionata = el.value;
+            var parts = _dataSelezionata.split('-');
+            _annoCorrente = parseInt(parts[0], 10);
+            _meseCorrente = parseInt(parts[1], 10);
+            _loadLavaggi();
+        });
 
         ENI.UI.delegate(container, 'click', '.chip[data-vista]', function(e, el) {
             _vistaCorrente = el.dataset.vista;
@@ -124,11 +134,11 @@ ENI.Modules.Lavaggi = (function() {
             }
         });
 
-        container.querySelector('#btn-nuovo-lavaggio').addEventListener('click', function() {
+        ENI.UI.delegate(container, 'click', '#btn-nuovo-lavaggio', function() {
             _showFormLavaggio(false);
         });
 
-        container.querySelector('#btn-walkin').addEventListener('click', function() {
+        ENI.UI.delegate(container, 'click', '#btn-walkin', function() {
             _showFormLavaggio(true);
         });
 

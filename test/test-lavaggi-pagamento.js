@@ -164,6 +164,29 @@ const C = sandbox.ENI.Config;
   check('e lo dice, invece di non fare niente in silenzio',
     /function _incassaOra[\s\S]{0,900}?getVenditaPerLavaggio\([\s\S]{0,300}?UI\.(warning|info)\(/.test(lavSrc));
 
+  // --- 8. I comandi sopravvivono al rientro nella pagina ---
+  //
+  // Il router riusa sempre lo stesso nodo #main-content, ma render() ne
+  // ricostruisce il contenuto: tornando sui Lavaggi dopo essere stati altrove,
+  // il campo data e i due pulsanti erano elementi NUOVI. _setupEvents pero' si
+  // proteggeva dai doppioni con un flag messo sul contenitore, che il nodo si
+  // portava dietro: usciva subito e non agganciava piu' niente. Risultato:
+  // cambiare giorno non ricaricava l'elenco (e Prenota/Walk-in erano muti)
+  // finche' non si ricaricava tutta la pagina.
+  //
+  // La delega sopravvive perche' e' agganciata al contenitore, non ai figli.
+  check('il campo data usa la delega, non un ascoltatore diretto',
+    /delegate\([^)]*'change',\s*'#lavaggi-data'/.test(lavSrc) &&
+    !/querySelector\('#lavaggi-data'\)[\s\S]{0,120}?addEventListener/.test(lavSrc));
+  check('il pulsante Prenota usa la delega',
+    /delegate\([^)]*'click',\s*'#btn-nuovo-lavaggio'/.test(lavSrc) &&
+    !/querySelector\('#btn-nuovo-lavaggio'\)[\s\S]{0,120}?addEventListener/.test(lavSrc));
+  check('il pulsante Walk-in usa la delega',
+    /delegate\([^)]*'click',\s*'#btn-walkin'/.test(lavSrc) &&
+    !/querySelector\('#btn-walkin'\)[\s\S]{0,120}?addEventListener/.test(lavSrc));
+  check('via il flag sul contenitore, che era la causa',
+    !/_lavaggiEventsSetup/.test(lavSrc));
+
   console.log('\n' + pass + ' passati, ' + fail + ' falliti');
   process.exit(fail === 0 ? 0 : 1);
 })().catch(e => { console.error('ERRORE: ' + e.stack); process.exit(1); });
