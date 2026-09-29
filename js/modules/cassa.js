@@ -20,6 +20,13 @@ ENI.Modules.Cassa = (function() {
     // finivano per non coincidere. null = lettura non riuscita.
     var _totLavaggi = null;
 
+    // Quadratura: prezzi al litro della giornata chiusa precedente e progressivo
+    // delle differenze.
+    // Vedi js/lib/cassa-quadratura.js per il perche'.
+    var _prezziPrec = {};
+    var _progressivoMese = { totale: 0, giorni: 0 };
+    var _progressivoAnno = { totale: 0, giorni: 0 };
+
     // ============================================================
     // RENDER PRINCIPALE
     // ============================================================
@@ -83,10 +90,15 @@ ENI.Modules.Cassa = (function() {
 
         var body =
             '<div style="max-height:65vh; overflow-y:auto; padding-right:6px;">' +
-            '<div class="text-sm text-muted" style="margin-bottom:16px;">La <strong>Data conteggio</strong> è il <strong>giorno precedente</strong> (la chiusura si fa il giorno dopo). Alla fine, <strong>Differenza = Venduto − Incassato − Crediti</strong>:<br>' +
-                '• <strong style="color:#166534;">Quadra</strong> (≈ 0) → tutto a posto.<br>' +
-                '• <strong style="color:#991B1B;">Ammanco</strong> (positivo) → <strong>mancano soldi</strong>: hai venduto ma il denaro non risulta.<br>' +
-                '• <strong style="color:#92400E;">Eccedenza</strong> (negativo) → soldi in più del venduto: di solito <strong>manca una vendita da registrare</strong>.' +
+            '<div class="text-sm text-muted" style="margin-bottom:16px;">La <strong>Data conteggio</strong> è il <strong>giorno precedente</strong> (la chiusura si fa il giorno dopo).<br><br>' +
+                '<strong>La cassa non quadra mai al centesimo, ed è normale.</strong> Il venduto carburante arriva dallo scontrino della sera, che conta <em>tutti</em> i litri della giornata a <em>un solo</em> prezzo. Gli incassi invece sono soldi veri: il giorno che il prezzo cambia, i due numeri misurano cose diverse.<br>' +
+                'Su sei mesi le differenze si annullano: −340 € su 2.481.271 € di venduto. <strong>I soldi non mancano.</strong><br><br>' +
+                'Per questo la cassa non segnala un ammanco ogni giorno, ma dà un giudizio:<br>' +
+                '• <strong style="color:#166534;">Cassa regolare</strong> → la differenza è dentro l\'oscillazione normale, non c\'è niente da cercare.<br>' +
+                '• <strong style="color:#92400E;">Da controllare</strong> → fuori dal solito. Vale la pena ricontrollare le chiusure POS.<br>' +
+                '• <strong style="color:#991B1B;">Differenza anomala</strong> → qui c\'è quasi sempre un problema vero: una chiusura POS non inserita, litri battuti male, un rifornimento preso in conto.<br><br>' +
+                'Se il prezzo è cambiato in giornata puoi indicare, sotto il carburante, quanti litri erano già stati venduti al prezzo vecchio: il venduto viene corretto e la soglia si stringe. È facoltativo.<br><br>' +
+                'In fondo trovi il <strong>progressivo</strong> del mese e dell\'anno: è quello il numero che dice se i soldi ci sono.' +
             '</div>' +
 
             blocco('⛽', 'Venduto Carburante',
@@ -164,6 +176,8 @@ ENI.Modules.Cassa = (function() {
             _totLavaggi = null;
         }
 
+        await _caricaQuadratura();
+
         // Carica totali POS vendita (se cassa non chiusa)
         _posTotals = null;
         if (!_cassa || _cassa.stato !== 'chiusa') {
@@ -175,6 +189,34 @@ ENI.Modules.Cassa = (function() {
         }
 
         _renderForm();
+    }
+
+    // Prezzi del giorno prima e progressivo delle differenze.
+    // Se una delle due letture fallisce la cassa deve restare usabile: si
+    // azzerano i dati accessori e si va avanti senza avvisi.
+    async function _caricaQuadratura() {
+        var Q = ENI.CassaQuadratura;
+        _prezziPrec = {};
+        _progressivoMese = { totale: 0, giorni: 0 };
+        _progressivoAnno = { totale: 0, giorni: 0 };
+        if (!Q || !_dataSelezionata) return;
+
+        try {
+            var prec = await ENI.API.getCassaPrecedenteChiusa(_dataSelezionata);
+            // Il confronto col prezzo di oggi lo fa _ricalcola sui campi vivi,
+            // cosi' l'avviso compare mentre si digita e non solo al caricamento.
+            if (prec) _prezziPrec = Q.prezziDaCassa(prec);
+        } catch (e) { /* nessun avviso di cambio prezzo: meglio di un avviso sbagliato */ }
+
+        try {
+            var anno  = _dataSelezionata.slice(0, 4);
+            var mese  = _dataSelezionata.slice(0, 7);
+            var righe = await ENI.API.getDifferenzeCasse(anno + '-01-01', _dataSelezionata);
+            _progressivoAnno = Q.progressivo(righe);
+            _progressivoMese = Q.progressivo(righe.filter(function(r) {
+                return String(r.data).slice(0, 7) === mese;
+            }));
+        } catch (e) { /* progressivo non mostrato */ }
     }
 
     // ============================================================
@@ -394,11 +436,15 @@ ENI.Modules.Cassa = (function() {
                 '</div>' +
 
                 // DIFFERENZA (sticky)
+                // Nelle giornate regolari NON si mostra il cifrone: la differenza
+                // non e' un ammanco (vedi js/lib/cassa-quadratura.js) e gridare
+                // "mancano soldi" ogni giorno rende invisibile il giorno che conta.
                 '<div class="cassa-differenza ok cassa-totale-sticky" id="cassa-diff-box">' +
-                    '<div style="font-size:0.875rem; opacity:0.8;">\u2696\uFE0F DIFFERENZA CASSA</div>' +
-                    '<div style="font-size:2rem; font-weight:700;" id="tot-differenza">\u20AC 0,00</div>' +
-                    '<div style="font-size:1rem; font-weight:700; margin-top:2px;" id="diff-stato"></div>' +
-                    '<div class="text-sm" id="diff-formula">Venduto \u2212 Incassato \u2212 Crediti</div>' +
+                    '<div style="font-size:1.25rem; font-weight:700;" id="diff-stato">\u2705 CASSA REGOLARE</div>' +
+                    '<div style="font-size:2rem; font-weight:700; margin-top:2px;" id="tot-differenza" hidden>\u20AC 0,00</div>' +
+                    '<div class="text-sm" style="margin-top:4px;" id="diff-formula"></div>' +
+                    '<div class="text-sm" style="margin-top:8px; text-align:left;" id="diff-azioni" hidden></div>' +
+                    '<div class="text-sm" style="margin-top:10px; opacity:0.75;" id="diff-progressivo"></div>' +
                 '</div>' +
 
                 // Note
@@ -747,6 +793,11 @@ ENI.Modules.Cassa = (function() {
             var euro = (c[f.prefix + '_euro'] !== undefined && c[f.prefix + '_euro'] !== null && c[f.prefix + '_euro'] !== 0)
                 ? c[f.prefix + '_euro'] : '';
 
+            var litriPrec = (c[f.prefix + '_litri_prezzo_prec'] !== undefined &&
+                             c[f.prefix + '_litri_prezzo_prec'] !== null &&
+                             Number(c[f.prefix + '_litri_prezzo_prec']) !== 0)
+                ? c[f.prefix + '_litri_prezzo_prec'] : '';
+
             html += '<div class="fuel-row">' +
                 '<span class="fuel-label">' + f.label + '</span>' +
                 '<input type="number" step="0.01" min="0" ' +
@@ -757,6 +808,28 @@ ENI.Modules.Cassa = (function() {
                     'class="form-input cassa-field fuel-euro" ' +
                     'data-field="' + f.prefix + '_euro" ' +
                     'value="' + euro + '" placeholder="\u20AC">' +
+            '</div>' +
+
+            // Riga del cambio prezzo: resta nascosta e viene mostrata da
+            // _ricalcola quando il prezzo di oggi non coincide con quello della
+            // giornata chiusa precedente. E' generata sempre (non ri-renderizzata)
+            // perche' ricostruire la tabella a ogni tasto farebbe perdere il fuoco.
+            '<div class="fuel-prezzo-row" id="prezzo-avviso-' + f.prefix + '" hidden ' +
+                 'style="margin:-2px 0 10px; padding:8px 10px; border-left:3px solid #D97706; ' +
+                 'background:#FEF3C7; border-radius:4px; font-size:0.8125rem;">' +
+                '<div style="margin-bottom:6px;">\u26A0\uFE0F Prezzo cambiato: ' +
+                    '<strong id="prezzo-testo-' + f.prefix + '"></strong>' +
+                '</div>' +
+                '<label style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+                    '<span id="prezzo-label-' + f.prefix + '">di cui litri gi\u00E0 venduti al prezzo vecchio</span>' +
+                    '<input type="number" step="0.01" min="0" ' +
+                        'class="form-input cassa-field" style="max-width:120px;" ' +
+                        'data-field="' + f.prefix + '_litri_prezzo_prec" ' +
+                        'value="' + litriPrec + '" placeholder="L">' +
+                '</label>' +
+                '<div class="text-xs text-muted" style="margin-top:4px;">' +
+                    'Facoltativo. Se lo lasci vuoto la cassa si comporta come prima.' +
+                '</div>' +
             '</div>';
         });
 
@@ -915,9 +988,12 @@ ENI.Modules.Cassa = (function() {
         totSpese = totSpese || 0;
         var val = _getFieldValue;
 
-        // Carburante (senza Self Notturno)
-        var totCarburante =
-            val('super_sp_euro') + val('diesel_euro') + val('diesel_plus_euro');
+        // Carburante (senza Self Notturno). Se il prezzo e' cambiato in giornata
+        // e l'operatore ha indicato i litri venduti al prezzo vecchio, il totale
+        // viene corretto: lo scontrino valorizza tutto a un prezzo solo.
+        var campiCarb = _campiCarburante();
+        var esitoPrezzo = _aggiornaAvvisiPrezzo(campiCarb);
+        var totCarburante = ENI.CassaQuadratura.vendutoCarburante(campiCarb, _prezziPrec);
 
         // Litri venduti: stessi tre prodotti degli euro. Serve a colpo d'occhio
         // per accorgersi di una lettura battuta male, che sugli euro non si
@@ -999,26 +1075,136 @@ ENI.Modules.Cassa = (function() {
         _setText('tot-crediti',       ENI.UI.formatValuta(totCrediti));
         _setText('tot-differenza', ENI.UI.formatValuta(differenza));
 
-        // Stato + colore differenza:
-        //  ~0        = Quadra      (verde)
-        //  positivo  = Ammanco     (rosso)   -> mancano soldi
-        //  negativo  = Eccedenza   (arancio) -> controlla le vendite
-        var diffBox = document.getElementById('cassa-diff-box');
-        var statoEl = document.getElementById('diff-stato');
-        var diffStato, diffCls;
-        if (Math.abs(differenza) < 0.01)      { diffStato = 'Quadra ✓';                        diffCls = 'ok'; }
-        else if (differenza > 0)              { diffStato = 'Ammanco — mancano soldi';          diffCls = 'danger'; }
-        else                                  { diffStato = 'Eccedenza — controlla le vendite'; diffCls = 'warning'; }
-        if (diffBox) diffBox.className = 'cassa-differenza cassa-totale-sticky ' + diffCls;
-        if (statoEl) statoEl.textContent = diffStato;
+        _mostraGiudizioDifferenza(differenza, totVenduto, totIncassato, totCrediti, esitoPrezzo);
+    }
 
-        var formulaEl = document.getElementById('diff-formula');
-        if (formulaEl) {
-            formulaEl.textContent =
-                ENI.UI.formatValuta(totVenduto) + ' \u2212 ' +
-                ENI.UI.formatValuta(totIncassato) + ' \u2212 ' +
-                ENI.UI.formatValuta(totCrediti);
+    // Valori vivi dei campi carburante, compresi i litri al prezzo precedente.
+    function _campiCarburante() {
+        var val = _getFieldValue;
+        var o = {};
+        ENI.CassaQuadratura.PRODOTTI.forEach(function(p) {
+            o[p.prefix + '_litri'] = val(p.prefix + '_litri');
+            o[p.prefix + '_euro']  = val(p.prefix + '_euro');
+            o[p.prefix + '_litri_prezzo_prec'] = val(p.prefix + '_litri_prezzo_prec');
+        });
+        return o;
+    }
+
+    /**
+     * Mostra o nasconde, prodotto per prodotto, la riga del cambio prezzo.
+     * Restituisce se almeno un prezzo e' cambiato e se la correzione e' stata
+     * inserita per TUTTI i prodotti cambiati: solo allora la soglia torna stretta.
+     */
+    function _aggiornaAvvisiPrezzo(campi) {
+        var Q = ENI.CassaQuadratura;
+        var nCambiati = 0, nCorretti = 0;
+
+        Q.PRODOTTI.forEach(function(p) {
+            var box = document.getElementById('prezzo-avviso-' + p.prefix);
+            if (!box) return;
+
+            var prec = _prezziPrec[p.prefix];
+            var oggi = Q.prezzoImplicito(campi[p.prefix + '_litri'], campi[p.prefix + '_euro']);
+            var cambiato = (prec !== undefined && oggi !== null &&
+                            Math.abs(oggi - prec) >= Q.TOLLERANZA_PREZZO);
+
+            box.hidden = !cambiato;
+            if (!cambiato) return;
+
+            nCambiati++;
+            if (campi[p.prefix + '_litri_prezzo_prec'] > 0) nCorretti++;
+
+            _setText('prezzo-testo-' + p.prefix,
+                ENI.UI.formatNumero(prec, 4) + ' → ' + ENI.UI.formatNumero(oggi, 4) + ' €/L');
+            _setText('prezzo-label-' + p.prefix,
+                'di cui litri già venduti a ' + ENI.UI.formatNumero(prec, 4) + ' €/L:');
+        });
+
+        return {
+            cambio: nCambiati > 0,
+            correzioneApplicata: nCambiati > 0 && nCorretti === nCambiati
+        };
+    }
+
+    /**
+     * Giudizio della giornata, al posto del vecchio "Ammanco / Eccedenza".
+     * Nelle giornate regolari il cifrone resta nascosto: quella differenza non
+     * e' denaro mancante (vedi js/lib/cassa-quadratura.js), e mostrarla come
+     * allarme tutti i giorni ha reso invisibili le giornate con un problema
+     * vero, tipo una chiusura POS dimenticata.
+     */
+    function _mostraGiudizioDifferenza(differenza, totVenduto, totIncassato, totCrediti, esitoPrezzo) {
+        var Q = ENI.CassaQuadratura;
+        esitoPrezzo = esitoPrezzo || { cambio: false, correzioneApplicata: false };
+
+        var soglie = Q.soglie(esitoPrezzo.cambio, esitoPrezzo.correzioneApplicata);
+        var stato  = Q.statoDifferenza(differenza, soglie);
+
+        var box      = document.getElementById('cassa-diff-box');
+        var numeroEl = document.getElementById('tot-differenza');
+        var azioniEl = document.getElementById('diff-azioni');
+        var statoEl  = document.getElementById('diff-stato');
+        var formEl   = document.getElementById('diff-formula');
+
+        var titolo, classe, azioni = '';
+        if (stato === 'regolare') {
+            titolo = '✅ CASSA REGOLARE';
+            classe = 'ok';
+        } else if (stato === 'attenzione') {
+            titolo = '⚠️ DA CONTROLLARE';
+            classe = 'warning';
+            azioni = 'Fuori dal solito, ma non tanto da essere per forza un errore. ' +
+                     'Vale la pena ricontrollare le chiusure POS.';
+        } else {
+            titolo = '⛔ DIFFERENZA ANOMALA';
+            classe = 'danger';
+            azioni = 'Molto fuori dal normale. Controlla:' +
+                '<ul style="margin:6px 0 0 18px; padding:0;">' +
+                    '<li>sono state inserite <strong>tutte</strong> le chiusure POS?</li>' +
+                    '<li>i litri corrispondono allo scontrino della sera?</li>' +
+                    '<li>ci sono rifornimenti presi in conto e non registrati?</li>' +
+                '</ul>';
         }
+
+        if (box)     box.className = 'cassa-differenza cassa-totale-sticky ' + classe;
+        if (statoEl) statoEl.textContent = titolo;
+
+        // Il numero grande compare solo quando significa qualcosa.
+        if (numeroEl) numeroEl.hidden = (stato === 'regolare');
+        if (azioniEl) {
+            azioniEl.innerHTML = azioni;
+            azioniEl.hidden = !azioni;
+        }
+
+        if (formEl) {
+            var riga = 'Venduto ' + ENI.UI.formatValuta(totVenduto) +
+                       '  ·  Incassato ' + ENI.UI.formatValuta(totIncassato);
+            if (totCrediti) riga += '  ·  Crediti ' + ENI.UI.formatValuta(totCrediti);
+            if (stato === 'regolare') {
+                riga += '  ·  differenza ' + ENI.UI.formatValuta(differenza);
+                if (esitoPrezzo.cambio && !esitoPrezzo.correzioneApplicata) {
+                    riga += ' (oggi il prezzo è cambiato: lo scarto è normalmente più largo)';
+                }
+            }
+            formEl.textContent = riga;
+        }
+
+        _mostraProgressivo();
+    }
+
+    // Il progressivo e' l'unico numero che risponde davvero a "mancano soldi?":
+    // il singolo giorno oscilla, la somma no. Su marzo-settembre 2026 fa
+    // -339,62 EUR su 2.481.271 EUR di venduto.
+    function _mostraProgressivo() {
+        var el = document.getElementById('diff-progressivo');
+        if (!el) return;
+        if (!_progressivoAnno.giorni) { el.textContent = ''; return; }
+
+        el.textContent =
+            'Progressivo del mese ' + ENI.UI.formatValuta(_progressivoMese.totale) +
+            ' su ' + _progressivoMese.giorni + ' giornate' +
+            '  ·  da inizio anno ' + ENI.UI.formatValuta(_progressivoAnno.totale) +
+            ' su ' + _progressivoAnno.giorni;
     }
 
     function _getPosGroupTotal(groupId) {
@@ -1113,7 +1299,10 @@ ENI.Modules.Cassa = (function() {
         var val = _getFieldValue;
         var totSpese = _spese.reduce(function(s, sp) { return s + Number(sp.importo || 0); }, 0);
 
-        var totCarburante = val('super_sp_euro') + val('diesel_euro') + val('diesel_plus_euro');
+        // Stesso calcolo di _ricalcola: se il prezzo e' cambiato in giornata e
+        // i litri al prezzo vecchio sono stati indicati, il totale e' corretto.
+        var campiCarb = _campiCarburante();
+        var totCarburante = ENI.CassaQuadratura.vendutoCarburante(campiCarb, _prezziPrec);
         var totAltro =
             val('venduto_bar') + val('venduto_olio') + val('venduto_accessori') +
             val('venduto_adblue') + val('venduto_lavaggi') +
@@ -1160,6 +1349,11 @@ ENI.Modules.Cassa = (function() {
             super_sp_litri:    val('super_sp_litri'),    super_sp_euro:    val('super_sp_euro'),
             diesel_litri:      val('diesel_litri'),      diesel_euro:      val('diesel_euro'),
             diesel_plus_litri: val('diesel_plus_litri'), diesel_plus_euro: val('diesel_plus_euro'),
+            // Litri gia' venduti al prezzo del giorno prima (facoltativi):
+            // null quando non compilati, per non sporcare le giornate normali.
+            super_sp_litri_prezzo_prec:    val('super_sp_litri_prezzo_prec')    || null,
+            diesel_litri_prezzo_prec:      val('diesel_litri_prezzo_prec')      || null,
+            diesel_plus_litri_prezzo_prec: val('diesel_plus_litri_prezzo_prec') || null,
             self_notturno_litri: val('self_notturno_litri'),
             self_notturno_euro: val('self_notturno_euro'),
             self_notturno_contanti: val('self_notturno_contanti'),
@@ -1383,13 +1577,17 @@ ENI.Modules.Cassa = (function() {
                     '<th>Stato</th>' +
                 '</tr></thead><tbody>';
 
-            records.forEach(function(r) {
+            records.forEach(function(r, idx) {
                 var isBozza = r.stato !== 'chiusa';
                 var diff = Number(r.differenza || 0);
-                // Coerente con la chiusura: quadra=verde, ammanco(+)=rosso, eccedenza(-)=arancio
-                var diffStyle = Math.abs(diff) < 0.01 ? 'color:#166534;'
-                    : diff > 0 ? 'color:#991B1B;'
-                    : 'color:#92400E;';
+                // Stesso giudizio della chiusura: verde = nella norma, arancio =
+                // da guardare, rosso = anomala. I record sono ordinati per data
+                // DESC, quindi la giornata precedente sta alla posizione idx+1:
+                // serve a capire se il prezzo era cambiato e allargare la soglia.
+                var statoDiff = _statoRigaStorico(r, records[idx + 1]);
+                var diffStyle = statoDiff === 'regolare'   ? 'color:#166534;'
+                              : statoDiff === 'attenzione' ? 'color:#92400E;'
+                              :                              'color:#991B1B;';
                 var badge = isBozza
                     ? '<span class="badge badge-gray">\u{1F4DD} Bozza</span>'
                     : '<span class="badge ' + (r.stato === 'chiusa' ? 'badge-scaduto' : 'badge-incassato') + '">' + r.stato + '</span>';
@@ -1438,6 +1636,26 @@ ENI.Modules.Cassa = (function() {
                 '<div class="stock-alert">Errore caricamento storico: ' +
                 ENI.UI.escapeHtml(e.message) + '</div>';
         }
+    }
+
+    /**
+     * Giudizio di una riga dello storico, con le stesse soglie della chiusura.
+     * `precedente` e' la cassa del giorno prima (puo' mancare: primo giorno del
+     * mese). Quando manca si usa la soglia larga, per non colorare di rosso una
+     * giornata che magari aveva solo avuto un cambio prezzo.
+     */
+    function _statoRigaStorico(riga, precedente) {
+        var Q = ENI.CassaQuadratura;
+        var cambio = true, corretta = false;
+
+        if (precedente && precedente.stato === 'chiusa') {
+            var cambi = Q.cambiPrezzo(riga, precedente);
+            cambio = cambi.length > 0;
+            corretta = cambio && cambi.every(function(c) {
+                return Number(riga[c.prefix + '_litri_prezzo_prec'] || 0) > 0;
+            });
+        }
+        return Q.statoDifferenza(riga.differenza, Q.soglie(cambio, corretta));
     }
 
     // --- Helper opzioni mese/anno ---

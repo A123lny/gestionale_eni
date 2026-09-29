@@ -562,6 +562,39 @@ ENI.API = (function() {
         return result.data || [];
     }
 
+    // --- Quadratura della cassa ---
+
+    // Ultima cassa CHIUSA prima di `data`. Serve a ricavare il prezzo al litro
+    // del giorno precedente (euro / litri) e capire se il prezzo e' cambiato.
+    // Si limita alle chiuse perche' una bozza ha i litri a meta' e darebbe un
+    // prezzo implicito senza senso.
+    async function getCassaPrecedenteChiusa(data) {
+        var result = await getClient()
+            .from('cassa')
+            .select('data, super_sp_litri, super_sp_euro, diesel_litri, diesel_euro, diesel_plus_litri, diesel_plus_euro')
+            .lt('data', data)
+            .eq('stato', 'chiusa')
+            .order('data', { ascending: false })
+            .limit(1);
+
+        if (result.error) throw new Error(result.error.message);
+        return (result.data && result.data[0]) || null;
+    }
+
+    // Differenze delle casse chiuse in un intervallo, per il progressivo.
+    // Nessun dato sensibile: servono solo data e differenza.
+    async function getDifferenzeCasse(dal, al) {
+        var result = await getClient()
+            .from('cassa')
+            .select('data, differenza, stato')
+            .gte('data', dal)
+            .lte('data', al)
+            .eq('stato', 'chiusa');
+
+        if (result.error) throw new Error(result.error.message);
+        return result.data || [];
+    }
+
     async function getMieiMovimentiBonus(anno, mese) {
         var result = await getClient()
             .from('bonus_movimenti')
@@ -3163,6 +3196,8 @@ ENI.API = (function() {
         salvaPeriodoBonus: salvaPeriodoBonus,
         ricalcolaPeriodoBonus: ricalcolaPeriodoBonus,
         aggiungiMovimentoBonus: aggiungiMovimentoBonus,
+        getCassaPrecedenteChiusa: getCassaPrecedenteChiusa,
+        getDifferenzeCasse: getDifferenzeCasse,
         getCassaOggi: getCassaOggi,
         getCassaMese: getCassaMese,
         salvaCassa: salvaCassa,
