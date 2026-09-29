@@ -9,9 +9,40 @@ ENI.Fatturazione = ENI.Fatturazione || {};
 ENI.Fatturazione.Pdf = (function() {
     'use strict';
 
+    // Tre formati, non uno.
+    //
+    // Prima ce n'era uno solo, a due decimali, usato anche per il prezzo
+    // unitario - che sul database ne ha quattro. Il gestionale non calcola
+    // l'importo delle righe (litri, prezzo e importo arrivano dall'ENI), ma
+    // chi legge la fattura da' per scontato che litri x prezzo faccia
+    // l'importo: con il prezzo tagliato a due decimali il conto non tornava.
+    //
+    // Misurato sui dati veri il 29/09/2026: 222 righe su 387 non tornavano,
+    // scarto medio 62 centesimi e punta di 19,84 EUR. Un caso reale: 454,62
+    // litri a 1,8883 fanno 858,48, ma stampando "1,89" il cliente ricalcola
+    // 859,23 e contesta la fattura.
+
+    /** Importi in euro: due decimali esatti. */
     function _fmt(n) {
         if (n == null) return '0,00';
         return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    /**
+     * Prezzo unitario: fino a quattro decimali, quanti ne ha il database.
+     * Minimo due, cosi' un lavaggio a 6 EUR resta "6,00" e non "6,0000".
+     * Gli zeri finali si possono togliere senza rimorsi: non cambiano il
+     * valore, quindi il conto del cliente torna comunque.
+     */
+    function _fmtPrezzo(n) {
+        if (n == null) return '0,00';
+        return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    }
+
+    /** Quantita' e volumi: fino a tre decimali, come la colonna sul database. */
+    function _fmtQta(n) {
+        if (n == null) return '0,00';
+        return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
     }
 
     function _fmtData(d) {
@@ -92,9 +123,9 @@ ENI.Fatturazione.Pdf = (function() {
                 return;
             }
             doc.text(String(r.descrizione || ''), margin + 2, y + 5, { maxWidth: 95 });
-            doc.text(_fmt(r.quantita), margin + 100, y + 5);
+            doc.text(_fmtQta(r.quantita), margin + 100, y + 5);
             doc.text(String(r.unita_misura || ''), margin + 115, y + 5);
-            doc.text(_fmt(r.prezzo_unitario), margin + 130, y + 5);
+            doc.text(_fmtPrezzo(r.prezzo_unitario), margin + 130, y + 5);
             doc.text(_fmt(r.importo) + ' \u20AC', W - margin - 2, y + 5, { align: 'right' });
             y += 7;
         });
@@ -185,8 +216,8 @@ ENI.Fatturazione.Pdf = (function() {
                 doc.text(String(m.targa || m.autista || ''), margin + 28, y + 4, { maxWidth: 40 });
                 doc.text(String(m.prodotto || ''), margin + 70, y + 4, { maxWidth: 32 });
                 doc.text(String(m.tipo_servizio || ''), margin + 105, y + 4);
-                doc.text(_fmt(m.volume), margin + 125, y + 4);
-                doc.text(_fmt(m.prezzo_unitario), margin + 145, y + 4);
+                doc.text(_fmtQta(m.volume), margin + 125, y + 4);
+                doc.text(_fmtPrezzo(m.prezzo_unitario), margin + 145, y + 4);
                 doc.text(_fmt(m.importo), W - margin - 2, y + 4, { align: 'right' });
                 subtot += Number(m.importo) || 0;
                 y += 5;
@@ -244,7 +275,7 @@ ENI.Fatturazione.Pdf = (function() {
         doc.setFont('helvetica','normal');
         righe.forEach(function(r) {
             if (r.categoria === 'NOTA') { doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.text(String(r.descrizione || ''), margin + 2, y + 5, { maxWidth: W - 2*margin - 4 }); doc.setFont('helvetica','normal'); doc.setFontSize(9); y += 6; return; }
-            doc.text(String(r.descrizione || ''), margin + 2, y + 5, { maxWidth: 95 }); doc.text(_fmt(r.quantita), margin + 100, y + 5); doc.text(String(r.unita_misura || ''), margin + 115, y + 5); doc.text(_fmt(r.prezzo_unitario), margin + 130, y + 5); doc.text(_fmt(r.importo) + ' \u20AC', W - margin - 2, y + 5, { align: 'right' }); y += 7;
+            doc.text(String(r.descrizione || ''), margin + 2, y + 5, { maxWidth: 95 }); doc.text(_fmtQta(r.quantita), margin + 100, y + 5); doc.text(String(r.unita_misura || ''), margin + 115, y + 5); doc.text(_fmtPrezzo(r.prezzo_unitario), margin + 130, y + 5); doc.text(_fmt(r.importo) + ' \u20AC', W - margin - 2, y + 5, { align: 'right' }); y += 7;
         });
         y += 4; doc.setFont('helvetica','bold'); doc.setFontSize(12);
         doc.text('Totale: \u20AC ' + _fmt(fattura.totale), W - margin, y, { align: 'right' }); y += 8;
