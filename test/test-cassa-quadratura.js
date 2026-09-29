@@ -168,7 +168,16 @@ check('il vecchio allarme quotidiano Ammanco/Eccedenza e sparito',
 check('la guida in-app non promette piu che la cassa quadri',
   /non quadra mai al centesimo/.test(cassaSrc));
 check('esiste il giudizio della giornata', /_mostraGiudizioDifferenza\(/.test(cassaSrc));
-check('esiste il progressivo', /_mostraProgressivo\(/.test(cassaSrc));
+
+// Il progressivo del mese e dell'anno c'era, ed e' stato TOLTO su richiesta del
+// gestore il 29/09/2026: un numero grosso e negativo sotto gli occhi tutti i
+// giorni, che i dipendenti potevano leggere peggio di com'era. Il calcolo resta
+// in libreria (Q.progressivo, testato qui sopra) e la lettura resta in api.js,
+// pronti se un giorno lo si rimette: non li chiama piu' nessuno.
+check('il progressivo non compare piu nella cassa',
+  !/_mostraProgressivo/.test(cassaSrc) && !/diff-progressivo/.test(cassaSrc));
+check('e la cassa non carica piu le differenze che servivano solo a quello',
+  !/getDifferenzeCasse/.test(cassaSrc));
 check('il numero grande e nascosto quando la giornata e regolare',
   /numeroEl\.hidden = \(stato === 'regolare'\)/.test(cassaSrc));
 check('i tre campi facoltativi vengono salvati',
@@ -182,7 +191,8 @@ check('la riga del cambio prezzo esiste ed e nascosta di partenza',
 check('anche lo storico usa le stesse soglie', /_statoRigaStorico\(/.test(cassaSrc));
 
 check('api.js espone la cassa precedente chiusa', /getCassaPrecedenteChiusa: getCassaPrecedenteChiusa/.test(apiSrc));
-check('api.js espone le differenze per il progressivo', /getDifferenzeCasse: getDifferenzeCasse/.test(apiSrc));
+// Resta esposta ma non la chiama nessuno: vedi la nota sul progressivo tolto.
+check('api.js tiene pronta la lettura delle differenze', /getDifferenzeCasse: getDifferenzeCasse/.test(apiSrc));
 check('la cassa precedente si limita alle chiuse',
   /getCassaPrecedenteChiusa[\s\S]{0,600}?\.eq\('stato', 'chiusa'\)/.test(apiSrc));
 

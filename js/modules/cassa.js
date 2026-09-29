@@ -20,12 +20,9 @@ ENI.Modules.Cassa = (function() {
     // finivano per non coincidere. null = lettura non riuscita.
     var _totLavaggi = null;
 
-    // Quadratura: prezzi al litro della giornata chiusa precedente e progressivo
-    // delle differenze.
-    // Vedi js/lib/cassa-quadratura.js per il perche'.
+    // Quadratura: prezzi al litro della giornata chiusa precedente, per capire
+    // se il prezzo e' cambiato. Vedi js/lib/cassa-quadratura.js per il perche'.
     var _prezziPrec = {};
-    var _progressivoMese = { totale: 0, giorni: 0 };
-    var _progressivoAnno = { totale: 0, giorni: 0 };
 
     // ============================================================
     // RENDER PRINCIPALE
@@ -97,8 +94,7 @@ ENI.Modules.Cassa = (function() {
                 '• <strong style="color:#166534;">Cassa regolare</strong> → la differenza è dentro l\'oscillazione normale, non c\'è niente da cercare.<br>' +
                 '• <strong style="color:#92400E;">Da controllare</strong> → fuori dal solito. Vale la pena ricontrollare le chiusure POS.<br>' +
                 '• <strong style="color:#991B1B;">Differenza anomala</strong> → qui c\'è quasi sempre un problema vero: una chiusura POS non inserita, litri battuti male, un rifornimento preso in conto.<br><br>' +
-                'Se il prezzo è cambiato in giornata puoi indicare, sotto il carburante, quanti litri erano già stati venduti al prezzo vecchio: il venduto viene corretto e la soglia si stringe. È facoltativo.<br><br>' +
-                'In fondo trovi il <strong>progressivo</strong> del mese e dell\'anno: è quello il numero che dice se i soldi ci sono.' +
+                'Se il prezzo è cambiato in giornata puoi indicare, sotto il carburante, quanti litri erano già stati venduti al prezzo vecchio: il venduto viene corretto e la soglia si stringe. È facoltativo.' +
             '</div>' +
 
             blocco('⛽', 'Venduto Carburante',
@@ -191,14 +187,12 @@ ENI.Modules.Cassa = (function() {
         _renderForm();
     }
 
-    // Prezzi del giorno prima e progressivo delle differenze.
-    // Se una delle due letture fallisce la cassa deve restare usabile: si
-    // azzerano i dati accessori e si va avanti senza avvisi.
+    // Prezzi al litro della giornata chiusa precedente: servono a capire se il
+    // prezzo e' cambiato. Se la lettura fallisce la cassa deve restare usabile,
+    // quindi si va avanti senza avviso: meglio nessun avviso di uno sbagliato.
     async function _caricaQuadratura() {
         var Q = ENI.CassaQuadratura;
         _prezziPrec = {};
-        _progressivoMese = { totale: 0, giorni: 0 };
-        _progressivoAnno = { totale: 0, giorni: 0 };
         if (!Q || !_dataSelezionata) return;
 
         try {
@@ -206,17 +200,7 @@ ENI.Modules.Cassa = (function() {
             // Il confronto col prezzo di oggi lo fa _ricalcola sui campi vivi,
             // cosi' l'avviso compare mentre si digita e non solo al caricamento.
             if (prec) _prezziPrec = Q.prezziDaCassa(prec);
-        } catch (e) { /* nessun avviso di cambio prezzo: meglio di un avviso sbagliato */ }
-
-        try {
-            var anno  = _dataSelezionata.slice(0, 4);
-            var mese  = _dataSelezionata.slice(0, 7);
-            var righe = await ENI.API.getDifferenzeCasse(anno + '-01-01', _dataSelezionata);
-            _progressivoAnno = Q.progressivo(righe);
-            _progressivoMese = Q.progressivo(righe.filter(function(r) {
-                return String(r.data).slice(0, 7) === mese;
-            }));
-        } catch (e) { /* progressivo non mostrato */ }
+        } catch (e) { /* nessun avviso di cambio prezzo */ }
     }
 
     // ============================================================
@@ -443,8 +427,10 @@ ENI.Modules.Cassa = (function() {
                     '<div style="font-size:1.25rem; font-weight:700;" id="diff-stato">\u2705 CASSA REGOLARE</div>' +
                     '<div style="font-size:2rem; font-weight:700; margin-top:2px;" id="tot-differenza" hidden>\u20AC 0,00</div>' +
                     '<div class="text-sm" style="margin-top:4px;" id="diff-formula"></div>' +
-                    '<div class="text-sm" style="margin-top:8px; text-align:left;" id="diff-azioni" hidden></div>' +
-                    '<div class="text-sm" style="margin-top:10px; opacity:0.75;" id="diff-progressivo"></div>' +
+                    // Centrata come il resto del riquadro. L'elenco puntato del
+                    // caso "anomala" si allinea a sinistra per conto suo: un
+                    // elenco centrato e' illeggibile.
+                    '<div class="text-sm" style="margin-top:8px; text-align:center;" id="diff-azioni" hidden></div>' +
                 '</div>' +
 
                 // Note
@@ -1158,8 +1144,10 @@ ENI.Modules.Cassa = (function() {
         } else {
             titolo = '⛔ DIFFERENZA ANOMALA';
             classe = 'danger';
+            // L'elenco resta allineato a sinistra dentro un blocco centrato:
+            // centrare le voci di un elenco puntato le rende illeggibili.
             azioni = 'Molto fuori dal normale. Controlla:' +
-                '<ul style="margin:6px 0 0 18px; padding:0;">' +
+                '<ul style="display:inline-block; text-align:left; margin:6px 0 0 0; padding-left:18px;">' +
                     '<li>sono state inserite <strong>tutte</strong> le chiusure POS?</li>' +
                     '<li>i litri corrispondono allo scontrino della sera?</li>' +
                     '<li>ci sono rifornimenti presi in conto e non registrati?</li>' +
@@ -1188,23 +1176,6 @@ ENI.Modules.Cassa = (function() {
             }
             formEl.textContent = riga;
         }
-
-        _mostraProgressivo();
-    }
-
-    // Il progressivo e' l'unico numero che risponde davvero a "mancano soldi?":
-    // il singolo giorno oscilla, la somma no. Su marzo-settembre 2026 fa
-    // -339,62 EUR su 2.481.271 EUR di venduto.
-    function _mostraProgressivo() {
-        var el = document.getElementById('diff-progressivo');
-        if (!el) return;
-        if (!_progressivoAnno.giorni) { el.textContent = ''; return; }
-
-        el.textContent =
-            'Progressivo del mese ' + ENI.UI.formatValuta(_progressivoMese.totale) +
-            ' su ' + _progressivoMese.giorni + ' giornate' +
-            '  ·  da inizio anno ' + ENI.UI.formatValuta(_progressivoAnno.totale) +
-            ' su ' + _progressivoAnno.giorni;
     }
 
     function _getPosGroupTotal(groupId) {
