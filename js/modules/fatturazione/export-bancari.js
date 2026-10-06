@@ -207,7 +207,7 @@ ENI.Fatturazione.ExportBancari = (function() {
             // da esportare restituisce candidate: la regola di esportabilita' e' qui, quindi
             // scartiamo noi quelle coi dati a posto, che partiranno regolarmente.
             _nonPartite = (await ENI.API.getDisposizioniNonPartite()).filter(function(x) {
-                return x.situazione === 'non_partita' || _problemiCliente(x.fattura.cliente, x.tipo).length > 0;
+                return x.situazione === 'non_partita' || _problemiBloccanti(x.fattura.cliente, x.tipo).length > 0;
             });
         } catch(e) {
             box.innerHTML = '<p class="text-danger text-xs">Impossibile verificare le disposizioni non partite: ' +
@@ -545,7 +545,8 @@ ENI.Fatturazione.ExportBancari = (function() {
         var rows = fatture.map(function(f, i) {
             var cli = f.cliente || {};
             var problemi = _problemiCliente(cli, prefix);
-            var cls = problemi.length ? 'style="background:var(--color-danger-bg);"' : '';
+            var bloccanti = _problemiBloccanti(cli, prefix);
+            var cls = bloccanti.length ? 'style="background:var(--color-danger-bg);"' : '';
 
             // Colonna "Coordinate": IBAN per RID, ABI/CAB per RIBA
             var coordinate = prefix === 'rid' ?
@@ -554,7 +555,7 @@ ENI.Fatturazione.ExportBancari = (function() {
                     ENI.UI.escapeHtml(cli.abi_banca + ' / ' + cli.cab_banca) : '-');
 
             return '<tr ' + cls + '>' +
-                '<td><input type="checkbox" class="exp-check" data-prefix="' + prefix + '" data-idx="' + i + '" ' + (problemi.length ? 'disabled' : 'checked') + '></td>' +
+                '<td><input type="checkbox" class="exp-check" data-prefix="' + prefix + '" data-idx="' + i + '" ' + (bloccanti.length ? 'disabled' : 'checked') + '></td>' +
                 '<td>' + ENI.UI.escapeHtml(f.numero_formattato) + '</td>' +
                 '<td>' + ENI.UI.escapeHtml(cli.nome_ragione_sociale || '') + '</td>' +
                 '<td class="text-right">\u20AC ' + _fmtNum(f.totale) + '</td>' +
@@ -966,11 +967,28 @@ ENI.Fatturazione.ExportBancari = (function() {
         return problemi;
     }
 
-    // Divide le fatture in esportabili / scartate secondo _problemiCliente
+    // Solo i problemi che il tracciato bancario non puo' tollerare: usati per decidere
+    // se escludere/disabilitare. Il mandato SDD mancante resta un avviso nel pannello
+    // "clienti a rischio" ma non blocca piu' l'inclusione nel file RID.
+    function _problemiBloccanti(cli, tipo) {
+        var problemi = [];
+        cli = cli || {};
+        if (String(tipo).toLowerCase() === 'rid') {
+            if (!cli.iban) problemi.push('IBAN mancante');
+            else if (!_validaIban(cli.iban)) problemi.push('IBAN malformato (' + cli.iban.length + ' char)');
+        } else {
+            if (!cli.abi_banca || !cli.cab_banca) problemi.push('ABI/CAB mancante');
+        }
+        return problemi;
+    }
+
+    // Divide le fatture in esportabili / scartate secondo _problemiBloccanti.
+    // Il mandato SDD mancante NON esclude piu' dal file: resta solo come avviso
+    // nel pannello "clienti a rischio" in cima alla schermata.
     function _partiziona(fatture, tipo) {
         var ok = [], ko = [];
         (fatture || []).forEach(function(f) {
-            var problemi = _problemiCliente(f.cliente, tipo);
+            var problemi = _problemiBloccanti(f.cliente, tipo);
             if (problemi.length) ko.push({ fattura: f, problemi: problemi });
             else ok.push(f);
         });
