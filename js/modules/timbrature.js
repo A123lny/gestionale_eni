@@ -11,6 +11,7 @@ ENI.Modules.Timbrature = (function() {
 
     var _da = '', _a = '', _timbrature = [], _personale = [];
     var _container = null;   // serve a ricaricare la lista dopo una correzione
+    var _ore = null;         // confronto previste/fatte del periodo mostrato
 
     // --- Date helper ---
     function _oggi() { return ENI.UI.oggiISO(); }
@@ -34,7 +35,10 @@ ENI.Modules.Timbrature = (function() {
         _container = container;
         if (!_da) { _da = _lunediCorrente(); _a = _oggi(); }
 
-        try { _personale = await ENI.API.getPersonale(); } catch (e) { _personale = []; }
+        // `conSoloTimbratura`: qui dentro servono anche quelli che timbrano
+        // senza avere un profilo (nessun login, quindi la loro entrata/uscita
+        // la registra il super admin da "Timbratura manuale").
+        try { _personale = await ENI.API.getPersonale({ conSoloTimbratura: true }); } catch (e) { _personale = []; }
         var manOpts = _personale.filter(function(p) { return p.attivo !== false; }).map(function(p) {
             return '<option value="' + p.id + '">' + ENI.UI.escapeHtml(p.nome_completo || ('#' + p.id)) + '</option>';
         }).join('');
@@ -119,32 +123,25 @@ ENI.Modules.Timbrature = (function() {
             if (content) content.innerHTML = '<p class="text-danger">Errore: ' + ENI.UI.escapeHtml(e.message) + '</p>';
             return;
         }
+        // Le ore previste dai turni, per confrontarle con quelle timbrate.
+        // Se la lettura va male si mostrano le ore fatte e basta: il confronto
+        // e' un'aggiunta, le timbrature devono restare visibili comunque.
+        _ore = null;
+        try {
+            var turni = await ENI.API.getTurni(_da, _a);
+            _ore = ENI.OreLavorate.confronto({
+                turni: turni, timbrature: _timbrature,
+                da: _da, a: _a, oggi: _oggi()
+            });
+        } catch (e) { _ore = null; }
         _renderContenuto();
     }
 
-    // Raggruppa gli eventi in coppie entrata->uscita (per giorno)
-    function _sessioni(eventi) {
-        var sorted = eventi.slice().sort(function(a, b) { return a.ts < b.ts ? -1 : (a.ts > b.ts ? 1 : 0); });
-        var sess = [], aperta = null;
-        sorted.forEach(function(e) {
-            if (e.tipo === 'entrata') {
-                if (aperta) sess.push({ inizio: aperta, fine: null });
-                aperta = e.ts;
-            } else {
-                if (aperta) { sess.push({ inizio: aperta, fine: e.ts }); aperta = null; }
-                else sess.push({ inizio: null, fine: e.ts });
-            }
-        });
-        if (aperta) sess.push({ inizio: aperta, fine: null });
-        return sess;
-    }
-
-    function _minuti(sess) {
-        return sess.reduce(function(tot, s) {
-            if (s.inizio && s.fine) tot += (new Date(s.fine) - new Date(s.inizio)) / 60000;
-            return tot;
-        }, 0);
-    }
+    // Raggruppa gli eventi in coppie entrata->uscita (per giorno).
+    // Il calcolo sta in ENI.OreLavorate: lo usa anche la pagina Turni per il
+    // monte ore, e due copie della stessa formula prima o poi divergono.
+    function _sessioni(eventi) { return ENI.OreLavorate.sessioni(eventi); }
+    function _minuti(sess) { return ENI.OreLavorate.minutiLavorati(sess); }
 
     function _renderContenuto() {
         var content = document.getElementById('timb-content');
@@ -206,15 +203,22 @@ ENI.Modules.Timbrature = (function() {
             return '<tr class="timb-row" style="cursor:pointer;" data-pid="' + pid + '">' +
                     '<td><strong>' + ENI.UI.escapeHtml(p.nome) + '</strong>' + (sospese ? ' <span class="badge badge-warning" title="Timbrate incomplete (entrata o uscita mancante)">⚠️ ' + sospese + '</span>' : '') + '</td>' +
                     '<td style="text-align:right; font-weight:700;">' + _fmtOre(totMin) + '</td>' +
+                    _celleConfronto(pid) +
                 '</tr>' +
-                '<tr class="timb-dett" data-dett="' + pid + '" style="display:none;"><td colspan="2" style="background:var(--bg-secondary);">' + dettaglio.join('') + '</td></tr>';
+                '<tr class="timb-dett" data-dett="' + pid + '" style="display:none;"><td colspan="4" style="background:var(--bg-secondary);">' + dettaglio.join('') + '</td></tr>';
         }).join('');
 
         var tabella = righe
             ? '<div class="card" style="padding:0;">' +
-                '<div class="table-wrapper"><table class="table"><thead><tr><th>Dipendente</th><th style="text-align:right;">Ore nel periodo</th></tr></thead>' +
-                '<tbody>' + righe + '</tbody></table></div>' +
+                '<div class="table-wrapper"><table class="table"><thead><tr>' +
+                    '<th>Dipendente</th>' +
+                    '<th style="text-align:right;">Ore nel periodo</th>' +
+                    '<th style="text-align:right;">Previste dai turni</th>' +
+                    '<th style="text-align:right;">Differenza</th>' +
+                '</tr></thead>' +
+                '<tbody>' + righe + _rigaTotale() + '</tbody></table></div>' +
                 '<div class="text-xs text-muted" style="padding:8px 12px;">Clicca un dipendente per vedere il dettaglio giornaliero. ⚠️ = timbrate incomplete da correggere.</div>' +
+                _notaConfronto() +
               '</div>'
             : '<div class="empty-state"><p class="empty-state-text">Nessuna timbratura nel periodo selezionato.</p></div>';
 
@@ -228,6 +232,78 @@ ENI.Modules.Timbrature = (function() {
         });
 
         _setupAzioniTimbrature(content);
+    }
+
+    // --- Previste dai turni, accanto alle ore timbrate ---
+    //
+    // "Ore nel periodo" e "Previste dai turni" sono i due totali interi del
+    // periodo scelto. La "Differenza" invece si calcola solo sui giorni
+    // finiti, perche' se il periodo arriva a oggi i turni ancora da fare
+    // sembrerebbero ore mancanti: in quel caso sotto la differenza c'e'
+    // scritto fino a che giorno vale, altrimenti le tre colonne non si
+    // sottrarrebbero fra loro e sembrerebbe un errore.
+
+    var _BADGE = { ok: 'badge-success', avviso: 'badge-warning', neutro: 'badge-gray' };
+
+    function _rigaOre(pid) {
+        if (!_ore) return null;
+        for (var i = 0; i < _ore.righe.length; i++) {
+            if (_ore.righe[i].personale_id === pid) return _ore.righe[i];
+        }
+        return null;
+    }
+
+    function _tagliato() {
+        return _ore && _ore.ultimoGiornoChiuso && _ore.ultimoGiornoChiuso < _a;
+    }
+
+    function _celleConfronto(pid) {
+        var O = ENI.OreLavorate;
+        var r = _rigaOre(pid);
+        if (!r || r.giudizio === 'senza_turni') {
+            return '<td style="text-align:right;" class="text-muted">—</td>' +
+                   '<td style="text-align:right;" class="text-xs text-muted">turni non compilati</td>';
+        }
+        if (r.giudizio === 'senza_timbrature' || r.giudizio === 'nessun_dato') {
+            return '<td style="text-align:right;">' + O.fmtOre(r.minutiPrevisti) + '</td>' +
+                   '<td style="text-align:right;" class="text-xs text-muted">nessuna timbratura</td>';
+        }
+        var et = O.etichetta(r.giudizio);
+        var nota = _tagliato()
+            ? '<div class="text-xs text-muted">al ' + _fmtDataBreve(_ore.ultimoGiornoChiuso) + '</div>'
+            : '';
+        return '<td style="text-align:right;">' + O.fmtOre(r.minutiPrevisti) + '</td>' +
+               '<td style="text-align:right;white-space:nowrap;">' +
+                   '<span class="badge ' + _BADGE[et.colore] + '">' + O.fmtDiff(r.differenza) + '</span>' + nota +
+               '</td>';
+    }
+
+    function _rigaTotale() {
+        var O = ENI.OreLavorate;
+        if (!_ore || !_ore.totale.persone) return '';
+        var t = _ore.totale;
+        return '<tr style="font-weight:700; background:var(--bg-secondary);">' +
+            '<td>Totale <span class="text-xs text-muted" style="font-weight:400;">(' + t.persone +
+                (t.persone === 1 ? ' confrontabile' : ' confrontabili') + ')</span></td>' +
+            '<td style="text-align:right;">' + O.fmtOre(t.minutiFatti) + '</td>' +
+            '<td style="text-align:right;">' + O.fmtOre(t.minutiPrevisti) + '</td>' +
+            '<td style="text-align:right;">' + O.fmtDiff(t.differenza) + '</td>' +
+        '</tr>';
+    }
+
+    function _notaConfronto() {
+        if (!_ore) return '';
+        if (!_ore.ultimoGiornoChiuso) {
+            return '<div class="text-xs text-muted" style="padding:0 12px 10px;">Il periodo inizia oggi: non c\'è ancora una giornata finita da confrontare con i turni.</div>';
+        }
+        return '<div class="text-xs text-muted" style="padding:0 12px 10px;line-height:1.7;">' +
+            'Le <b>previste</b> sono il totale degli orari dei turni compilati nel periodo; le <b>ore nel periodo</b> la somma di ogni entrata/uscita timbrata. ' +
+            (_tagliato()
+                ? 'La <b>differenza</b> è calcolata fino al <b>' + _fmtDataBreve(_ore.ultimoGiornoChiuso) +
+                  '</b>, l\'ultimo giorno finito: i turni ancora da fare non sono ore mancanti. '
+                : 'Il periodo è finito, quindi la differenza vale su tutto. ') +
+            'Scarti sotto un\'ora non vengono segnalati. Nel totale entra solo chi ha sia i turni sia le timbrature.' +
+        '</div>';
     }
 
     // --- Correzione delle singole timbrature (solo super admin) ---

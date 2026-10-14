@@ -1304,8 +1304,19 @@ ENI.API = (function() {
 
     // --- Personale ---
 
-    async function getPersonale() {
+    // Chi e' segnato `solo_timbratura` resta FUORI da questo elenco: e' gente
+    // che timbra ma non ha un profilo (niente login, niente turni, ferie,
+    // buste paga, bonus). Il filtro sta qui e non nei moduli perche' le
+    // schermate che leggono il personale sono sei: metterlo in un punto solo
+    // vale anche per quelle che verranno. Chi la vuole vedere lo chiede
+    // esplicitamente -- oggi solo Timbrature.
+    async function getPersonale(opzioni) {
+        var filters = [];
+        if (!(opzioni && opzioni.conSoloTimbratura)) {
+            filters.push({ op: 'eq', col: 'solo_timbratura', val: false });
+        }
         return await getAll('personale', {
+            filters: filters,
             order: { col: 'nome_completo', asc: true }
         });
     }

@@ -18,6 +18,7 @@ ENI.Modules.Turni = (function() {
     var _lunedi = null;          // settimana in Pianificazione
     var _vista = 'pianificazione';
     var _storicoLunedi = null;   // settimana aperta dallo Storico (null = elenco)
+    var _ore = null;             // confronto previste/fatte della settimana mostrata
 
     var GIORNI = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']; // stazione aperta Lun–Sab
     var N_GIORNI = 6;
@@ -104,6 +105,86 @@ ENI.Modules.Turni = (function() {
         _disp = {};
         var disp = await ENI.API.getDisponibilita(da, a);
         disp.forEach(function(x) { _disp[_k(x.personale_id, x.data)] = x; });
+
+        // Monte ore: le timbrature della stessa settimana, confrontate con i
+        // turni appena caricati. Se la lettura va male la griglia resta quella
+        // di prima: il monte ore e' un'aggiunta, non deve poter rompere la
+        // pianificazione.
+        _ore = null;
+        try {
+            var timbrature = await ENI.API.getTimbrature(da, a);
+            _ore = ENI.OreLavorate.confronto({
+                turni: turni, timbrature: timbrature,
+                da: da, a: a, oggi: _oggi()
+            });
+        } catch (e) { _ore = null; }
+    }
+
+    function _oreDi(pid) {
+        if (!_ore) return null;
+        for (var i = 0; i < _ore.righe.length; i++) {
+            if (_ore.righe[i].personale_id === pid) return _ore.righe[i];
+        }
+        return null;
+    }
+
+    var _BADGE = { ok: 'badge-success', avviso: 'badge-warning', neutro: 'badge-gray' };
+
+    // La casella del monte ore. Tre forme diverse, non una con dei buchi:
+    // chi non timbra vede solo le previste, chi non ha turni solo le fatte,
+    // e chi ha entrambi il confronto.
+    function _monteOreCell(p) {
+        var O = ENI.OreLavorate;
+        var r = _oreDi(p.id);
+        if (!r) {
+            return '<td style="text-align:right;"><span class="text-xs text-muted">—</span></td>';
+        }
+        var et = O.etichetta(r.giudizio);
+        var aperte = r.aperte
+            ? ' <span class="text-xs text-muted" title="Entrata senza uscita">· ' + r.aperte + ' aperta' + (r.aperte > 1 ? 'e' : '') + '</span>'
+            : '';
+
+        if (r.giudizio === 'nessun_dato') {
+            return '<td style="text-align:right;"><span class="text-xs text-muted">—</span></td>';
+        }
+        if (r.giudizio === 'senza_timbrature') {
+            return '<td style="text-align:right;white-space:nowrap;">' +
+                '<div style="font-weight:600;">' + O.fmtOre(r.minutiPrevisti) + '</div>' +
+                '<div class="text-xs text-muted">previste · nessuna timbratura</div></td>';
+        }
+        if (r.giudizio === 'senza_turni') {
+            return '<td style="text-align:right;white-space:nowrap;">' +
+                '<div style="font-weight:600;">' + O.fmtOre(r.minutiFatti) + '</div>' +
+                '<div class="text-xs text-muted">fatte · turni non compilati</div>' + aperte + '</td>';
+        }
+        // Prima riga: i due totali interi della settimana, che sono il monte
+        // ore vero e proprio. Seconda riga: la differenza, che a settimana
+        // iniziata vale solo sui giorni finiti e lo dice.
+        var diff = '<span class="badge ' + _BADGE[et.colore] + '">' + O.fmtDiff(r.differenza) + '</span>';
+        if (_ore.inCorso) {
+            diff = '<span class="text-xs text-muted">al ' + _fmtBreve(_ore.ultimoGiornoChiuso) + ':</span> ' + diff;
+        }
+        return '<td style="text-align:right;white-space:nowrap;">' +
+            '<div style="font-weight:600;">' + O.fmtOre(r.minutiPrevisti) + ' → ' + O.fmtOre(r.minutiFatti) + '</div>' +
+            '<div>' + diff + aperte + '</div></td>';
+    }
+
+    function _monteOreFoot() {
+        var O = ENI.OreLavorate;
+        if (!_ore || !_ore.totale.persone) return '';
+        var t = _ore.totale;
+        return '<tr style="font-weight:700;background:var(--bg-secondary);">' +
+            '<td style="text-align:left;position:sticky;left:0;background:var(--bg-secondary);z-index:1;">Totale</td>' +
+            '<td colspan="' + N_GIORNI + '" class="text-xs text-muted" style="text-align:left;font-weight:400;">' +
+                t.persone + (t.persone === 1 ? ' persona confrontabile' : ' persone confrontabili') +
+                (_ore.inCorso && _ore.ultimoGiornoChiuso
+                    ? ' · differenza calcolata fino al ' + _fmtBreve(_ore.ultimoGiornoChiuso) + ', i totali su tutta la settimana'
+                    : '') +
+            '</td>' +
+            '<td style="text-align:right;white-space:nowrap;">' +
+                '<div>' + O.fmtOre(t.minutiPrevisti) + ' → ' + O.fmtOre(t.minutiFatti) + '</div>' +
+                '<div class="text-xs">' + O.fmtDiff(t.differenza) + '</div>' +
+            '</td></tr>';
     }
 
     // ---- Vista PIANIFICAZIONE ----
@@ -205,11 +286,11 @@ ENI.Modules.Turni = (function() {
         s.id = 'turni-css';
         s.textContent =
             '.turni-grid-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}' +
-            '.turni-grid{min-width:700px;}' +
+            '.turni-grid{min-width:860px;}' +   // 700 + la colonna del monte ore
             '.turni-grid td{min-width:78px;}' +
             '.turni-grid th:first-child,.turni-grid td:first-child{position:sticky;left:0;z-index:2;box-shadow:2px 0 5px -2px rgba(0,0,0,.25);}' +
             '@media(max-width:768px){' +
-                '.turni-grid{min-width:520px;font-size:.78rem;}' +
+                '.turni-grid{min-width:660px;font-size:.78rem;}' +
                 '.turni-grid th,.turni-grid td{padding:4px 3px;}' +
                 '.turni-grid td{min-width:70px;}' +
                 '.turni-grid th:first-child,.turni-grid td:first-child{min-width:74px;max-width:96px;white-space:normal!important;line-height:1.15;font-size:.74rem;}' +
@@ -232,17 +313,26 @@ ENI.Modules.Turni = (function() {
             var dt = _addG(lunedi, i);
             th += '<th style="' + (dt === oggi ? 'background:var(--color-primary-light,#e8f0fe);' : '') + '">' + GIORNI[i] + '<br><span class="text-xs">' + _fmtBreve(dt) + '</span></th>';
         }
+        th += '<th style="text-align:right;">Monte ore<br><span class="text-xs">previste → fatte</span></th>';
+
         var rows = _personale.map(function(p) {
             var cells = '';
             for (var i = 0; i < N_GIORNI; i++) cells += _cellHtml(p, _addG(lunedi, i), readonly);
-            return '<tr><td style="text-align:left;font-weight:600;position:sticky;left:0;background:var(--bg-card);z-index:1;">' + ENI.UI.escapeHtml(p.nome_completo) + '</td>' + cells + '</tr>';
+            return '<tr><td style="text-align:left;font-weight:600;position:sticky;left:0;background:var(--bg-card);z-index:1;">' + ENI.UI.escapeHtml(p.nome_completo) + '</td>' + cells + _monteOreCell(p) + '</tr>';
         }).join('');
 
         gridEl.innerHTML =
             '<div class="table-wrapper turni-grid-wrap">' +
                 '<table class="table turni-grid" style="text-align:center;">' +
-                    '<thead><tr>' + th + '</tr></thead><tbody>' + rows + '</tbody>' +
+                    '<thead><tr>' + th + '</tr></thead>' +
+                    '<tbody>' + rows + _monteOreFoot() + '</tbody>' +
                 '</table>' +
+            '</div>' +
+            '<div class="text-xs text-muted" style="margin-top:8px;line-height:1.7;">' +
+                '<b>Monte ore</b>: a sinistra il totale delle ore dei turni compilati, a destra la somma delle entrate/uscite timbrate. ' +
+                'La <b>differenza</b> si calcola solo sui giorni già finiti — a settimana iniziata c\'è scritto fino a quando — ' +
+                'altrimenti i turni ancora da fare sembrerebbero ore mancanti. ' +
+                'Scarti sotto un\'ora non vengono segnalati: si esce quasi sempre un po\' più tardi del previsto.' +
             '</div>' +
             (readonly ? '' : '<div class="text-xs text-muted" style="margin-top:8px;line-height:1.7;">' +
                 'Clicca una cella per assegnare il turno. &nbsp; ' +
