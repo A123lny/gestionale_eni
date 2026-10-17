@@ -538,13 +538,24 @@ ENI.Modules.Turni = (function() {
 
             doc.setFontSize(14); doc.text('Turni · settimana ' + _fmtBreve(_lunedi) + ' – ' + _fmtBreve(_addG(_lunedi, 6)), x0, y); y += 8;
 
+            // Il grigio va rimesso PRIMA DI OGNI cella piena, non una volta
+            // sola: in PDF i glifi si dipingono col colore di riempimento,
+            // quindi ogni doc.text() scrive "0 g" nel flusso e si porta via
+            // il grigio. Senza questo, "Dipendente" restava grigio e le sei
+            // celle dei giorni uscivano NERE, una dopo l'altra.
+            var GRIGIO = [230, 230, 230];
+            function cellaPiena(xx, larghezza, testo) {
+                doc.setFillColor(GRIGIO[0], GRIGIO[1], GRIGIO[2]);
+                doc.rect(xx, y, larghezza, 8, 'F');
+                doc.text(testo, xx + 2, y + 5);
+            }
+
             function header() {
-                doc.setFontSize(9); doc.setFillColor(230, 230, 230);
-                doc.rect(x0, y, colName, 8, 'F'); doc.text('Dipendente', x0 + 2, y + 5);
+                doc.setFontSize(9);
+                cellaPiena(x0, colName, 'Dipendente');
                 for (var i = 0; i < N_GIORNI; i++) {
-                    var xx = x0 + colName + i * colDay;
-                    doc.rect(xx, y, colDay, 8, 'F');
-                    doc.text(GIORNI[i] + ' ' + _fmtBreve(_addG(_lunedi, i)), xx + 2, y + 5);
+                    cellaPiena(x0 + colName + i * colDay, colDay,
+                               GIORNI[i] + ' ' + _fmtBreve(_addG(_lunedi, i)));
                 }
                 y += 8;
             }
