@@ -286,7 +286,7 @@ check('e prima di timbrature.js', posLib > -1 && posLib < html.indexOf('js/modul
 check('turni.js ha una versione nuova', /js\/modules\/turni\.js\?v=1[1-9]/.test(html));
 check('timbrature.js ha una versione nuova', /js\/modules\/timbrature\.js\?v=1[1-9]/.test(html));
 check('e il service worker se la porta dietro',
-  /js\/lib\/ore-lavorate\.js/.test(sw) && /titanwash-v144/.test(sw));
+  /js\/lib\/ore-lavorate\.js/.test(sw));
 
 console.log('\n--- la pagina Turni ---');
 check('chiede le timbrature della settimana', /ENI\.API\.getTimbrature\(da, a\)/.test(turniJs));

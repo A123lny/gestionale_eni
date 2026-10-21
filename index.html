@@ -40,6 +40,48 @@
         <div class="spinner"></div>
     </div>
 
+    <!-- Rete di sicurezza contro la schermata bianca.
+         Se dopo il caricamento l'app non ha disegnato niente - un file non
+         arrivato, un errore in avvio - invece del vuoto si vede un
+         messaggio con un pulsante. Non cancella e non salva nulla: scrive
+         solo del testo nella pagina. -->
+    <script>
+    (function() {
+        var motivo = null;
+        window.addEventListener('error', function(e) {
+            if (e && e.target && e.target.tagName === 'SCRIPT' && e.target.src) {
+                motivo = 'file non caricato: ' + String(e.target.src).split('/').pop();
+            } else if (e && e.message && !motivo) {
+                motivo = e.message;
+            }
+        }, true);
+
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                var app = document.getElementById('app');
+                if (!app || app.children.length) return;   // l'app e' partita
+                var ov = document.getElementById('loading-overlay');
+                if (ov) ov.className = 'loading-overlay hidden';
+                app.innerHTML =
+                    '<div style="max-width:420px;margin:12vh auto;padding:24px;' +
+                         'font-family:system-ui,sans-serif;text-align:center;">' +
+                        '<div style="font-size:2.5rem;">⚠️</div>' +
+                        '<h1 style="font-size:1.25rem;margin:8px 0;">Titanwash non si è caricato</h1>' +
+                        '<p style="color:#555;line-height:1.5;">Di solito è la rete del telefono. ' +
+                           'Tocca Ricarica: i dati sono tutti al loro posto, non si perde niente.</p>' +
+                        '<button id="tw-ricarica" style="margin-top:14px;padding:12px 22px;' +
+                            'font-size:1rem;border:0;border-radius:8px;background:#1B2D4E;' +
+                            'color:#fff;cursor:pointer;">Ricarica</button>' +
+                        (motivo ? '<p style="color:#999;font-size:.75rem;margin-top:18px;' +
+                            'word-break:break-all;">' + motivo + '</p>' : '') +
+                    '</div>';
+                var b = document.getElementById('tw-ricarica');
+                if (b) b.addEventListener('click', function() { location.reload(); });
+            }, 2500);
+        });
+    })();
+    </script>
+
     <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
