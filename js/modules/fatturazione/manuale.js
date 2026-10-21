@@ -56,6 +56,12 @@ ENI.Fatturazione.Manuale = (function() {
                             // inline le farebbe litigare.
                             '<div id="fatt-m-cerca-results" class="pos-search-dropdown" style="display:none;"></div>' +
                         '</div>' +
+                        // Il campo di ricerca contiene testo sia che il
+                        // cliente sia collegato sia che sia solo scritto a
+                        // mano: senza questa spia le due cose sono
+                        // indistinguibili, ed e' esattamente l'inciampo
+                        // segnalato il 21/10/2026.
+                        '<div id="fatt-m-cliente-spia" style="display:none;margin-top:4px;"></div>' +
                         '<div id="fatt-m-cliente-info" style="display:none;"></div>' +
                     '</div>' +
                     '<div id="fatt-m-box-occasionale" style="display:none;">' +
@@ -126,6 +132,12 @@ ENI.Fatturazione.Manuale = (function() {
                 '</fieldset>' +
                 // --- Totale ---
                 '<div class="fatt-m-totale" style="text-align:right;font-size:1.3rem;font-weight:bold;margin:1rem 0;" id="fatt-m-totale">Totale: \u20AC 0,00</div>' +
+                // --- Errore in chiaro, dentro il modulo ---
+                // Il toast in alto a destra finisce sopra l'header e dura
+                // pochi secondi: un errore di salvataggio va letto con
+                // calma, accanto al pulsante che l'ha provocato. Questo
+                // riquadro resta fino al tentativo successivo.
+                '<div id="fatt-m-errore" class="stock-alert" style="display:none;background:#FEE2E2;border-left:4px solid #DC2626;color:#991B1B;margin:0 0 1rem;padding:0.75rem 1rem;"></div>' +
                 // --- Azioni ---
                 '<div style="display:flex;gap:0.5rem;justify-content:flex-end;">' +
                     '<button type="button" class="btn btn-secondary" id="fatt-m-bozza">Salva bozza</button>' +
@@ -173,6 +185,7 @@ ENI.Fatturazione.Manuale = (function() {
                 var box = document.getElementById('fatt-m-cliente-info');
                 if (box) box.style.display = 'none';
             }
+            _aggiornaSpiaCliente();
         });
 
         // Modo intestatario: anagrafica / occasionale
@@ -271,12 +284,28 @@ ENI.Fatturazione.Manuale = (function() {
             document.getElementById('fatt-m-modpag').value = 'CONTANTI';
             document.getElementById('fatt-m-modpag').dispatchEvent(new Event('change'));
             _aggiornaLabelDoc();
+        } else {
+            // Tornando all'anagrafica il ramo di sopra non gira, e prima
+            // restavano appese le proposte del cliente occasionale:
+            // Ricevuta e CONTANTI. Dava l'impressione che un cliente
+            // fosse collegato quando non lo era -- il campo "Modalita
+            // pagamento" sembrava riempito dall'anagrafica.
+            _clienteSelezionato = null;
+            document.getElementById('fatt-m-cliente-info').style.display = 'none';
+            document.getElementById('fatt-m-tipodoc').value = 'FATTURA';
+            document.getElementById('fatt-m-modpag').value = '';
+            document.getElementById('fatt-m-modpag').dispatchEvent(new Event('change'));
+            _aggiornaLabelDoc();
         }
+        _aggiornaSpiaCliente();
+        _puliscErrore();
     }
 
     function _onClienteSelezionato(cliente) {
         _clienteSelezionato = cliente;
         document.getElementById('fatt-m-cerca').value = cliente.nome_ragione_sociale;
+        _aggiornaSpiaCliente();
+        _puliscErrore();
 
         // Proposta tipo documento in base all'anagrafica (sovrascrivibile)
         document.getElementById('fatt-m-tipodoc').value = cliente.tipo === 'Privato' ? 'RICEVUTA' : 'FATTURA';
@@ -404,33 +433,75 @@ ENI.Fatturazione.Manuale = (function() {
         return righe;
     }
 
+    // Mostra l'errore DENTRO il modulo e ci porta lo sguardo. Il toast
+    // resta (serve a chi sta altrove nella pagina) ma non e' piu' l'unico
+    // posto in cui leggere: finiva sopra l'header e dopo pochi secondi
+    // spariva.
+    function _mostraErrore(testo) {
+        var box = document.getElementById('fatt-m-errore');
+        if (box) {
+            box.textContent = testo;
+            box.style.display = 'block';
+            box.scrollIntoView({ block: 'center' });
+        }
+        ENI.UI.toast(testo, 'danger');
+    }
+
+    function _puliscErrore() {
+        var box = document.getElementById('fatt-m-errore');
+        if (box) { box.textContent = ''; box.style.display = 'none'; }
+    }
+
+    // La spia sotto il campo di ricerca: dice se il cliente e' COLLEGATO
+    // o se nel campo c'e' solo del testo. Senza questa, le due situazioni
+    // si vedono uguali.
+    function _aggiornaSpiaCliente() {
+        var spia = document.getElementById('fatt-m-cliente-spia');
+        if (!spia) return;
+        var scritto = (document.getElementById('fatt-m-cerca') || {}).value || '';
+        scritto = scritto.trim();
+        if (_clienteSelezionato) {
+            spia.style.display = 'block';
+            spia.innerHTML = '<span class="text-xs" style="color:#166534;font-weight:600;">' +
+                '✅ cliente collegato</span>';
+        } else if (scritto) {
+            spia.style.display = 'block';
+            spia.innerHTML = '<span class="text-xs" style="color:#991B1B;font-weight:600;">' +
+                '⚠️ nessun cliente collegato — clicca il nome nell’elenco</span>';
+        } else {
+            spia.style.display = 'none';
+            spia.innerHTML = '';
+        }
+    }
+
     async function _salva(stato) {
+        _puliscErrore();   // ogni tentativo riparte pulito
         var occasionale = _isOccasionale();
         var occNome = occasionale ? document.getElementById('fatt-m-occ-nome').value.trim() : '';
 
         if (occasionale) {
             if (!occNome) {
-                ENI.UI.toast('Inserisci il nominativo dell\'intestatario', 'danger');
+                _mostraErrore('Inserisci il nominativo dell\'intestatario');
                 return;
             }
         } else if (!_clienteSelezionato) {
             // "Seleziona un cliente" mentre il nome e' scritto nel campo
             // sembra un errore del programma. Dire cosa manca davvero.
             var scritto = document.getElementById('fatt-m-cerca').value.trim();
-            ENI.UI.toast(scritto
+            _mostraErrore(scritto
                 ? "Scrivere il nome non basta: clicca “" + scritto + "” nell’elenco che compare sotto al campo"
-                : "Cerca il cliente e scegli il suo nome dall’elenco", 'danger');
+                : "Cerca il cliente e scegli il suo nome dall’elenco");
             return;
         }
 
         var righe = _raccogliRighe();
         if (!righe.length) {
-            ENI.UI.toast('Inserisci almeno una riga', 'danger');
+            _mostraErrore('Inserisci almeno una riga');
             return;
         }
         var totale = righe.reduce(function(s, r) { return s + r.importo; }, 0);
         if (totale <= 0) {
-            ENI.UI.toast('Il totale deve essere maggiore di zero', 'danger');
+            _mostraErrore('Il totale deve essere maggiore di zero');
             return;
         }
 
@@ -500,7 +571,7 @@ ENI.Fatturazione.Manuale = (function() {
 
             ENI.Fatturazione.Index.vaiA('elenco');
         } catch(e) {
-            ENI.UI.toast('Errore: ' + e.message, 'danger');
+            _mostraErrore('Errore: ' + e.message);
         }
     }
 

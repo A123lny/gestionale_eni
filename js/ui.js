@@ -10,8 +10,33 @@ ENI.UI = (function() {
 
     // --- Toast Notifications ---
 
+    // Un tipo scritto con un sinonimo diventava un avviso INVISIBILE.
+    // Il CSS conosce .toast-success, -error, -warning e -info; il codice
+    // chiamava toast(..., 'danger') in 37 punti, e .toast-danger non
+    // esiste: niente sfondo, niente bordo, niente colore del testo,
+    // nessuna icona. Una scritta trasparente in alto a destra, sopra
+    // l'header - fra quelle anche l'errore vero del salvataggio fattura,
+    // quindi l'utente vedeva lampeggiare qualcosa e non poteva leggerlo.
+    //
+    // Non basta aggiungere .toast-danger al CSS: il prossimo sinonimo
+    // ('errore', 'alert', 'red') rifarebbe lo stesso danno in silenzio.
+    // Qui il tipo si riconduce SEMPRE a uno dei quattro che il CSS sa
+    // disegnare, e quello che non si riconosce diventa 'info': visibile.
+    var ALIAS = {
+        'danger': 'error', 'errore': 'error', 'fail': 'error',
+        'ok': 'success', 'successo': 'success',
+        'avviso': 'warning', 'attenzione': 'warning'
+    };
+    var TIPI_NOTI = ['success', 'error', 'warning', 'info'];
+
+    function _tipoToast(type) {
+        type = String(type || 'info').toLowerCase();
+        if (ALIAS[type]) type = ALIAS[type];
+        return TIPI_NOTI.indexOf(type) > -1 ? type : 'info';
+    }
+
     function toast(message, type) {
-        type = type || 'info';
+        type = _tipoToast(type);
         var container = document.getElementById('toast-container');
         if (!container) return;
 
@@ -27,6 +52,19 @@ ENI.UI = (function() {
         toastEl.innerHTML = '<span>' + (icons[type] || '') + '</span><span>' + _escapeHtml(message) + '</span>';
         container.appendChild(toastEl);
 
+        // Un clic lo chiude subito. Senza questo, un avviso lungo resta
+        // sopra l'header a coprire i comandi finche non scade.
+        var chiudi = function() {
+            if (!toastEl.parentNode) return;
+            toastEl.classList.add('removing');
+            setTimeout(function() {
+                if (toastEl.parentNode) toastEl.parentNode.removeChild(toastEl);
+            }, 300);
+        };
+        toastEl.addEventListener('click', chiudi);
+
+        // Gli errori restano piu' a lungo: un messaggio del database e'
+        // lungo e in tre secondi e mezzo non si legge.
         setTimeout(function() {
             toastEl.classList.add('removing');
             setTimeout(function() {
@@ -34,7 +72,7 @@ ENI.UI = (function() {
                     toastEl.parentNode.removeChild(toastEl);
                 }
             }, 300);
-        }, 3500);
+        }, type === 'error' ? 9000 : 3500);
     }
 
     function success(msg) { toast(msg, 'success'); }

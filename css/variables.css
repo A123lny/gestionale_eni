@@ -115,7 +115,12 @@
     --z-nav: 300;
     --z-modal-backdrop: 400;
     --z-modal: 500;
-    --z-toast: 600;
+    /* Il toast e' l'ULTIMO strato e deve stare sopra ogni cosa, header
+       compreso. Non basta superare --z-modal: nei fogli ci sono z-index
+       scritti a mano fino a 1001 (menu a tendina della ricerca a 1000,
+       tooltip e la sua punta a 1000/1001), e con 600 un avviso poteva
+       finirci dietro. Il margine serve anche a chi verra' dopo. */
+    --z-toast: 2000;
 
     /* --- Layout --- */
     --header-height: 56px;

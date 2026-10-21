@@ -562,6 +562,12 @@ legend {
     pointer-events: auto;
     animation: toast-in 0.3s ease;
     font-size: var(--font-size-sm);
+    /* Un bordo pieno oltre alla barra colorata: sopra l'header serve un
+       contorno, altrimenti i due fondi chiari si fondono e l'avviso
+       sembra far parte dell'intestazione. */
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    /* Copre i comandi dell'header finche non scade: un clic lo chiude. */
+    cursor: pointer;
 }
 
 .toast-success {
@@ -571,6 +577,16 @@ legend {
 }
 
 .toast-error {
+    background-color: var(--color-danger-bg);
+    border-left: 4px solid var(--color-danger);
+    color: #991B1B;
+}
+
+/* Alias di sicurezza: nel codice il tipo 'danger' era usato in decine di
+   punti e questa classe non esisteva, cosi' l'avviso nasceva trasparente.
+   Ora ui.js riconduce 'danger' a 'error' da solo, ma la regola resta per
+   chi impostasse la classe a mano senza passare da toast(). */
+.toast-danger {
     background-color: var(--color-danger-bg);
     border-left: 4px solid var(--color-danger);
     color: #991B1B;

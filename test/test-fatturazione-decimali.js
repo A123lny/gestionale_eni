@@ -130,5 +130,57 @@ check("non resta il vecchio 'Seleziona un cliente' secco",
   !/toast\('Seleziona un cliente'/.test(man));
 
 
+console.log('\n--- l errore si deve poter leggere ---');
+// Segnalato il 21/10: "da un errore, ma non riesco a leggere poiche si
+// nasconde sotto header ... sono riuscita a leggerlo solo perche lo
+// selezionato". Il toast sta in alto a destra, sopra l'header, e dura
+// pochi secondi: per un errore di salvataggio non basta.
+check('c e un riquadro per l errore dentro il modulo',
+  man.indexOf('id="fatt-m-errore"') > -1);
+check('e lo mostra una funzione sola', man.indexOf('function _mostraErrore') > -1);
+check('che ci porta lo sguardo', man.indexOf('scrollIntoView') > -1);
+check('il toast resta, per chi sta altrove nella pagina',
+  /_mostraErrore[\s\S]{0,400}ENI\.UI\.toast/.test(man));
+check('e ogni tentativo riparte pulito', man.indexOf('_puliscErrore();') > -1);
+
+// Nessun errore del salvataggio deve restare appeso al solo toast.
+var iSalva = man.indexOf('async function _salva(');
+var iFine = man.indexOf('return { render: render };');
+var dentroSalva = man.slice(iSalva, iFine);
+check('nel salvataggio non resta nessun avviso solo-toast',
+  dentroSalva.indexOf("ENI.UI.toast(") === -1 ||
+  dentroSalva.indexOf("'danger'") === -1,
+  'toast residui nel blocco di salvataggio');
+check("anche l'errore del database passa dal riquadro",
+  dentroSalva.indexOf("_mostraErrore('Errore: ' + e.message)") > -1);
+
+console.log('\n--- la spia: cliente collegato o solo scritto ---');
+// Il campo contiene testo in entrambi i casi: senza spia sono
+// indistinguibili. Ed e' peggio di cosi, vedi sotto.
+check('c e una spia sotto il campo di ricerca',
+  man.indexOf('id="fatt-m-cliente-spia"') > -1);
+check('dice quando il cliente e collegato', man.indexOf('cliente collegato') > -1);
+check('e quando non lo e', man.indexOf('nessun cliente collegato') > -1);
+check('si aggiorna scrivendo nel campo',
+  /addEventListener\('input'[\s\S]{0,400}_aggiornaSpiaCliente\(\)/.test(man));
+check('e scegliendo dalla lista',
+  /_onClienteSelezionato\(cliente\)[\s\S]{0,300}_aggiornaSpiaCliente\(\)/.test(man));
+
+console.log('\n--- e gli avanzi del cliente occasionale ---');
+// Il ramo "occasionale" imposta Ricevuta e CONTANTI. Tornando
+// all'anagrafica quel ramo non girava e quei due valori restavano
+// appesi: "Modalita pagamento: Contanti" sembrava arrivare
+// dall'anagrafica del cliente, e invece non c'era nessun cliente.
+// E' la ragione per cui il modulo sembrava a posto mentre non lo era.
+var iModo = man.indexOf('function _onCambioModo');
+var modo = man.slice(iModo, iModo + 2000);
+check('tornando all anagrafica si ripulisce davvero',
+  modo.indexOf('} else {') > -1);
+check('la selezione viene azzerata', /\} else \{[\s\S]{0,700}_clienteSelezionato = null/.test(modo));
+check('e le proposte dell altra modalita non restano appese',
+  /\} else \{[\s\S]{0,900}tipodoc'\)\.value = 'FATTURA'/.test(modo) &&
+  /\} else \{[\s\S]{0,900}modpag'\)\.value = ''/.test(modo));
+
+
 console.log('\n' + pass + ' passati, ' + fail + ' falliti');
 process.exit(fail === 0 ? 0 : 1);
