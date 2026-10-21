@@ -600,7 +600,7 @@ ENI.Fatturazione.Elenco = (function() {
                     '<div class="form-group" style="flex:3;"><input type="text" class="form-input mfr-desc" value="' + ENI.UI.escapeHtml(r.descrizione || '') + '"></div>' +
                     '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-qta" value="' + r.quantita + '" step="0.001"></div>' +
                     '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-um" value="' + ENI.UI.escapeHtml(r.unita_misura || 'pz') + '"></div>' +
-                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-prezzo" value="' + r.prezzo_unitario + '" step="0.01"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-prezzo" value="' + r.prezzo_unitario + '" step="0.0001"></div>' +
                     '<div class="form-group" style="flex:1;"><select class="form-select mfr-cat">' +
                         ['CARBURANTE','LAVAGGIO','ACCESSORIO','ALTRO'].map(function(c) { return '<option value="' + c + '"' + (r.categoria === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') +
                     '</select></div>' +
@@ -687,7 +687,7 @@ ENI.Fatturazione.Elenco = (function() {
                     '<div class="form-group" style="flex:3;"><input type="text" class="form-input mfr-desc" value=""></div>' +
                     '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-qta" value="1" step="0.001"></div>' +
                     '<div class="form-group" style="flex:1;"><input type="text" class="form-input mfr-um" value="pz"></div>' +
-                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-prezzo" value="0" step="0.01"></div>' +
+                    '<div class="form-group" style="flex:1;"><input type="number" class="form-input mfr-prezzo" value="0" step="0.0001"></div>' +
                     '<div class="form-group" style="flex:1;"><select class="form-select mfr-cat"><option value="CARBURANTE">CARBURANTE</option><option value="LAVAGGIO">LAVAGGIO</option><option value="ACCESSORIO">ACCESSORIO</option><option value="ALTRO">ALTRO</option></select></div>' +
                     '<button type="button" class="btn btn-danger btn-sm mfr-del" style="margin-bottom:0.75rem;">&times;</button></div>';
                 modal.querySelector('#mod-fatt-righe').insertAdjacentHTML('beforeend', html);

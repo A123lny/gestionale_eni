@@ -618,7 +618,7 @@ ENI.Fatturazione.ImportEni = (function() {
                 }).join('');
                 return '<tr>' +
                     '<td><input type="text" class="form-input form-input-sm ovr-fld" data-i="' + i + '" data-k="descrizione" value="' + ENI.UI.escapeHtml(r.descrizione || '') + '"></td>' +
-                    '<td><input type="number" step="0.01" class="form-input form-input-sm ovr-fld" data-i="' + i + '" data-k="quantita" value="' + (r.quantita || 0) + '"></td>' +
+                    '<td><input type="number" step="0.001" class="form-input form-input-sm ovr-fld" data-i="' + i + '" data-k="quantita" value="' + (r.quantita || 0) + '"></td>' +
                     '<td><input type="text" class="form-input form-input-sm ovr-fld" data-i="' + i + '" data-k="unita_misura" value="' + ENI.UI.escapeHtml(r.unita_misura || '') + '"></td>' +
                     '<td><input type="number" step="0.0001" class="form-input form-input-sm ovr-fld" data-i="' + i + '" data-k="prezzo_unitario" value="' + (r.prezzo_unitario || 0) + '"></td>' +
                     '<td><input type="number" step="0.01" class="form-input form-input-sm ovr-fld" data-i="' + i + '" data-k="importo" value="' + (r.importo || 0) + '"></td>' +

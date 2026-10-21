@@ -156,6 +156,25 @@ ENI.Fatturazione.Manuale = (function() {
             { clearOnSelect: false, onSelect: _onClienteSelezionato }
         );
 
+        // Scrivere il nome NON seleziona il cliente: vale solo il clic
+        // sull'elenco, che e' quello che riempie _clienteSelezionato. Due
+        // conseguenze da gestire, perche' il campo "sembra" pieno in
+        // entrambi i casi:
+        //
+        //  - se dopo aver scelto si cambia il testo, la scelta non vale
+        //    piu'. Senza questo si salverebbe la fattura al cliente di
+        //    prima, con un nome diverso sotto gli occhi;
+        //  - al salvataggio, l'avviso deve dire cosa fare (vedi _salva).
+        var cercaEl = document.getElementById('fatt-m-cerca');
+        cercaEl.addEventListener('input', function() {
+            if (_clienteSelezionato &&
+                cercaEl.value.trim() !== _clienteSelezionato.nome_ragione_sociale) {
+                _clienteSelezionato = null;
+                var box = document.getElementById('fatt-m-cliente-info');
+                if (box) box.style.display = 'none';
+            }
+        });
+
         // Modo intestatario: anagrafica / occasionale
         document.querySelectorAll('input[name="fatt-m-modo"]').forEach(function(radio) {
             radio.addEventListener('change', _onCambioModo);
@@ -320,7 +339,7 @@ ENI.Fatturazione.Manuale = (function() {
                 '<div class="form-group" style="flex:1;"><label class="form-label">U.M.</label>' +
                     '<select class="form-select r-um"><option value="pz">pz</option><option value="L">L</option><option value="servizio">servizio</option></select></div>' +
                 '<div class="form-group" style="flex:1;"><label class="form-label">Prezzo</label>' +
-                    '<input type="number" class="form-input r-prezzo" value="0" step="0.01" min="0"></div>' +
+                    '<input type="number" class="form-input r-prezzo" value="0" step="0.0001" min="0"></div>' +
                 '<div class="form-group" style="flex:1;"><label class="form-label">Categoria</label>' +
                     '<select class="form-select r-cat">' +
                         '<option value="CARBURANTE">Carburante</option>' +
@@ -348,7 +367,11 @@ ENI.Fatturazione.Manuale = (function() {
         var qta = parseFloat(row.querySelector('.r-qta').value) || 0;
         var prezzo = parseFloat(row.querySelector('.r-prezzo').value) || 0;
         var importo = Math.round(qta * prezzo * 100) / 100;
-        row.querySelector('.r-importo').textContent = '\u20AC ' + importo.toLocaleString('it-IT', { minimumFractionDigits: 2 });
+        // maximumFractionDigits va dichiarato: senza, toLocaleString
+        // arriva a tre decimali da solo e l'importo di una riga a
+        // prezzo lungo uscirebbe come "98,832" sotto il campo.
+        // L'importo e' in euro: due decimali, sempre.
+        row.querySelector('.r-importo').textContent = '\u20AC ' + importo.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         _aggiornaTotale();
     }
 
@@ -391,7 +414,12 @@ ENI.Fatturazione.Manuale = (function() {
                 return;
             }
         } else if (!_clienteSelezionato) {
-            ENI.UI.toast('Seleziona un cliente', 'danger');
+            // "Seleziona un cliente" mentre il nome e' scritto nel campo
+            // sembra un errore del programma. Dire cosa manca davvero.
+            var scritto = document.getElementById('fatt-m-cerca').value.trim();
+            ENI.UI.toast(scritto
+                ? "Scrivere il nome non basta: clicca “" + scritto + "” nell’elenco che compare sotto al campo"
+                : "Cerca il cliente e scegli il suo nome dall’elenco", 'danger');
             return;
         }
 
