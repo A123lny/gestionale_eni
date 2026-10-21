@@ -19,6 +19,20 @@ ENI.Utils = (function() {
     //   debounceMs         - ritardo input (default: config)
     // ============================================================
 
+    // Ricerca cliente con tendina. Usata dalla fattura manuale e dai buoni.
+    //
+    // Tre difetti corretti il 21/10/2026, segnalati come "lo devi cercare
+    // svariate volte e ti appare l'errore":
+    //
+    //  - la tendina si apriva SOLO sull'evento 'input'. Se si chiudeva e si
+    //    rientrava nel campo dove il nome era gia' scritto non ricompariva
+    //    niente: bisognava cancellare una lettera e riscriverla. Ora si
+    //    riapre al focus e al clic;
+    //  - i gestori del clic venivano riattaccati a ogni ridisegno della
+    //    tendina. Ora il clic e' delegato al contenitore, che non cambia;
+    //  - due ricerche in volo: se la prima tornava dopo la seconda rimetteva
+    //    in tendina i risultati vecchi. Ora ogni richiesta ha un numero e
+    //    chi torna in ritardo viene scartato.
     function setupClienteSearch(inputEl, resultsEl, options) {
         if (!inputEl || !resultsEl) return;
 
@@ -26,70 +40,110 @@ ENI.Utils = (function() {
         var onSelect = options.onSelect || function() {};
         var clearOnSelect = options.clearOnSelect !== false;
         var minChars = options.minChars || ENI.Config.CONSTANTS.SEARCH_MIN_CHARS;
-        var debounceMs = options.debounceMs || ENI.Config.CONSTANTS.SEARCH_DEBOUNCE_MS;
+        var debounceMs = options.debounceMs === undefined
+            ? ENI.Config.CONSTANTS.SEARCH_DEBOUNCE_MS
+            : options.debounceMs;
 
         var debounce = null;
+        var seq = 0;        // numero della richiesta, per scartare i ritardatari
+        var ultimi = [];    // i clienti attualmente in tendina
 
-        inputEl.addEventListener('input', function() {
-            clearTimeout(debounce);
+        function chiudi() { resultsEl.style.display = 'none'; }
+
+        function scegli(c) {
+            if (!c) return;
+            onSelect(c);
+            if (clearOnSelect) inputEl.value = '';
+            chiudi();
+        }
+
+        function disegna(clienti) {
+            if (!clienti.length) {
+                resultsEl.innerHTML =
+                    '<div class="pos-search-item">' +
+                        '<span class="text-muted">Nessun cliente trovato</span>' +
+                    '</div>';
+            } else {
+                resultsEl.innerHTML = clienti.map(function(c) {
+                    // I click passano da [data-sel-id], delegati al contenitore.
+                    return '<div class="pos-search-item" data-sel-id="' + c.id + '">' +
+                        '<div>' +
+                            '<span class="pos-search-item-name">' + ENI.UI.escapeHtml(c.nome_ragione_sociale) + '</span>' +
+                            (c.targa ? '<br><span class="pos-search-item-code">' + ENI.UI.escapeHtml(c.targa) + '</span>' : '') +
+                            (c.p_iva_coe ? '<br><span class="pos-search-item-code">P.IVA: ' + ENI.UI.escapeHtml(c.p_iva_coe) + '</span>' : '') +
+                        '</div>' +
+                        '<span class="text-xs text-muted">' + ENI.UI.escapeHtml(c.tipo) + '</span>' +
+                    '</div>';
+                }).join('');
+            }
+            resultsEl.style.display = 'block';
+        }
+
+        async function _eseguiRicerca() {
             var term = inputEl.value.trim();
             if (term.length < minChars) {
-                resultsEl.style.display = 'none';
+                ultimi = [];
                 resultsEl.innerHTML = '';
+                chiudi();
                 return;
             }
+            var mia = ++seq;
+            try {
+                var clienti = await ENI.API.cercaClienti(term);
+                if (mia !== seq) return;   // ne e' partita un'altra dopo: questa non vale piu'
+                ultimi = clienti;
+                disegna(clienti);
+            } catch (e) {
+                if (mia !== seq) return;
+                ultimi = [];
+                resultsEl.innerHTML =
+                    '<div class="pos-search-item text-danger">Errore ricerca clienti</div>';
+                resultsEl.style.display = 'block';
+            }
+        }
 
-            debounce = setTimeout(async function() {
-                try {
-                    var clienti = await ENI.API.cercaClienti(term);
+        function programma(attesa) {
+            clearTimeout(debounce);
+            debounce = setTimeout(_eseguiRicerca,
+                attesa === undefined ? debounceMs : attesa);
+        }
 
-                    if (clienti.length === 0) {
-                        resultsEl.innerHTML =
-                            '<div class="pos-search-item">' +
-                                '<span class="text-muted">Nessun cliente trovato</span>' +
-                            '</div>';
-                    } else {
-                        resultsEl.innerHTML = clienti.map(function(c) {
-                            // Nessuna "pos-search-cliente": era un nome scritto e
-                            // mai letto, ne' dal CSS ne' dal codice - i click
-                            // passano da [data-sel-id].
-                            return '<div class="pos-search-item" data-sel-id="' + c.id + '">' +
-                                '<div>' +
-                                    '<span class="pos-search-item-name">' + ENI.UI.escapeHtml(c.nome_ragione_sociale) + '</span>' +
-                                    (c.targa ? '<br><span class="pos-search-item-code">' + ENI.UI.escapeHtml(c.targa) + '</span>' : '') +
-                                    (c.p_iva_coe ? '<br><span class="pos-search-item-code">P.IVA: ' + ENI.UI.escapeHtml(c.p_iva_coe) + '</span>' : '') +
-                                '</div>' +
-                                '<span class="text-xs text-muted">' + ENI.UI.escapeHtml(c.tipo) + '</span>' +
-                            '</div>';
-                        }).join('');
-                    }
+        inputEl.addEventListener('input', function() { programma(); });
 
-                    resultsEl.style.display = 'block';
+        // Rientrando nel campo la tendina si riapre subito, senza attesa:
+        // e' questo che mancava.
+        inputEl.addEventListener('focus', function() { programma(0); });
+        inputEl.addEventListener('click', function() { programma(0); });
 
-                    resultsEl.querySelectorAll('[data-sel-id]').forEach(function(item) {
-                        item.addEventListener('click', function() {
-                            var cId = item.dataset.selId;
-                            var found = clienti.find(function(c) { return c.id === cId; });
-                            if (found) {
-                                onSelect(found);
-                                if (clearOnSelect) inputEl.value = '';
-                                resultsEl.style.display = 'none';
-                            }
-                        });
-                    });
-                } catch(e) {
-                    resultsEl.innerHTML =
-                        '<div class="pos-search-item text-danger">Errore ricerca clienti</div>';
-                    resultsEl.style.display = 'block';
-                }
-            }, debounceMs);
+        inputEl.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                // Invio sceglie il primo risultato invece di far partire il
+                // form: in fattura il pulsante di invio e' "Emetti fattura",
+                // e premere Invio nel campo di ricerca la emetteva.
+                e.preventDefault();
+                if (ultimi.length) scegli(ultimi[0]);
+            } else if (e.key === 'Escape') {
+                chiudi();
+            }
         });
 
-        // Chiudi dropdown cliccando fuori
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('#' + inputEl.id) && !e.target.closest('#' + resultsEl.id)) {
-                resultsEl.style.display = 'none';
+        // Clic delegato: la tendina si ridisegna a ogni ricerca, il
+        // contenitore no.
+        resultsEl.addEventListener('click', function(e) {
+            var item = e.target.closest('[data-sel-id]');
+            if (!item) return;
+            var id = item.getAttribute('data-sel-id');
+            for (var i = 0; i < ultimi.length; i++) {
+                if (ultimi[i].id === id) { scegli(ultimi[i]); return; }
             }
+        });
+
+        // Chiudi cliccando fuori. Senza usare gli id: con un id vuoto la
+        // vecchia versione faceva closest('#') e sollevava un errore.
+        document.addEventListener('click', function(e) {
+            if (e.target === inputEl) return;
+            if (resultsEl.contains(e.target)) return;
+            chiudi();
         });
     }
 

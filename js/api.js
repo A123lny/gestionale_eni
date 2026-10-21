@@ -210,7 +210,18 @@ ENI.API = (function() {
     async function cercaClienti(searchTerm) {
         var result = await getClient()
             .from('clienti')
-            .select('id, nome_ragione_sociale, targa, p_iva_coe, tipo, telefono, email, modalita_pagamento, listino_personalizzato')
+            // Chi sceglie un cliente da qui si aspetta il cliente INTERO: il
+            // modulo fattura legge modalita_pagamento_fattura (diversa da
+            // modalita_pagamento), rif_amministrazione, applica_monofase e
+            // la sede. Prima non arrivavano, quindi scegliendo un cliente la
+            // modalita di pagamento non si precompilava, il riquadro non
+            // mostrava l'indirizzo, il riferimento amministrazione finiva
+            // vuoto in fattura e il monofase non veniva mai proposto.
+            .select('id, nome_ragione_sociale, targa, p_iva_coe, tipo, telefono, email, ' +
+                    'modalita_pagamento, modalita_pagamento_fattura, listino_personalizzato, ' +
+                    'rif_amministrazione, applica_monofase, scadenza_giorni, ' +
+                    'sede_legale_indirizzo, sede_legale_cap, sede_legale_comune, ' +
+                    'sede_legale_provincia, sede_legale_nazione')
             .eq('attivo', true)
             .or(
                 'nome_ragione_sociale.ilike.%' + searchTerm + '%,' +

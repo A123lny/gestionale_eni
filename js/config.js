@@ -202,8 +202,11 @@ ENI.Config = {
         TIMELINE_SOGLIA_CORTA: 8,   // % sotto cui la barra non mostra testo
 
         // Ricerca
-        SEARCH_MIN_CHARS: 2,
-        SEARCH_DEBOUNCE_MS: 300,
+        // Dal PRIMO carattere e con meno attesa: la tendina dei clienti
+        // tardava a comparire e il gestore finiva per scrivere il nome a
+        // mano, che non seleziona nessuno.
+        SEARCH_MIN_CHARS: 1,
+        SEARCH_DEBOUNCE_MS: 150,
         MAX_CLIENTI_RICERCA: 15,
 
         // Area cliente / portale

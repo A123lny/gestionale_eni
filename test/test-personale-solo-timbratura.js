@@ -98,7 +98,7 @@ check('e la chiede davvero dove carica il personale',
 console.log('\n--- index.html: le versioni ---');
 // Senza il bump il browser serve il file vecchio dalla cache: la schermata
 // resterebbe quella di prima e sembrerebbe che il lavoro non sia stato fatto.
-check('api.js ha una versione nuova', /js\/api\.js\?v=63/.test(html));
+check('api.js ha una versione nuova', /js[/]api[.]js[?]v=(6[3-9]|[7-9]\d|\d{3,})/.test(html));
 check('timbrature.js ha una versione nuova', /js\/modules\/timbrature\.js\?v=1\d/.test(html));
 
 console.log('\n' + pass + ' passati, ' + fail + ' falliti');
