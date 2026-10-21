@@ -93,7 +93,10 @@ async function prova() {
   sw.handlers['install']({ waitUntil: function(p) { attese.push(p); } });
   await Promise.all(attese);
   var inCache = Object.keys(sw.cache.m);
-  check('ha messo in cache i file', inCache.length > 50, inCache.length + ' file');
+  // Solo il guscio: 65 file all'installazione facevano andare in timeout
+  // le chiamate al database mentre la pagina caricava (21/10/2026).
+  check('ha messo in cache il guscio, non tutta l app',
+    inCache.length > 10 && inCache.length <= 20, inCache.length + ' file');
   check('fra cui index.html', inCache.indexOf(BASE + 'index.html') > -1);
   check('e app.js senza il ?v=', inCache.indexOf(BASE + 'js/app.js') > -1);
 
@@ -145,8 +148,12 @@ async function prova() {
     chiamate.push(req.url);
     return Promise.resolve({ ok: true, type: 'cors', clone: function() { return this; } });
   }});
-  await chiedi(sw4, 'https://abc.supabase.co/rest/v1/fatture?select=*');
-  check('vanno sempre in rete', chiamate.length === 1);
+  var eDb = await chiedi(sw4, 'https://abc.supabase.co/rest/v1/fatture?select=*');
+  // Il service worker non chiama respondWith: la richiesta la gestisce il
+  // browser come se lui non ci fosse. E' la via piu' sicura - niente
+  // codice nostro sulla strada dei dati.
+  check('il service worker non le intercetta', eDb.nessunaRisposta === true);
+  check('non le rifa lui', chiamate.length === 0, chiamate.join(', '));
   check('e non lasciano copie in cache', Object.keys(sw4.cache.m).length === 0,
     Object.keys(sw4.cache.m).join(', '));
 

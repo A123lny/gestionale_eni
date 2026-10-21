@@ -34,14 +34,25 @@
 // quindi non puo' piu' restare indietro; un test lo verifica.
 // ============================================================
 
-const CACHE_NAME = 'titanwash-v145';
+const CACHE_NAME = 'titanwash-v146';
 const BASE = self.registration.scope;
+// Precache: SOLO il guscio, cioe' il minimo per far partire l'app.
+//
+// Il 21/10/2026 qui c'erano tutti e 65 i file della pagina, e
+// l'installazione li scaricava TUTTI nel momento in cui la pagina stava
+// caricando i suoi script e chiamando il database: le richieste si
+// facevano la guerra e le chiamate al database andavano in timeout.
+// L'app diceva "Connessione assente" con la rete perfettamente
+// funzionante, e ricaricando due o tre volte ripartiva - cioe' a
+// installazione finita.
+//
+// Il resto non serve in lista: il gestore e' rete-prima e mette in cache
+// ogni file appena lo serve. Dopo il primo giro di navigazione la riserva
+// e' piena da sola, senza nessuna scarica iniziale.
 const STATIC_ASSETS = [
     BASE,
     BASE + 'index.html',
     BASE + 'manifest.json',
-    BASE + 'assets/logo_ritagliato.png',
-    BASE + 'assets/icons/icon.svg',
     BASE + 'css/variables.css',
     BASE + 'css/base.css',
     BASE + 'css/components.css',
@@ -53,54 +64,7 @@ const STATIC_ASSETS = [
     BASE + 'js/utils.js',
     BASE + 'js/api.js',
     BASE + 'js/auth.js',
-    BASE + 'js/lib/calcoli.js',
-    BASE + 'js/lib/previsione-carburante.js',
-    BASE + 'js/lib/bonus-calcoli.js',
-    BASE + 'js/lib/cassa-quadratura.js',
-    BASE + 'js/lib/ore-lavorate.js',
     BASE + 'js/router.js',
-    BASE + 'js/modules/dashboard.js',
-    BASE + 'js/modules/clienti.js',
-    BASE + 'js/modules/lavaggi.js',
-    BASE + 'js/modules/crediti.js',
-    BASE + 'js/modules/cassa.js',
-    BASE + 'js/modules/spese.js',
-    BASE + 'js/modules/magazzino.js',
-    BASE + 'js/modules/vendita-import.js',
-    BASE + 'js/modules/vendita.js',
-    BASE + 'js/modules/personale.js',
-    BASE + 'js/modules/manutenzioni.js',
-    BASE + 'js/modules/log.js',
-    BASE + 'js/modules/buoni.js',
-    BASE + 'js/modules/coefficiente-monofase.js',
-    BASE + 'js/modules/marginalita-carburante.js',
-    BASE + 'js/modules/ordine-carburante.js',
-    BASE + 'js/modules/tesoreria.js',
-    BASE + 'js/modules/fatturazione/scadenza.js',
-    BASE + 'js/modules/fatturazione/parser.js',
-    BASE + 'js/modules/fatturazione/pdf.js',
-    BASE + 'js/modules/fatturazione/impostazioni.js',
-    BASE + 'js/modules/fatturazione/elenco.js',
-    BASE + 'js/modules/fatturazione/manuale.js',
-    BASE + 'js/modules/fatturazione/import-eni.js',
-    BASE + 'js/modules/fatturazione/export-bancari.js',
-    BASE + 'js/modules/fatturazione/index.js',
-    BASE + 'js/modules/smac/parser.js',
-    BASE + 'js/modules/smac/import.js',
-    BASE + 'js/modules/smac/riconciliazione.js',
-    BASE + 'js/modules/smac/storico.js',
-    BASE + 'js/modules/smac/index.js',
-    BASE + 'js/modules/area-cliente.js',
-    BASE + 'js/modules/impostazioni.js',
-    BASE + 'js/modules/gestione-personale.js',
-    BASE + 'js/modules/ferie.js',
-    BASE + 'js/modules/turni.js',
-    BASE + 'js/modules/mie-richieste.js',
-    BASE + 'js/modules/timbra.js',
-    BASE + 'js/modules/timbrature.js',
-    BASE + 'js/modules/buste-paga.js',
-    BASE + 'js/modules/bonus-venduto.js',
-    BASE + 'js/modules/bonus-gestione.js',
     BASE + 'js/app.js'
 ];
 
@@ -119,7 +83,9 @@ self.addEventListener('install', function(event) {
             }));
         })
     );
-    self.skipWaiting();
+    // NIENTE skipWaiting: un service worker nuovo non deve subentrare a
+    // una pagina GIA' aperta e a meta' del caricamento. Entra in servizio
+    // alla navigazione successiva, quando la cache e' pronta.
 });
 
 // Activate: via le cache delle versioni precedenti.
@@ -135,7 +101,7 @@ self.addEventListener('activate', function(event) {
             );
         })
     );
-    self.clients.claim();
+    // NIENTE clients.claim, per la stessa ragione.
 });
 
 // La riserva, quando la rete non risponde.
@@ -169,17 +135,23 @@ self.addEventListener('fetch', function(event) {
     var url;
     try { url = new URL(event.request.url); } catch (e) { return; }
 
-    // Le chiamate al database non si mettono mai in cache: servirebbero
-    // dati vecchi spacciandoli per buoni.
-    if (url.hostname.indexOf('supabase') > -1) {
-        event.respondWith(fetch(event.request));
-        return;
+    // Le chiamate al database NON passano da qui: nessun respondWith,
+    // quindi le gestisce il browser come se il service worker non ci
+    // fosse. Intercettarle non dava alcun vantaggio (non si possono
+    // mettere in cache) e metteva un pezzo di codice in piu' sulla strada
+    // dei dati.
+    if (url.origin !== self.location.origin) {
+        if (url.hostname.indexOf('supabase') > -1) return;
     }
 
     // Rete-prima per i file del sito, cosi un aggiornamento si vede subito.
+    // Un solo ritentativo prima di arrendersi: il caso tipico e' un buco di
+    // rete di un istante, e senza il ritentativo l'utente se ne accorge.
     if (url.origin === self.location.origin) {
         event.respondWith(
-            fetch(event.request).then(function(res) {
+            fetch(event.request).catch(function() {
+                return fetch(event.request);
+            }).then(function(res) {
                 // In cache solo le risposte BUONE: un 404 preso durante una
                 // pubblicazione, se congelato qui, resterebbe servito per
                 // sempre al posto del file vero.

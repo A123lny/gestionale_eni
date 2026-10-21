@@ -45,26 +45,49 @@ console.log('\n--- 2. il ?v= non deve far mancare il riscontro ---');
 check('le ricerche in cache ignorano la stringa di query',
   (sw.match(/ignoreSearch:\s*true/g) || []).length >= 2);
 
-console.log('\n--- 3. in precache ci devono stare TUTTI gli script della pagina ---');
-// E' il controllo che avrebbe trovato i 19 mancanti da solo.
-var caricati = (html.match(/<script src="(js\/[^?"]+)/g) || [])
-  .map(function(s) { return s.replace('<script src="', ''); });
-var fogli = (html.match(/<link rel="stylesheet" href="(css\/[^?"]+)/g) || [])
-  .map(function(s) { return s.replace('<link rel="stylesheet" href="', ''); });
+console.log('\n--- 3. in precache ci sta il GUSCIO, non tutta l app ---');
+// Il 21/10 qui c'erano tutti e 65 i file, e l'installazione li
+// scaricava mentre la pagina caricava i suoi script e chiamava il
+// database: le chiamate andavano in timeout e l'app diceva
+// "Connessione assente" con la rete perfetta. Ricaricando due o tre
+// volte ripartiva, cioe' a installazione finita.
+//
+// Quindi in lista va il minimo per far partire l'app. Il resto lo
+// mette in cache il gestore rete-prima man mano che lo serve.
 var inLista = {};
-(sw.match(/BASE \+ '([^']+)'/g) || []).forEach(function(m) {
+(sw.match(/BASE [+] '([^']+)'/g) || []).forEach(function(m) {
   inLista[m.replace("BASE + '", '').replace(/'$/, '')] = true;
 });
+var GUSCIO = ['index.html', 'manifest.json',
+  'css/variables.css', 'css/base.css', 'css/components.css',
+  'css/layout.css', 'css/modules.css',
+  'js/config.js', 'js/state.js', 'js/ui.js', 'js/utils.js',
+  'js/api.js', 'js/auth.js', 'js/router.js', 'js/app.js'];
+GUSCIO.forEach(function(f) { check(f + ' e nel guscio', !!inLista[f]); });
 
-check('la pagina carica degli script', caricati.length > 0, caricati.length + ' script');
-var mancanti = caricati.filter(function(f) { return !inLista[f]; });
-check('tutti gli script sono in precache', mancanti.length === 0,
-  mancanti.length + ' mancanti: ' + mancanti.slice(0, 5).join(', '));
-var fogliMancanti = fogli.filter(function(f) { return !inLista[f]; });
-check('e tutti i fogli di stile', fogliMancanti.length === 0, fogliMancanti.join(', '));
-check('index.html e manifest ci sono',
-  inLista['index.html'] && inLista['manifest.json']);
+var quanti = Object.keys(inLista).length;
+check('la lista resta piccola, niente scarica iniziale',
+  quanti <= 20, quanti + ' voci');
+// I moduli NON vanno in lista: e' quello che causava il timeout.
+check('i moduli non sono in precache',
+  !inLista['js/modules/fatturazione/manuale.js'] && !inLista['js/modules/cassa.js']);
 
+console.log('\n--- e il ritentativo prima di arrendersi ---');
+check('ritenta una volta sola',
+  sw.indexOf('return fetch(event.request);') > -1);
+
+console.log('\n--- il service worker non subentra a pagina aperta ---');
+// skipWaiting + clients.claim facevano entrare in servizio il nuovo
+// mentre la pagina era a meta' del caricamento, con la cache vuota.
+var swCode = sw.split(String.fromCharCode(10))
+  .filter(function(l) { return l.trim().indexOf('//') !== 0; })
+  .join(String.fromCharCode(10));
+check('non usa skipWaiting', swCode.indexOf('skipWaiting()') === -1);
+check('non usa clients.claim', swCode.indexOf('clients.claim()') === -1);
+
+console.log('\n--- e non si mette in mezzo alle chiamate al database ---');
+check('le lascia passare al browser senza respondWith',
+  sw.indexOf('supabase') > -1 && sw.indexOf('> -1) return;') > -1);
 console.log('\n--- 4. installazione che non si fa bloccare da un file ---');
 // addAll e' atomico: UN indirizzo che non risponde fa fallire tutta
 // l'installazione, il service worker nuovo non entra in servizio e resta
@@ -85,8 +108,10 @@ console.log('\n--- 5. non si congelano risposte sbagliate ---');
 // servito per sempre al posto del file vero.
 check('in cache solo le risposte buone', /res\.ok/.test(sw));
 check('e solo quelle del nostro sito', /res\.type === 'basic'/.test(sw));
-check('le chiamate al database non vanno mai in cache',
-  /supabase[\s\S]{0,200}respondWith\(fetch\(event\.request\)\)/.test(sw));
+// Adesso non le intercetta affatto: nessun respondWith, le gestisce
+// il browser. E' ancora piu' forte che non metterle in cache.
+check('le chiamate al database non vengono nemmeno intercettate',
+  sw.indexOf('> -1) return;') > -1);
 
 console.log('\n--- 6. e se proprio non parte, non si vede il bianco ---');
 check('index.html ha la rete di sicurezza', html.indexOf('tw-ricarica') > -1);

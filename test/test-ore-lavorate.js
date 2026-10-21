@@ -285,8 +285,13 @@ check('e caricata prima di turni.js', posLib > -1 && posLib < html.indexOf('js/m
 check('e prima di timbrature.js', posLib > -1 && posLib < html.indexOf('js/modules/timbrature.js'));
 check('turni.js ha una versione nuova', /js\/modules\/turni\.js\?v=1[1-9]/.test(html));
 check('timbrature.js ha una versione nuova', /js\/modules\/timbrature\.js\?v=1[1-9]/.test(html));
-check('e il service worker se la porta dietro',
-  /js\/lib\/ore-lavorate\.js/.test(sw));
+// Il service worker mette in precache solo il GUSCIO (dal 21/10: 65
+// file all'installazione facevano andare in timeout le chiamate al
+// database mentre la pagina caricava). Le librerie non vanno in
+// lista: le mette in cache il gestore rete-prima appena le serve.
+// Qui basta che la pagina la carichi.
+check('la pagina carica la libreria',
+  html.indexOf('js/lib/ore-lavorate.js') > -1);
 
 console.log('\n--- la pagina Turni ---');
 check('chiede le timbrature della settimana', /ENI\.API\.getTimbrature\(da, a\)/.test(turniJs));
