@@ -152,6 +152,11 @@ ENI.Modules.Lavaggi = (function() {
             _annullaLavaggio(el.dataset.annullaId);
         });
 
+        ENI.UI.delegate(container, 'click', '[data-sposta-id]', function(e, el) {
+            e.stopPropagation();
+            _showSpostaLavaggio(el.dataset.spostaId);
+        });
+
         ENI.UI.delegate(container, 'click', '[data-modifica-id]', function(e, el) {
             e.stopPropagation();
             _showModificaLavaggio(el.dataset.modificaId);
@@ -290,6 +295,12 @@ ENI.Modules.Lavaggi = (function() {
         var isPrenotato = l.stato === 'Prenotato';
         return (isPrenotato
                 ? '<button class="btn btn-sm btn-success" data-completa-id="' + l.id + '" title="Completa">\u2713</button>' +
+                // Sposta sta SOLO qui, fra le azioni di un prenotato. Su un
+                // lavaggio completato non ha senso: l'incasso vive su una riga
+                // di vendite con la sua data, e la cassa prende il totale
+                // Lavaggi da quelle - spostare il lavaggio lascerebbe il
+                // lavaggio e i suoi soldi su due giorni diversi.
+                '<button class="btn btn-sm btn-outline" data-sposta-id="' + l.id + '" title="Sposta in un altra data">\u{1F4C5}</button>' +
                   '<button class="btn btn-sm btn-outline" data-modifica-id="' + l.id + '" title="Modifica">\u270F\uFE0F</button>' +
                   '<button class="btn btn-sm btn-ghost" data-annulla-id="' + l.id + '" title="Annulla">\u274C</button>'
                 : '') +
@@ -1655,11 +1666,25 @@ ENI.Modules.Lavaggi = (function() {
         var prezzoBaseIniziale = Math.round(((Number(lavaggio.prezzo) || 0) - _extraSalvati) * 100) / 100;
         if (prezzoBaseIniziale < 0) prezzoBaseIniziale = 0;
 
+        // Su un lavaggio COMPLETATO la data non si tocca: l'incasso e' una
+        // riga di `vendite` con la sua data, e la cassa prende il totale
+        // Lavaggi da quelle. Spostarlo lascerebbe il lavaggio e i suoi
+        // soldi su due giorni diversi -- e fin qui questo modulo lo
+        // lasciava fare in silenzio, perche' il campo data c'e' sempre
+        // stato. Per le prenotazioni c'e' il pulsante Sposta.
+        var dataBloccata = lavaggio.stato === 'Completato';
+
         var body =
             '<form id="form-modifica-lavaggio">' +
                 '<div class="form-group">' +
                     '<label class="form-label form-label-required">Data</label>' +
-                    '<input type="date" class="form-input" id="mod-data" value="' + (lavaggio.data || '') + '">' +
+                    '<input type="date" class="form-input" id="mod-data" value="' + (lavaggio.data || '') + '"' +
+                        (dataBloccata ? ' disabled' : '') + '>' +
+                    (dataBloccata
+                        ? '<div class="text-xs text-muted" style="margin-top:4px;">' +
+                              "Non si sposta: l’incasso resta nella cassa del " +
+                              ENI.UI.formatData(lavaggio.data) + '.</div>'
+                        : '') +
                 '</div>' +
                 '<div class="form-row">' +
                     '<div class="form-group">' +
@@ -1799,7 +1824,10 @@ ENI.Modules.Lavaggi = (function() {
                 : 'Walk-in';
 
             var dati = {
-                data: modal.querySelector('#mod-data').value,
+                // Un campo disabled non si invia col form, ma qui i dati si
+                // leggono a mano: senza questa riga la data di un completato
+                // partirebbe comunque.
+                data: dataBloccata ? lavaggio.data : modal.querySelector('#mod-data').value,
                 veicolo: veicolo,
                 cellulare: cellulare,
                 cliente_id: clienteId || null,
@@ -1820,6 +1848,102 @@ ENI.Modules.Lavaggi = (function() {
                 await _loadLavaggi();
             } catch(e) {
                 ENI.UI.error('Errore: ' + e.message);
+            }
+        });
+    }
+
+    // --- Sposta una prenotazione in un'altra data ---
+    //
+    // Spostare si poteva gia' dal modulo Modifica, che il campo data lo ha
+    // sempre avuto: ma quel modulo obbliga a riconfermare veicolo,
+    // cellulare, tipo e prezzo, e per cambiare un giorno e' una trafila.
+    // Qui si chiede solo la data e la fascia oraria.
+    //
+    // SOLO sui prenotati, per decisione del gestore e per come stanno i
+    // dati: l'incasso di un lavaggio completato e' una riga di `vendite`
+    // con la sua data, e la cassa prende il totale Lavaggi da quelle.
+    // Spostando un completato, lavaggio e soldi finirebbero su due giorni
+    // diversi.
+    function _showSpostaLavaggio(id) {
+        var lavaggio = _lavaggi.find(function(l) { return l.id === id; });
+        if (!lavaggio) return;
+
+        // Controllo anche qui e non solo nascondendo il pulsante: la lista
+        // si ridisegna, e un id vecchio potrebbe arrivare comunque.
+        if (lavaggio.stato !== 'Prenotato') {
+            ENI.UI.warning('Si possono spostare solo le prenotazioni. ' +
+                'Un lavaggio completato ha l' + "'" + 'incasso registrato nella cassa di quel giorno.');
+            return;
+        }
+
+        var modal = ENI.UI.showModal({
+            title: '\u{1F4C5} Sposta prenotazione',
+            body:
+                '<div class="card" style="background:var(--bg-secondary);padding:0.75rem;margin-bottom:var(--space-3);">' +
+                    '<strong>' + ENI.UI.escapeHtml(lavaggio.codice) + '</strong>' +
+                    ' · ' + ENI.UI.escapeHtml(lavaggio.nome_cliente || 'Walk-in') +
+                    (lavaggio.veicolo ? ' · ' + ENI.UI.escapeHtml(lavaggio.veicolo) : '') +
+                    '<div class="text-xs text-muted" style="margin-top:4px;">' +
+                        ENI.UI.escapeHtml(lavaggio.tipo_lavaggio || '') +
+                        ' · oggi programmato per il ' + ENI.UI.formatData(lavaggio.data) +
+                        (lavaggio.orario_inizio ? ' alle ' + String(lavaggio.orario_inizio).slice(0, 5) : '') +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label form-label-required">Nuova data</label>' +
+                    '<input type="date" class="form-input" id="spo-data" value="' + (lavaggio.data || '') + '">' +
+                '</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Dalle</label>' +
+                        '<input type="time" class="form-input" id="spo-inizio" value="' +
+                            (lavaggio.orario_inizio ? String(lavaggio.orario_inizio).slice(0, 5) : '') + '">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Alle</label>' +
+                        '<input type="time" class="form-input" id="spo-fine" value="' +
+                            (lavaggio.orario_fine ? String(lavaggio.orario_fine).slice(0, 5) : '') + '">' +
+                    '</div>' +
+                '</div>' +
+                '<p class="text-xs text-muted" style="margin:0;">Cambia solo giorno e orario. ' +
+                   'Veicolo, tipo di lavaggio e prezzo restano quelli che sono.</p>',
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Annulla</button>' +
+                '<button class="btn btn-primary" id="btn-sposta">\u{1F4C5} Sposta</button>'
+        });
+
+        modal.querySelector('#btn-sposta').addEventListener('click', async function() {
+            var btn = this;
+            var nuovaData = modal.querySelector('#spo-data').value;
+            if (!nuovaData) { ENI.UI.warning('Indica la nuova data'); return; }
+
+            var inizio = modal.querySelector('#spo-inizio').value || null;
+            var fine = modal.querySelector('#spo-fine').value || null;
+            if (inizio && fine && fine <= inizio) {
+                ENI.UI.warning('L' + "'" + 'ora di fine deve venire dopo quella di inizio');
+                return;
+            }
+
+            if (nuovaData === lavaggio.data && inizio === (lavaggio.orario_inizio || null)) {
+                ENI.UI.closeModal(modal);
+                return;   // niente da spostare
+            }
+
+            btn.disabled = true;
+            try {
+                // Solo i campi dello spostamento: tutto il resto non si tocca.
+                await ENI.API.modificaLavaggio(id, {
+                    data: nuovaData,
+                    orario_inizio: inizio,
+                    orario_fine: fine
+                }, lavaggio);
+                ENI.UI.closeModal(modal);
+                ENI.UI.success('Prenotazione ' + lavaggio.codice + ' spostata al ' + ENI.UI.formatData(nuovaData));
+                await _loadLavaggi();
+            } catch (e) {
+                ENI.UI.error('Errore: ' + e.message);
+            } finally {
+                btn.disabled = false;
             }
         });
     }
