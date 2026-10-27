@@ -397,9 +397,37 @@ ENI.Modules.Vendita = (function() {
         if (dropdown) dropdown.style.display = 'none';
     }
 
+    // --- Carrello retrodatato ---
+    //
+    // Un incasso credito puo' essere registrato con la data di un giorno
+    // passato (un rientro scoperto in ritardo). Ma una vendita ha UNA data:
+    // se in carrello c'e' una riga retrodatata, non ci si puo' aggiungere
+    // merce venduta oggi, altrimenti la merce finirebbe sul giorno
+    // sbagliato. Si chiude prima una cosa, poi l'altra.
+    function _carrelloRetrodatato() {
+        for (var i = 0; i < _carrello.length; i++) {
+            if (_carrello[i].data_incasso) return _carrello[i].data_incasso;
+        }
+        return null;
+    }
+
+    // La data della vendita: oggi, tranne quando il carrello porta un
+    // incasso retrodatato - e allora e' quella. La guardia qui sopra
+    // garantisce che non ce ne sia piu' di una.
+    function _dataVendita() {
+        return _carrelloRetrodatato() || ENI.UI.oggiISO();
+    }
+
     // --- Carrello ---
 
     function _aggiungiAlCarrello(prodotto) {
+        var retro = _carrelloRetrodatato();
+        if (retro) {
+            ENI.UI.warning('In carrello c’è un incasso credito del ' + ENI.UI.formatData(retro) +
+                ': completalo o svuota il carrello prima di vendere altro.');
+            return;
+        }
+
         // Se prezzo 0 (variabile), chiedi prezzo
         if (!prodotto.prezzo_vendita || prodotto.prezzo_vendita <= 0) {
             _chiediPrezzo(prodotto);
@@ -603,6 +631,16 @@ ENI.Modules.Vendita = (function() {
                 return;
             }
 
+            // Stessa guardia dell'aggiunta da magazzino: questa via spinge nel
+            // carrello per conto suo e senza il controllo si potrebbe infilare
+            // una riga di oggi dentro una vendita retrodatata.
+            var retroMan = _carrelloRetrodatato();
+            if (retroMan) {
+                ENI.UI.warning('In carrello c’è un incasso credito del ' + ENI.UI.formatData(retroMan) +
+                    ': completalo o svuota il carrello prima di aggiungere altro.');
+                return;
+            }
+
             _carrello.push({
                 prodotto_id: null,
                 codice_prodotto: null,
@@ -640,6 +678,17 @@ ENI.Modules.Vendita = (function() {
                     '<label class="form-label form-label-required">Importo incassato (€)</label>' +
                     '<input type="number" step="0.01" min="0.01" class="form-input" id="inc-importo" placeholder="es. 40.00">' +
                 '</div>' +
+                // La data serve per i rientri scoperti in ritardo: la mattina,
+                // se un credito e' rientrato e nessuno l'ha segnato, lo si
+                // registra col giorno giusto e la cassa di quel giorno torna.
+                // Massimo oggi: un rientro nel futuro non esiste.
+                '<div class="form-group">' +
+                    '<label class="form-label form-label-required">Data dell’incasso</label>' +
+                    '<input type="date" class="form-input" id="inc-data" value="' + ENI.UI.oggiISO() +
+                        '" max="' + ENI.UI.oggiISO() + '">' +
+                    '<div class="text-xs text-muted" style="margin-top:4px;">Lasciala a oggi per un incasso di adesso. ' +
+                        'Metti un giorno passato per registrare un rientro che non era stato segnato.</div>' +
+                '</div>' +
             '</form>';
 
         var modal = ENI.UI.showModal({
@@ -655,9 +704,21 @@ ENI.Modules.Vendita = (function() {
         modal.querySelector('#btn-add-incasso').addEventListener('click', function() {
             var cliente = modal.querySelector('#inc-cliente').value.trim();
             var importo = parseFloat(modal.querySelector('#inc-importo').value);
+            var dataInc = modal.querySelector('#inc-data').value;
+            var oggi = ENI.UI.oggiISO();
 
             if (isNaN(importo) || importo <= 0) {
                 ENI.UI.warning('Inserisci un importo valido');
+                return;
+            }
+            if (!dataInc) { ENI.UI.warning("Indica la data dell’incasso"); return; }
+            if (dataInc > oggi) { ENI.UI.warning("La data non può essere nel futuro"); return; }
+
+            // Una vendita ha UNA data: un incasso retrodatato non puo'
+            // viaggiare col resto del carrello, o la merce finirebbe su ieri.
+            if (dataInc !== oggi && _carrello.length) {
+                ENI.UI.warning('Il carrello contiene altre righe di oggi: svuotalo o completalo prima, ' +
+                    "poi registra l’incasso del " + ENI.UI.formatData(dataInc) + " da solo.");
                 return;
             }
 
@@ -671,7 +732,10 @@ ENI.Modules.Vendita = (function() {
                 prezzo_unitario: importo,
                 sconto: 0,
                 sconto_tipo: 'fisso',
-                totale_riga: importo
+                totale_riga: importo,
+                // Solo se diversa da oggi: cosi' il caso normale resta
+                // identico a prima e _dataVendita non ha niente da decidere.
+                data_incasso: dataInc !== oggi ? dataInc : null
             });
 
             ENI.UI.closeModal(modal);
@@ -711,6 +775,12 @@ ENI.Modules.Vendita = (function() {
             html += '<tr>' +
                 '<td>' +
                     '<strong>' + ENI.UI.escapeHtml(item.nome_prodotto) + '</strong>' +
+                    // Una riga retrodatata deve distinguersi a occhio: la vendita
+                    // finira' su quel giorno, non su oggi.
+                    (item.data_incasso
+                        ? '<br><span class="text-xs" style="color:#B45309;font-weight:600;">'
+                            + '\u{1F4C5} incasso del ' + ENI.UI.formatData(item.data_incasso) + '</span>'
+                        : '') +
                     (hasSconto ? '<br><span class="text-xs" style="color: var(--color-success);">Sconto: ' +
                         (item.sconto_tipo === 'percentuale' ? item.sconto + '%' : ENI.UI.formatValuta(item.sconto)) +
                     '</span>' : '') +
@@ -1301,7 +1371,9 @@ ENI.Modules.Vendita = (function() {
         var totali = _calcolaTotali();
 
         var vendita = {
-            data: ENI.UI.oggiISO(),
+            // Non piu' oggi a mano: lo decide _dataVendita, che tiene conto
+            // di un eventuale incasso credito retrodatato.
+            data: _dataVendita(),
             ora: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             subtotale: totali.subtotale,
             sconto_globale: _scontoGlobale,
