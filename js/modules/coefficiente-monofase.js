@@ -14,7 +14,11 @@ ENI.Modules.CoefficienteMonofase = (function() {
     var TABELLA_COEFFICIENTI = 'coefficiente_monofase_mensile';
     var ALIQUOTA_IVA = ENI.Config.ALIQUOTA_IVA_MONOFASE || 0.21;
     var ACCISA_DEFAULT = ENI.Config.ACCISA_GASOLIO || 0.59320;
-    var MAX_FATTURE = 25;
+    // Non e' un limite di lavoro ma una rete di sicurezza, allineata al vincolo
+    // del database (migration 20261104): ferma un numero assurdo, non un mese
+    // pieno. Era 25, e a ottobre 2026 - 27 carichi di gasolio - ha fatto
+    // fallire la sincronizzazione lasciando il mese calcolato su 25 carichi.
+    var MAX_FATTURE = 200;
 
     // Nomi mesi italiani
     var MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -296,7 +300,7 @@ ENI.Modules.CoefficienteMonofase = (function() {
         return '<div class="cm-stats-inline">' +
             '<div class="stat-card">' +
                 '<div class="stat-label">Fatture</div>' +
-                '<div class="stat-value">' + _fatture.length + '/' + MAX_FATTURE + '</div>' +
+                '<div class="stat-value">' + _fatture.length + '</div>' +
             '</div>' +
             '<div class="stat-card">' +
                 '<div class="stat-label">Tot. imponibile</div>' +
