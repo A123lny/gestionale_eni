@@ -42,8 +42,34 @@ ENI.Modules.Buoni = (function() {
         _renderTab();
     }
 
+    // Aggancia un ascoltatore a un contenitore UNA VOLTA SOLA.
+    //
+    // I contenitori di questa pagina vivono una volta sola: #main-content lo
+    // crea il router e resta anche cambiando pagina, #buoni-content lo crea
+    // render() e resta cambiando scheda. A ogni render si riscrive il loro
+    // INTERNO, ma loro no -- e gli ascoltatori agganciati a loro sopravvivono,
+    // perche' stanno sull'elemento e non sui figli.
+    //
+    // Riagganciarli a ogni render li sommava. Dopo sei visite alla scheda
+    // Gestione, un solo clic su "Disabilita buono" apriva SEI finestre una
+    // sopra l'altra: sei sfondi semi-trasparenti fanno il nero, e servivano sei
+    // X per tornare alla pagina, che si schiariva un po' a ogni clic.
+    //
+    // Il difetto c'era da prima e non era solo estetico: sommava anche le
+    // conferme sull'Annulla di un buono e i caricamenti della lista a ogni
+    // filtro. Non si era mai visto perche' finestre identiche sovrapposte
+    // sembrano una sola, e una lista caricata sei volte sembra solo lenta.
+    //
+    // Le tre schede condividono #buoni-content, quindi ognuna ha la SUA chiave:
+    // con una chiave comune solo la prima visitata avrebbe il suo ascoltatore.
+    function _agganciaUnaVolta(el, chiave, evento, handler) {
+        if (!el || el.dataset[chiave]) return;
+        el.dataset[chiave] = '1';
+        el.addEventListener(evento, handler);
+    }
+
     function _setupTabEvents(container) {
-        container.addEventListener('click', function(e) {
+        _agganciaUnaVolta(container, 'buoniTabEventi', 'click', function(e) {
             var tabBtn = e.target.closest('.tab-btn');
             if (tabBtn && tabBtn.dataset.tab) {
                 _activeTab = tabBtn.dataset.tab;
@@ -549,9 +575,20 @@ ENI.Modules.Buoni = (function() {
     // ============================================================
 
     async function _renderGestione(container) {
+        // Disabilitare un buono e' un gesto del gestore: lo fa il giorno dopo,
+        // sui tagliandi raccolti. Il Cassiere ha il permesso di scrittura sui
+        // buoni, quindi senza questo controllo vedrebbe il pulsante e potrebbe
+        // chiudere un buono senza volerlo -- e da li' non si torna indietro.
+        var ruolo = ENI.State.getUserRole ? ENI.State.getUserRole() : '';
+        var btnDisabilita = (ruolo === 'Admin')
+            ? '<button class="btn btn-danger btn-sm" id="btn-disabilita-buono">\u{1F6AB} Disabilita buono</button>'
+            : '';
         container.innerHTML =
             '<div class="card">' +
-                '<div class="card-header"><h3>Gestione Buoni Cartacei</h3></div>' +
+                '<div class="card-header" style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); flex-wrap:wrap;">' +
+                    '<h3 style="margin:0;">Gestione Buoni Cartacei</h3>' +
+                    btnDisabilita +
+                '</div>' +
                 '<div class="card-body">' +
                     // Selezione cliente
                     '<div class="form-group" style="position: relative; margin-bottom: var(--space-3);">' +
@@ -616,7 +653,7 @@ ENI.Modules.Buoni = (function() {
     }
 
     function _setupGestioneEvents(container) {
-        container.addEventListener('click', function(e) {
+        _agganciaUnaVolta(container, 'buoniGestioneEventi', 'click', function(e) {
             var chip = e.target.closest('[data-filtro-stato]');
             if (chip) {
                 _filtroStato = chip.dataset.filtroStato;
@@ -629,6 +666,10 @@ ENI.Modules.Buoni = (function() {
             var btnAnnulla = e.target.closest('[data-annulla-buono]');
             if (btnAnnulla) {
                 _annullaBuono(btnAnnulla.dataset.annullaBuono);
+            }
+
+            if (e.target.closest('#btn-disabilita-buono')) {
+                _showDisabilitaBuono();
             }
         });
 
@@ -739,6 +780,97 @@ ENI.Modules.Buoni = (function() {
         }
     }
 
+    // Il momento dell'utilizzo si costruisce a MEZZOGIORNO della data scelta e
+    // non a mezzanotte: a mezzanotte uno scarto di fuso orario basta a far
+    // rileggere il giorno prima o il giorno dopo, e la data e' esattamente
+    // l'informazione che si legge su un buono disabilitato.
+    function _isoUtilizzo(dataISO) {
+        return new Date(dataISO + 'T12:00:00').toISOString();
+    }
+
+    // Disabilita un buono battendone il codice. Non chiede di scegliere un
+    // cliente: la lista qui sotto ne ha bisogno per mostrarsi, disabilitare no.
+    // La finestra resta aperta e il campo si svuota, perche' di buoni da
+    // chiudere ce n'e' sempre piu' di uno.
+    function _showDisabilitaBuono() {
+        var oggi = ENI.UI.oggiISO();
+        var body =
+            '<p class="text-sm text-muted" style="margin-top:0;">Batti o scansiona il codice del buono che e\u2019 stato speso. ' +
+                'Resta chiuso per sempre: non si torna indietro.</p>' +
+            '<div class="form-group">' +
+                '<label class="form-label form-label-required">Codice del buono</label>' +
+                '<input type="text" class="form-input" id="dis-ean" inputmode="numeric" autocomplete="off" ' +
+                    'placeholder="13 cifre" style="font-size:1.25rem; text-align:center; font-weight:bold;">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">Utilizzato il</label>' +
+                '<input type="date" class="form-input" id="dis-data" value="' + oggi + '" max="' + oggi + '">' +
+                '<small class="text-muted">Se lo chiudi il giorno dopo, metti il giorno in cui il buono e\u2019 stato speso.</small>' +
+            '</div>' +
+            '<div id="dis-esito" style="margin-top:var(--space-3);"></div>';
+
+        var modal = ENI.UI.showModal({
+            title: '\u{1F6AB} Disabilita buono',
+            body: body,
+            footer:
+                '<button class="btn btn-outline" data-modal-close>Chiudi</button>' +
+                '<button class="btn btn-danger" id="btn-dis-conferma">Disabilita</button>'
+        });
+
+        var inEan = modal.querySelector('#dis-ean');
+        var esito = modal.querySelector('#dis-esito');
+        inEan.focus();
+
+        function mostra(colore, testo) {
+            esito.innerHTML =
+                '<div style="padding:var(--space-3); border-radius:var(--radius-md); ' +
+                    'border:1px solid ' + colore + '; color:' + colore + '; font-weight:600;">' +
+                    testo +
+                '</div>';
+        }
+
+        async function conferma() {
+            var ean = inEan.value.trim();
+            if (!ean) {
+                mostra('var(--color-warning)', 'Inserisci il codice del buono');
+                inEan.focus();
+                return;
+            }
+            var data = modal.querySelector('#dis-data').value || ENI.UI.oggiISO();
+            var btn = modal.querySelector('#btn-dis-conferma');
+            btn.disabled = true;
+            try {
+                var b = await ENI.API.disabilitaBuonoByEAN(ean, _isoUtilizzo(data));
+                // Andata a buon fine: la finestra si chiude, come fa ogni altra
+                // di questa applicazione. Nella prima versione restava aperta
+                // col campo svuotato, per farne diversi di fila senza
+                // riaprirla: ma una finestra che non si chiude dopo aver
+                // funzionato si legge come un difetto, e aveva ragione lei.
+                ENI.UI.closeModal(modal);
+                ENI.UI.success('Buono da ' + ENI.UI.formatValuta(b.taglio) +
+                    ' disabilitato \u2014 utilizzato il ' + ENI.UI.formatData(data));
+                if (_gestioneCliente) _loadBuoni();
+            } catch (err) {
+                // L'errore invece la lascia aperta: il codice sbagliato si
+                // corregge qui, senza dover riaprire tutto da capo.
+                mostra('var(--color-danger)', '\u274C ' + ENI.UI.escapeHtml(err.message));
+                inEan.select();
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        modal.querySelector('#btn-dis-conferma').addEventListener('click', conferma);
+        // Un lettore di codici a barre manda le cifre e poi Invio: cosi
+        // scansionare basta, senza dover toccare lo schermo.
+        inEan.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                conferma();
+            }
+        });
+    }
+
     function _badgeStatoBuono(stato) {
         var cls = 'badge ';
         switch(stato) {
@@ -779,7 +911,7 @@ ENI.Modules.Buoni = (function() {
     }
 
     function _setupClientiEvents(container) {
-        container.addEventListener('click', function(e) {
+        _agganciaUnaVolta(container, 'buoniClientiEventi', 'click', function(e) {
             if (e.target.closest('#btn-nuovo-cliente-portale')) {
                 _mostraNuovoClienteModal();
             }
@@ -1163,7 +1295,7 @@ ENI.Modules.Buoni = (function() {
     }
 
     function _setupPrenotazioniEvents(container) {
-        container.addEventListener('click', function(e) {
+        _agganciaUnaVolta(container, 'buoniPrenotazioniEventi', 'click', function(e) {
             var chip = e.target.closest('[data-filtro-pren]');
             if (chip) {
                 _filtroPrenotazioni = chip.dataset.filtroPren;

@@ -1965,8 +1965,12 @@ ENI.API = (function() {
     // ============================================================
 
     async function cercaBuonoByEAN(ean) {
+        // Il nome del cliente serve alla schermata di verifica: su un buono
+        // intestato, "valido, intestato a Passion Car" dice all'operatore
+        // qualcosa in piu' del solo taglio. Chi chiama per pagare (Vendite)
+        // legge altri campi e non si accorge della differenza.
         var result = await getClient().from('buoni_cartacei')
-            .select('*')
+            .select('*, clienti(nome_ragione_sociale)')
             .eq('codice_ean', ean)
             .single();
         if (result.error) {
@@ -2006,6 +2010,66 @@ ENI.API = (function() {
             err.code = 'BUONO_NON_ATTIVO';
             throw err;
         }
+        return result.data[0];
+    }
+
+    // Disabilita un buono dal suo codice: lo marca 'utilizzato', che e' lo stato
+    // che la pagina Buoni mostra come "Utilizzato" con la sua data.
+    //
+    // Fino a oggi quello stato non era raggiungibile se non pagando col buono
+    // dentro un carrello di Vendite, e in nove mesi non e' mai accaduto: 273
+    // buoni attivi, zero utilizzati. Lo stesso buono, o una sua fotocopia,
+    // poteva tornare dieci volte senza che niente se ne accorgesse.
+    //
+    // L'aggiornamento e' CONDIZIONATO a stato = 'attivo'. Se due postazioni
+    // disabilitano lo stesso codice nello stesso istante, la seconda trova zero
+    // righe e lo dice, invece di sovrascrivere data e autore della prima.
+    //
+    // Non si torna indietro: non esiste nessuna funzione che riporti un buono
+    // ad 'attivo'. E' una scelta chiesta esplicitamente, non una dimenticanza.
+    async function disabilitaBuonoByEAN(ean, isoUtilizzo) {
+        var buono = await cercaBuonoByEAN(String(ean || '').trim());
+        if (!buono) {
+            var e0 = new Error('Codice non trovato: non e\u2019 un buono nostro');
+            e0.code = 'BUONO_INESISTENTE';
+            throw e0;
+        }
+        if (buono.stato === 'utilizzato') {
+            var quando = buono.utilizzato_at
+                ? ENI.UI.formatData(buono.utilizzato_at)
+                : 'data non registrata';
+            var e1 = new Error('Buono gia\u2019 utilizzato il ' + quando);
+            e1.code = 'BUONO_GIA_UTILIZZATO';
+            e1.buono = buono;
+            throw e1;
+        }
+        if (buono.stato === 'annullato') {
+            var e2 = new Error('Buono annullato: e\u2019 gia\u2019 fuori uso');
+            e2.code = 'BUONO_ANNULLATO';
+            e2.buono = buono;
+            throw e2;
+        }
+
+        var result = await getClient()
+            .from('buoni_cartacei')
+            .update({
+                stato: 'utilizzato',
+                utilizzato_at: isoUtilizzo || new Date().toISOString(),
+                utilizzato_da: ENI.State.getUserId()
+            })
+            .eq('id', buono.id)
+            .eq('stato', 'attivo')
+            .select();
+        if (result.error) throw new Error(result.error.message);
+        if (!result.data || result.data.length === 0) {
+            var e3 = new Error('Il buono non era piu\u2019 attivo: qualcuno lo ha appena disabilitato');
+            e3.code = 'BUONO_NON_ATTIVO';
+            throw e3;
+        }
+
+        await scriviLog('Disabilitato_Buono', 'Buoni',
+            'EAN: ' + buono.codice_ean + ' - ' + ENI.UI.formatValuta(buono.taglio));
+        ENI.State.cacheClear('buoni');
         return result.data[0];
     }
 
@@ -3301,6 +3365,7 @@ ENI.API = (function() {
         utilizzaBuono: utilizzaBuono,
         movimentaGiacenza: movimentaGiacenza,
         annullaBuono: annullaBuono,
+        disabilitaBuonoByEAN: disabilitaBuonoByEAN,
         getBuoni: getBuoni,
         getMaxSequenzialeBuono: getMaxSequenzialeBuono,
         getLottiBuoni: getLottiBuoni,
