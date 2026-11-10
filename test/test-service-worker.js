@@ -125,6 +125,21 @@ check('non cancella niente da sola',
   !/localStorage\.clear|sessionStorage\.clear|caches\.delete/.test(
     (html.match(/tw-ricarica[\s\S]{0,1500}/) || [''])[0]));
 
+console.log('\n--- 7. ma non scatta mentre l app sta solo aspettando la rete ---');
+// 10/11/2026: dal telefono "ogni tanto" compariva "Titanwash non si e'
+// caricato" con la rete buona. #app restava vuoto mentre init() aspettava
+// sessione, utente e impostazioni in fila: in 4G oltre i 2,5 secondi.
+const appJs = fs.readFileSync(P + 'js/app.js', 'utf8');
+const apiJs = fs.readFileSync(P + 'js/api.js', 'utf8');
+check('app.js scrive il segnaposto come prima cosa',
+  /async function init\(\) \{\s*_segnapostoAvvio\(\);/.test(appJs));
+check('il segnaposto riempie #app solo se e vuoto',
+  /function _segnapostoAvvio\(\) \{[\s\S]{0,200}app\.children\.length\) return;/.test(appJs));
+check('se la rete non risponde davvero, dopo 15 secondi offre Ricarica',
+  /tw-avvio-ricarica[\s\S]{0,400}15000/.test(appJs));
+check("all'avvio l utente si legge dalla sessione, senza chiederlo al server",
+  /async function getUtenteCorrente\(\) \{\s*var sess = await getClient\(\)\.auth\.getSession\(\);/.test(apiJs));
+
 console.log('\n--- la versione della cache e stata alzata ---');
 // Senza, il service worker nuovo non viene nemmeno preso in
 // considerazione dai telefoni che hanno il vecchio.

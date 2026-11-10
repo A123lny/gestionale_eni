@@ -132,13 +132,19 @@ ENI.API = (function() {
     }
 
     // Ricostruisce l'utente applicativo dalla sessione Auth corrente (o null se non loggato)
+    // La sessione si legge con getSession (dal telefono, senza rete; rinnova
+    // il token solo se e' scaduto) e non con getUser, che chiede ogni volta
+    // al server: all'avvio era una chiamata in piu' in fila prima di poter
+    // disegnare qualunque cosa. La verifica vera la fa comunque il database:
+    // con un token non valido la lettura di `personale` non torna niente.
     async function getUtenteCorrente() {
-        var sess = await getClient().auth.getUser();
-        if (!sess.data || !sess.data.user) return null;
+        var sess = await getClient().auth.getSession();
+        var user = sess.data && sess.data.session && sess.data.session.user;
+        if (!user) return null;
         var result = await getClient()
             .from('personale')
             .select('id, username, nome_completo, ruolo, super_admin')
-            .eq('auth_user_id', sess.data.user.id)
+            .eq('auth_user_id', user.id)
             .eq('attivo', true)
             .maybeSingle();
         if (result.error || !result.data) return null;

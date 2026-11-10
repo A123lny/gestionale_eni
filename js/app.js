@@ -12,6 +12,8 @@ ENI.App = (function() {
     // --- Init ---
 
     async function init() {
+        _segnapostoAvvio();
+
         // Init Supabase
         ENI.API.init();
 
@@ -46,6 +48,43 @@ ENI.App = (function() {
         }
         // Router sempre attivo (gestisce area-cliente anche senza login staff)
         ENI.Router.init();
+    }
+
+    // "Caricamento..." subito, prima di qualunque chiamata al database.
+    //
+    // Dal telefono "ogni tanto" compariva "Titanwash non si e' caricato"
+    // con la rete funzionante. La rete di sicurezza di index.html scatta se
+    // 2,5 secondi dopo il caricamento #app e' ancora vuoto, e #app restava
+    // vuoto anche quando l'app era partita benissimo e stava solo aspettando
+    // il database: sessione, utente, impostazioni, tre chiamate in fila
+    // prima di disegnare. In 4G, a connessione fredda o col token da
+    // rinnovare, 2,5 secondi non bastano.
+    //
+    // Con questo segnaposto #app non e' piu' vuoto appena l'app parte, quindi
+    // la rete di sicurezza resta per il caso per cui e' nata: uno script non
+    // arrivato. Login e menu lo sostituiscono riscrivendo #app. Se invece la
+    // rete non risponde davvero, dopo 15 secondi si dice e si offre Ricarica.
+    function _segnapostoAvvio() {
+        var app = document.getElementById('app');
+        if (!app || app.children.length) return;
+        app.innerHTML =
+            '<div id="tw-avvio" style="max-width:420px;margin:20vh auto;padding:24px;' +
+                 'font-family:system-ui,sans-serif;text-align:center;color:#555;">' +
+                '<div class="spinner" style="margin:0 auto 14px;"></div>' +
+                '<div>Caricamento…</div>' +
+            '</div>';
+        setTimeout(function() {
+            var el = document.getElementById('tw-avvio');
+            if (!el) return;   // l'app e' partita
+            el.innerHTML +=
+                '<p style="line-height:1.5;margin-top:16px;">La connessione è lenta. ' +
+                    'Se non parte, tocca Ricarica: i dati sono tutti al loro posto.</p>' +
+                '<button id="tw-avvio-ricarica" style="margin-top:6px;padding:12px 22px;' +
+                    'font-size:1rem;border:0;border-radius:8px;background:#1B2D4E;' +
+                    'color:#fff;cursor:pointer;">Ricarica</button>';
+            var b = document.getElementById('tw-avvio-ricarica');
+            if (b) b.addEventListener('click', function() { location.reload(); });
+        }, 15000);
     }
 
     // Applica le soglie globali (da impostazioni_app) sovrascrivendo i default in ENI.Config
