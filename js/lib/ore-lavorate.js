@@ -97,10 +97,18 @@ ENI.OreLavorate = (function() {
         return f - i;
     }
 
+    // Le righe di `turni` che segnano un giorno a casa e non un orario.
+    // Il permesso A ORE non e' qui: e' una fascia (permesso_inizio/fine)
+    // dentro un turno di lavoro, che resta del suo tipo.
+    var ASSENZE = { riposo: true, ferie: true, malattia: true, permesso: true };
+
+    function isAssenza(tipo) { return !!ASSENZE[tipo]; }
+
     // Un turno 'spezzato' ha due fasce: vanno sommate entrambe.
-    // 'riposo' (e qualunque riga senza orari) vale zero.
+    // Riposo, ferie, malattia e permesso (e qualunque riga senza orari)
+    // valgono zero: le ore previste sono solo quelle di lavoro.
     function minutiPrevisti(turno) {
-        if (!turno || turno.tipo === 'riposo') return 0;
+        if (!turno || isAssenza(turno.tipo)) return 0;
         return _durata(turno.ora_inizio, turno.ora_fine) +
                _durata(turno.ora_inizio_2, turno.ora_fine_2);
     }
@@ -265,6 +273,119 @@ ENI.OreLavorate = (function() {
         };
     }
 
+    // --- Il calendario: ogni giorno, lavorato o a casa e perche' ---
+    //
+    // Per il PDF delle ore: una riga per giorno, non solo i giorni timbrati,
+    // cosi' si legge chi era in ferie, in malattia, in permesso o a riposo.
+    // Le fonti sono tre: la griglia turni (dove ora si segnano anche le
+    // assenze), le richieste ferie approvate (che esistevano prima) e le
+    // timbrature.
+    //
+    // Lo stato del giorno segue quest'ordine: prima l'assenza dichiarata,
+    // poi il riposo, poi le timbrature, poi il turno rimasto senza
+    // timbratura. Le ore timbrate restano attaccate al giorno anche quando
+    // c'e' un'assenza: chi timbra in un giorno di ferie e' un dato da
+    // guardare, non da nascondere.
+    //
+    // I giorni elencati vanno da lunedi' a sabato (la stazione e' chiusa la
+    // domenica), piu' le domeniche in cui la persona ha qualcosa.
+    var STATI = {
+        lavorato:         'Lavorato',
+        ferie:            'Ferie',
+        malattia:         'Malattia',
+        permesso:         'Permesso',
+        riposo:           'Riposo',
+        senza_timbratura: 'Turno senza timbratura',
+        previsto:         'Turno previsto',
+        nessun_dato:      'Nessun dato'
+    };
+
+    function etichettaStato(s) { return STATI[s] || s; }
+
+    function _fascia(inizio, fine) {
+        if (!inizio || !fine) return null;
+        return { inizio: String(inizio).slice(0, 5), fine: String(fine).slice(0, 5) };
+    }
+
+    function calendario(opz) {
+        var da = opz.da, a = opz.a, oggi = opz.oggi;
+        var per = {};
+        function persona(pid, nome) {
+            if (!per[pid]) per[pid] = { personale_id: pid, nome: nome || '', giorni: {} };
+            if (nome && !per[pid].nome) per[pid].nome = nome;
+            return per[pid];
+        }
+        function giorno(p, data) {
+            return p.giorni[data] = p.giorni[data] || { data: data, turno: null, richiesta: null, eventi: [] };
+        }
+
+        (opz.turni || []).forEach(function(t) {
+            if (t.data < da || t.data > a) return;
+            giorno(persona(t.personale_id, t.personale && t.personale.nome_completo), t.data).turno = t;
+        });
+        (opz.ferieApprovate || []).forEach(function(r) {
+            if (r.data_fine < da || r.data_inizio > a) return;
+            var p = persona(r.personale_id, r.personale && r.personale.nome_completo);
+            var d = r.data_inizio < da ? da : r.data_inizio;
+            var fine = r.data_fine > a ? a : r.data_fine;
+            while (d <= fine) { giorno(p, d).richiesta = r; d = addGiorni(d, 1); }
+        });
+        (opz.timbrature || []).forEach(function(t) {
+            if (t.data < da || t.data > a) return;
+            giorno(persona(t.personale_id, t.personale && t.personale.nome_completo), t.data).eventi.push(t);
+        });
+
+        var righe = Object.keys(per).map(function(pid) {
+            var p = per[pid];
+            var riep = { lavorato: 0, ferie: 0, malattia: 0, permesso: 0, riposo: 0,
+                         senza_timbratura: 0, previsto: 0, minutiPermesso: 0, minuti: 0 };
+            var giorni = [];
+            for (var d = da; d <= a; d = addGiorni(d, 1)) {
+                var g = p.giorni[d];
+                if (_parse(d).getDay() === 0 && !g) continue;   // domenica vuota
+                g = g || { data: d, turno: null, richiesta: null, eventi: [] };
+                var t = g.turno, r = g.richiesta;
+
+                var assenza = null;
+                if (t && isAssenza(t.tipo) && t.tipo !== 'riposo') assenza = t.tipo;
+                var permessoOre = t ? _fascia(t.permesso_inizio, t.permesso_fine) : null;
+                if (!assenza && r) {
+                    // Una richiesta non a giornata intera e' un permesso a ore.
+                    if (r.giornata_intera === false && r.ora_inizio && r.ora_fine) {
+                        permessoOre = permessoOre || _fascia(r.ora_inizio, r.ora_fine);
+                    } else {
+                        assenza = r.tipo;
+                    }
+                }
+
+                var sess = sessioni(g.eventi);
+                var min = minutiLavorati(sess);
+                var stato;
+                if (assenza) stato = assenza;
+                else if (t && t.tipo === 'riposo') stato = 'riposo';
+                else if (sess.length) stato = 'lavorato';
+                else if (t) stato = d < oggi ? 'senza_timbratura' : 'previsto';
+                else if (permessoOre) stato = 'permesso';   // permesso a ore, nient'altro quel giorno
+                else stato = 'nessun_dato';
+
+                if (riep[stato] !== undefined) riep[stato]++;
+                if (permessoOre) riep.minutiPermesso += _durata(permessoOre.inizio, permessoOre.fine);
+                riep.minuti += min;
+
+                giorni.push({
+                    data: d, stato: stato, minuti: min, sessioni: sess,
+                    incompleta: sessioniIncomplete(sess) > 0,
+                    permessoOre: permessoOre,
+                    // ore timbrate in un giorno segnato a casa: da verificare
+                    timbratoInAssenza: !!(sess.length && (assenza || stato === 'riposo'))
+                });
+            }
+            return { personale_id: pid, nome: p.nome, giorni: giorni, riepilogo: riep };
+        }).sort(function(x, y) { return x.nome.localeCompare(y.nome); });
+
+        return { righe: righe };
+    }
+
     // --- Formato ---
 
     function fmtOre(min) {
@@ -281,6 +402,9 @@ ENI.OreLavorate = (function() {
 
     return {
         TOLLERANZA_MIN: TOLLERANZA_MIN,
+        isAssenza: isAssenza,
+        calendario: calendario,
+        etichettaStato: etichettaStato,
         addGiorni: addGiorni,
         ultimoGiornoChiuso: ultimoGiornoChiuso,
         minutiPrevisti: minutiPrevisti,

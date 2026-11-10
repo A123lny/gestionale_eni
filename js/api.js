@@ -1426,6 +1426,8 @@ ENI.API = (function() {
             ora_fine: dati.ora_fine || null,
             ora_inizio_2: dati.ora_inizio_2 || null,
             ora_fine_2: dati.ora_fine_2 || null,
+            permesso_inizio: dati.permesso_inizio || null,
+            permesso_fine: dati.permesso_fine || null,
             note: dati.note || null,
             updated_at: new Date().toISOString()
         };

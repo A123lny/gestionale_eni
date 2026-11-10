@@ -249,6 +249,80 @@ eq('le ore fatte si vedono comunque', 544, senzaTurni.righe[0].minutiFatti);
 eq('ma non si inventa un ammanco', 'senza_turni', senzaTurni.righe[0].giudizio);
 eq('e il totale non la conta', 0, senzaTurni.totale.persone);
 
+console.log('\n--- le assenze segnate nei turni non sono ore previste ---');
+['ferie', 'malattia', 'permesso', 'riposo'].forEach(function(tipo) {
+  eq(tipo + ' vale zero', 0, Ore.minutiPrevisti({ tipo: tipo, ora_inizio: null, ora_fine: null }));
+  check(tipo + ' e un assenza', Ore.isAssenza(tipo));
+});
+check('un turno di lavoro non e un assenza', !Ore.isAssenza('mattina') && !Ore.isAssenza('turno'));
+// Permesso a ore dentro un turno: le previste sono le ore di lavoro, la
+// fascia di permesso non si somma.
+eq('il permesso a ore non aggiunge ore previste', 360, Ore.minutiPrevisti(
+  turno('2026-10-06', '07:30:00', '13:30:00', 'p1', 'Tizio',
+        { tipo: 'mattina', permesso_inizio: '10:00:00', permesso_fine: '12:00:00' })));
+
+console.log('\n--- il calendario: ogni giorno, lavorato o a casa ---');
+// Luca: ferie dal 1 al 4/10 da una richiesta approvata (il caso vero di
+// ottobre), malattia segnata in griglia, un permesso a ore dentro il turno,
+// un turno passato senza timbratura, turni di oggi e di domani.
+var cal = Ore.calendario({
+  turni: [
+    turno('2026-10-05', null, null, 'luca', 'Luca Cardinali', { tipo: 'malattia' }),
+    turno('2026-10-06', '07:30:00', '13:30:00', 'luca', 'Luca Cardinali',
+          { tipo: 'mattina', permesso_inizio: '10:00:00', permesso_fine: '12:00:00' }),
+    turno('2026-10-07', '07:30:00', '13:30:00', 'luca', 'Luca Cardinali'),
+    turno('2026-10-09', '07:30:00', '13:30:00', 'luca', 'Luca Cardinali'),
+    turno('2026-10-10', '07:30:00', '13:30:00', 'luca', 'Luca Cardinali'),
+    turno('2026-10-06', null, null, 'ale', 'Alessandro Donnini', { tipo: 'ferie' }),
+    turno('2026-10-08', null, null, 'ale', 'Alessandro Donnini', { tipo: 'riposo' })
+  ],
+  ferieApprovate: [
+    { personale_id: 'luca', tipo: 'ferie', data_inizio: '2026-10-01', data_fine: '2026-10-04',
+      giornata_intera: true, personale: { nome_completo: 'Luca Cardinali' } },
+    { personale_id: 'ale', tipo: 'permesso', data_inizio: '2026-10-07', data_fine: '2026-10-07',
+      giornata_intera: false, ora_inizio: '10:00:00', ora_fine: '12:00:00',
+      personale: { nome_completo: 'Alessandro Donnini' } }
+  ],
+  timbrature: [
+    ev('2026-10-06', '07:30', 'entrata', 'luca', 'Luca Cardinali'),
+    ev('2026-10-06', '10:00', 'uscita',  'luca', 'Luca Cardinali'),
+    ev('2026-10-06', '13:00', 'entrata', 'ale', 'Alessandro Donnini'),
+    ev('2026-10-06', '15:00', 'uscita',  'ale', 'Alessandro Donnini')
+  ],
+  da: '2026-09-28', a: '2026-10-10', oggi: '2026-10-09'
+});
+function giornoDi(nome, data) {
+  var p = cal.righe.filter(function(x) { return x.nome === nome; })[0];
+  return p && p.giorni.filter(function(x) { return x.data === data; })[0];
+}
+eq('due persone', 2, cal.righe.length);
+eq('in ordine di nome', 'Alessandro Donnini', cal.righe[0].nome);
+var luca = cal.righe[1];
+// 28/09-10/10 sono 13 giorni, 12 da lunedi' a sabato. La domenica 04/10
+// resta per Luca, che e' in ferie; per Alessandro e' vuota e sparisce.
+eq('Luca: lun-sab piu la domenica in ferie', 13, luca.giorni.length);
+eq('Alessandro: la domenica vuota non c e', 12, cal.righe[0].giorni.length);
+eq('le ferie dalla richiesta approvata', 'ferie', giornoDi('Luca Cardinali', '2026-10-01').stato);
+eq('anche la domenica dentro le ferie', 'ferie', giornoDi('Luca Cardinali', '2026-10-04').stato);
+eq('quattro giorni di ferie', 4, luca.riepilogo.ferie);
+eq('la malattia segnata in griglia', 'malattia', giornoDi('Luca Cardinali', '2026-10-05').stato);
+var perm = giornoDi('Luca Cardinali', '2026-10-06');
+eq('il giorno col permesso a ore resta lavorato', 'lavorato', perm.stato);
+eq('con le ore timbrate', 150, perm.minuti);
+eq('e la fascia del permesso', '10:00-12:00', perm.permessoOre.inizio + '-' + perm.permessoOre.fine);
+eq('due ore di permesso nel riepilogo', 120, luca.riepilogo.minutiPermesso);
+eq('turno passato senza timbratura', 'senza_timbratura', giornoDi('Luca Cardinali', '2026-10-07').stato);
+eq('giorno senza niente', 'nessun_dato', giornoDi('Luca Cardinali', '2026-10-08').stato);
+eq('il turno di oggi non e ancora mancato', 'previsto', giornoDi('Luca Cardinali', '2026-10-09').stato);
+eq('quello di domani nemmeno', 'previsto', giornoDi('Luca Cardinali', '2026-10-10').stato);
+var aleFerie = giornoDi('Alessandro Donnini', '2026-10-06');
+eq('ferie segnate in griglia', 'ferie', aleFerie.stato);
+eq('ma ha timbrato: le ore restano', 120, aleFerie.minuti);
+check('e il giorno e segnalato da verificare', aleFerie.timbratoInAssenza === true);
+eq('una richiesta di permesso a ore senza turno', 'permesso', giornoDi('Alessandro Donnini', '2026-10-07').stato);
+eq('il riposo', 'riposo', giornoDi('Alessandro Donnini', '2026-10-08').stato);
+check('un giorno normale non e da verificare', perm.timbratoInAssenza === false);
+
 console.log('\n--- formato ---');
 eq('ore e minuti', '6h 30m', Ore.fmtOre(390));
 eq('sotto l ora', '0h 31m', Ore.fmtOre(31));

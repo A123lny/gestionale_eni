@@ -25,15 +25,29 @@ ENI.Modules.Turni = (function() {
     var MODELLI = [
         { id: 'mattina',    label: '🌅 Mattina',    oi: '07:30', of: '13:30' },
         { id: 'pomeriggio', label: '🌇 Pomeriggio', oi: '13:30', of: '19:30' },
-        { id: 'riposo',     label: '😴 Riposo',     oi: null,    of: null }
+        { id: 'riposo',     label: '😴 Riposo',     oi: null,    of: null },
+        { id: 'ferie',      label: '🌴 Ferie',      oi: null,    of: null },
+        { id: 'malattia',   label: '🤒 Malattia',   oi: null,    of: null },
+        { id: 'permesso',   label: '🕐 Permesso (giornata)', oi: null, of: null }
     ];
     var COLORI = {
         mattina:    'rgba(42,120,214,0.15)',
         pomeriggio: 'rgba(235,104,52,0.15)',
         spezzato:   'rgba(147,51,234,0.14)',
         riposo:     'rgba(0,0,0,0.05)',
-        turno:      'rgba(27,175,122,0.15)'
+        turno:      'rgba(27,175,122,0.15)',
+        ferie:      'rgba(217,119,6,0.10)',
+        malattia:   'rgba(217,119,6,0.10)',
+        permesso:   'rgba(217,119,6,0.10)'
     };
+    // Giorni a casa segnati in griglia: niente orari, zero ore previste.
+    // Stesse etichette delle richieste ferie approvate, per leggerle uguali.
+    var ASSENZE_LBL = { ferie: '🌴 Ferie', malattia: '🤒 Malat.', permesso: '🕐 Perm.' };
+    function _senzaOrari(t) { return t && (t.tipo === 'riposo' || !!ASSENZE_LBL[t.tipo]); }
+    function _fasciaPermesso(t) {
+        return t && t.permesso_inizio && t.permesso_fine
+            ? t.permesso_inizio.slice(0, 5) + '–' + t.permesso_fine.slice(0, 5) : '';
+    }
 
     function _parse(iso) { var p = String(iso).split('-'); return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])); }
     function _toISO(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -237,7 +251,7 @@ ENI.Modules.Turni = (function() {
         turni.forEach(function(t) {
             var m = _mondayOf(t.data);
             if (!perWeek[m]) perWeek[m] = { count: 0, gente: {} };
-            if (t.tipo !== 'riposo') perWeek[m].count++;
+            if (!_senzaOrari(t)) perWeek[m].count++;
             perWeek[m].gente[t.personale_id] = true;
         });
         var weeks = Object.keys(perWeek).sort().reverse();
@@ -338,7 +352,7 @@ ENI.Modules.Turni = (function() {
                 'Clicca una cella per assegnare il turno. &nbsp; ' +
                 '<b>07:30–13:30</b> = turno assegnato · ' +
                 '<span style="font-style:italic;">grigio corsivo</span> = disponibilità indicata dal dipendente (da assegnare) · ' +
-                '🌴 ferie/permesso · <span style="color:#b91c1c;">indisp.</span> = non disponibile' +
+                '🌴 ferie · 🤒 malattia · 🕐 permesso · <span style="color:#b91c1c;">indisp.</span> = non disponibile' +
             '</div>');
 
         if (!readonly) {
@@ -367,10 +381,14 @@ ENI.Modules.Turni = (function() {
         if (t) {
             if (t.tipo === 'riposo') {
                 contenuto += '<div class="text-xs" style="color:var(--color-gray-500);">Riposo</div>';
+            } else if (ASSENZE_LBL[t.tipo]) {
+                // Se c'e' anche la richiesta approvata, l'etichetta e' gia' sopra.
+                if (!f) contenuto += '<div class="text-xs" style="color:#b45309;font-weight:600;">' + ASSENZE_LBL[t.tipo] + '</div>';
             } else {
                 contenuto += '<div class="text-xs" style="font-weight:700;">' + (t.ora_inizio ? t.ora_inizio.slice(0, 5) : '') + (t.ora_fine ? '–' + t.ora_fine.slice(0, 5) : '') + '</div>';
                 if (t.tipo === 'spezzato' && t.ora_inizio_2) contenuto += '<div class="text-xs" style="font-weight:700;">' + t.ora_inizio_2.slice(0, 5) + (t.ora_fine_2 ? '–' + t.ora_fine_2.slice(0, 5) : '') + '</div>';
             }
+            if (_fasciaPermesso(t)) contenuto += '<div class="text-xs" style="color:#b45309;font-weight:600;">🕐 ' + _fasciaPermesso(t) + '</div>';
             if (t.note) contenuto += '<div class="text-xs" title="' + ENI.UI.escapeHtml(t.note) + '">📝</div>';
         } else if (!f) {
             // Nessun turno: mostra il suggerimento dalla disponibilità (in grigio)
@@ -408,13 +426,18 @@ ENI.Modules.Turni = (function() {
             '<div style="display:flex;flex-wrap:wrap;margin-bottom:12px;">' + modelliBtn + '</div>' +
             '<div class="form-label" style="margin-bottom:4px;">Oppure orario personalizzato</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
-                '<div class="form-group"><label class="form-label">Dalle</label><input type="time" class="form-input" id="tur-oi" value="' + (t && t.tipo !== 'riposo' && t.ora_inizio ? t.ora_inizio.slice(0, 5) : '') + '"></div>' +
-                '<div class="form-group"><label class="form-label">Alle</label><input type="time" class="form-input" id="tur-of" value="' + (t && t.tipo !== 'riposo' && t.ora_fine ? t.ora_fine.slice(0, 5) : '') + '"></div>' +
+                '<div class="form-group"><label class="form-label">Dalle</label><input type="time" class="form-input" id="tur-oi" value="' + (t && !_senzaOrari(t) && t.ora_inizio ? t.ora_inizio.slice(0, 5) : '') + '"></div>' +
+                '<div class="form-group"><label class="form-label">Alle</label><input type="time" class="form-input" id="tur-of" value="' + (t && !_senzaOrari(t) && t.ora_fine ? t.ora_fine.slice(0, 5) : '') + '"></div>' +
             '</div>' +
             '<div class="form-label" style="margin:6px 0 4px;">🔀 2° periodo (per turno spezzato, opzionale)</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
                 '<div class="form-group"><label class="form-label">Dalle</label><input type="time" class="form-input" id="tur-oi2" value="' + (t && t.ora_inizio_2 ? t.ora_inizio_2.slice(0, 5) : '') + '"></div>' +
                 '<div class="form-group"><label class="form-label">Alle</label><input type="time" class="form-input" id="tur-of2" value="' + (t && t.ora_fine_2 ? t.ora_fine_2.slice(0, 5) : '') + '"></div>' +
+            '</div>' +
+            '<div class="form-label" style="margin:6px 0 4px;">🕐 Permesso a ore (opzionale, anche senza orario di lavoro)</div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+                '<div class="form-group"><label class="form-label">Dalle</label><input type="time" class="form-input" id="tur-pi" value="' + (t && t.permesso_inizio ? t.permesso_inizio.slice(0, 5) : '') + '"></div>' +
+                '<div class="form-group"><label class="form-label">Alle</label><input type="time" class="form-input" id="tur-pf" value="' + (t && t.permesso_fine ? t.permesso_fine.slice(0, 5) : '') + '"></div>' +
             '</div>' +
             '<div class="form-group" style="margin-top:6px;"><label class="form-label">Note (opzionale)</label>' +
                 '<textarea class="form-textarea" id="tur-note" rows="2" placeholder="es. copre pausa pranzo">' + (t && t.note ? ENI.UI.escapeHtml(t.note) : '') + '</textarea></div>';
@@ -436,9 +459,18 @@ ENI.Modules.Turni = (function() {
         modal.querySelector('#tur-salva-custom').addEventListener('click', function() {
             var oi = document.getElementById('tur-oi').value, of = document.getElementById('tur-of').value;
             var oi2 = document.getElementById('tur-oi2').value, of2 = document.getElementById('tur-of2').value;
+            var pi = document.getElementById('tur-pi').value, pf = document.getElementById('tur-pf').value;
+            if ((pi && !pf) || (!pi && pf)) { ENI.UI.warning('Inserisci inizio e fine del permesso'); return; }
+            var permesso = !!(pi && pf);
+            // Solo il permesso a ore, senza lavoro quel giorno: si salva come permesso.
+            if (!oi && !of && permesso) {
+                _salva(p.id, data, { tipo: 'permesso', ora_inizio: null, ora_fine: null, permesso_inizio: pi, permesso_fine: pf, note: _nota() }, modal);
+                return;
+            }
             if (!oi || !of) { ENI.UI.warning('Inserisci orario di inizio e fine'); return; }
             var dati = { tipo: 'turno', ora_inizio: oi, ora_fine: of, note: _nota() };
             if (oi2 && of2) { dati.tipo = 'spezzato'; dati.ora_inizio_2 = oi2; dati.ora_fine_2 = of2; }
+            if (permesso) { dati.permesso_inizio = pi; dati.permesso_fine = pf; }
             _salva(p.id, data, dati, modal);
         });
         var canc = modal.querySelector('#tur-cancella');
@@ -455,7 +487,7 @@ ENI.Modules.Turni = (function() {
     async function _salva(pid, data, dati, modal) {
         try {
             ENI.UI.showLoading();
-            await ENI.API.salvaTurno({ personale_id: pid, data: data, tipo: dati.tipo, ora_inizio: dati.ora_inizio, ora_fine: dati.ora_fine, ora_inizio_2: dati.ora_inizio_2, ora_fine_2: dati.ora_fine_2, note: dati.note });
+            await ENI.API.salvaTurno({ personale_id: pid, data: data, tipo: dati.tipo, ora_inizio: dati.ora_inizio, ora_fine: dati.ora_fine, ora_inizio_2: dati.ora_inizio_2, ora_fine_2: dati.ora_fine_2, permesso_inizio: dati.permesso_inizio, permesso_fine: dati.permesso_fine, note: dati.note });
             ENI.UI.hideLoading();
             ENI.UI.closeModal(modal);
             await _refreshPianificazione();
@@ -471,7 +503,10 @@ ENI.Modules.Turni = (function() {
         if (!ok) return;
         try {
             ENI.UI.showLoading();
-            var prev = await ENI.API.getTurni(_addG(_lunedi, -7), _addG(_lunedi, -1));
+            // Ferie, malattia e permessi non si ripetono la settimana dopo:
+            // si copiano solo i turni (il permesso a ore resta indietro).
+            var prev = (await ENI.API.getTurni(_addG(_lunedi, -7), _addG(_lunedi, -1)))
+                .filter(function(t) { return !ASSENZE_LBL[t.tipo]; });
             for (var i = 0; i < prev.length; i++) {
                 var t = prev[i];
                 await ENI.API.salvaTurno({ personale_id: t.personale_id, data: _addG(t.data, 7), tipo: t.tipo, ora_inizio: t.ora_inizio, ora_fine: t.ora_fine, ora_inizio_2: t.ora_inizio_2, ora_fine_2: t.ora_fine_2, note: t.note });
@@ -518,12 +553,17 @@ ENI.Modules.Turni = (function() {
 
     function _trunc(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
     function _cellLines(t, f) {
-        if (f) return ['Ferie'];
+        // Niente emoji: il font di default di jsPDF non le disegna.
+        var NOMI = { ferie: 'Ferie', malattia: 'Malattia', permesso: 'Permesso' };
+        var perm = _fasciaPermesso(t).replace('–', '-');
+        if (f) return [NOMI[f.tipo] || 'Ferie'];
         if (!t) return [''];
         if (t.tipo === 'riposo') return ['Riposo'];
+        if (NOMI[t.tipo]) return perm ? [NOMI[t.tipo], perm] : [NOMI[t.tipo]];
         var l1 = (t.ora_inizio ? t.ora_inizio.slice(0, 5) : '') + (t.ora_fine ? '-' + t.ora_fine.slice(0, 5) : '');
         var out = [l1];
         if (t.tipo === 'spezzato' && t.ora_inizio_2) out.push(t.ora_inizio_2.slice(0, 5) + (t.ora_fine_2 ? '-' + t.ora_fine_2.slice(0, 5) : ''));
+        if (perm) out.push('Perm. ' + perm);
         return out;
     }
 

@@ -12,6 +12,7 @@ ENI.Modules.Timbrature = (function() {
     var _da = '', _a = '', _timbrature = [], _personale = [];
     var _container = null;   // serve a ricaricare la lista dopo una correzione
     var _ore = null;         // confronto previste/fatte del periodo mostrato
+    var _turniPeriodo = null, _ferieApprovate = null;   // per il calendario del PDF (null = lettura fallita)
 
     // --- Date helper ---
     function _oggi() { return ENI.UI.oggiISO(); }
@@ -127,13 +128,19 @@ ENI.Modules.Timbrature = (function() {
         // Se la lettura va male si mostrano le ore fatte e basta: il confronto
         // e' un'aggiunta, le timbrature devono restare visibili comunque.
         _ore = null;
+        _turniPeriodo = null;
         try {
             var turni = await ENI.API.getTurni(_da, _a);
+            _turniPeriodo = turni;
             _ore = ENI.OreLavorate.confronto({
                 turni: turni, timbrature: _timbrature,
                 da: _da, a: _a, oggi: _oggi()
             });
         } catch (e) { _ore = null; }
+        // Le ferie approvate servono solo al PDF: se non arrivano, il PDF
+        // esce lo stesso con quello che c'e' e lo dice.
+        try { _ferieApprovate = await ENI.API.getRichiesteFerie({ stato: 'approvata' }); }
+        catch (e) { _ferieApprovate = null; }
         _renderContenuto();
     }
 
@@ -458,9 +465,46 @@ ENI.Modules.Timbrature = (function() {
     }
 
     // --- Export PDF ---
+    //
+    // Una riga per OGNI giorno del periodo, non solo per quelli timbrati: chi
+    // legge deve vedere anche i giorni a casa e il motivo (ferie, malattia,
+    // permesso, riposo) e i turni rimasti senza timbratura. Il calcolo e'
+    // ENI.OreLavorate.calendario; qui c'e' solo l'impaginazione.
+    var _GIORNI_SETT = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+    var _COLORE_STATO = {
+        ferie: [180, 83, 9], permesso: [180, 83, 9], malattia: [185, 28, 28],
+        riposo: [120, 120, 120], senza_timbratura: [185, 28, 28],
+        previsto: [120, 120, 120], nessun_dato: [160, 160, 160]
+    };
+
+    function _descrGiorno(g) {
+        var O = ENI.OreLavorate;
+        var orari = g.sessioni.map(function(s) {
+            return (s.inizio ? _oraDi(s.inizio) : '??') + '-' + (s.fine ? _oraDi(s.fine) : '??');
+        }).join(', ');
+        var perm = g.permessoOre ? 'Permesso ' + g.permessoOre.inizio + '-' + g.permessoOre.fine : '';
+        var parti = [];
+        if (g.stato === 'lavorato') {
+            parti.push(orari);
+            if (perm) parti.push(perm);
+        } else if (g.stato === 'permesso' && perm) {
+            parti.push(perm);
+            if (orari) parti.push(orari);
+        } else {
+            parti.push(O.etichettaStato(g.stato));
+            if (orari) parti.push('timbrato ' + orari + ' (da verificare)');
+        }
+        return parti.join(' + ') + (g.incompleta ? '  (incompleta)' : '');
+    }
+
     function _esportaPdf() {
         if (!(window.jspdf && window.jspdf.jsPDF)) { ENI.UI.error('Libreria PDF non disponibile'); return; }
-        if (!_timbrature.length) { ENI.UI.warning('Nessuna timbratura nel periodo da esportare'); return; }
+
+        var cal = ENI.OreLavorate.calendario({
+            turni: _turniPeriodo || [], timbrature: _timbrature, ferieApprovate: _ferieApprovate || [],
+            da: _da, a: _a, oggi: _oggi()
+        });
+        if (!cal.righe.length) { ENI.UI.warning('Nessun dato nel periodo da esportare'); return; }
 
         var doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         var pw = doc.internal.pageSize.getWidth();
@@ -472,43 +516,50 @@ ENI.Modules.Timbrature = (function() {
         doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.setTextColor(90);
         doc.text('Periodo: ' + _fmtDataBreve(_da) + '  –  ' + _fmtDataBreve(_a), m, y);
         doc.text('Generato il ' + _fmtDataBreve(_oggi()), pw - m, y, { align: 'right' });
-        doc.setTextColor(0); y += 8;
+        y += 5;
+        if (_turniPeriodo === null || _ferieApprovate === null) {
+            doc.setTextColor(185, 28, 28);
+            doc.text('Attenzione: ' + (_turniPeriodo === null ? 'turni' : 'ferie approvate') +
+                ' non caricati, i giorni a casa possono mancare.', m, y);
+            y += 5;
+        }
+        doc.setTextColor(0); y += 3;
 
-        var perPersona = {};
-        _timbrature.forEach(function(t) {
-            var nome = (t.personale && t.personale.nome_completo) || '—';
-            (perPersona[t.personale_id] = perPersona[t.personale_id] || { nome: nome, eventi: [] }).eventi.push(t);
-        });
-
-        Object.keys(perPersona).sort(function(a, b) { return perPersona[a].nome.localeCompare(perPersona[b].nome); }).forEach(function(pid) {
-            var p = perPersona[pid];
-            var perGiorno = {};
-            p.eventi.forEach(function(e) { (perGiorno[e.data] = perGiorno[e.data] || []).push(e); });
-            var totMin = 0;
-            var giorni = Object.keys(perGiorno).sort().map(function(g) {
-                var sess = _sessioni(perGiorno[g]);
-                var min = _minuti(sess);
-                totMin += min;
-                var incompleta = sess.some(function(s) { return !s.inizio || !s.fine; });
-                var righe = sess.map(function(s) { return (s.inizio ? _oraDi(s.inizio) : '??') + '–' + (s.fine ? _oraDi(s.fine) : '??'); }).join(', ');
-                return { label: _fmtDataBreve(g), righe: righe, min: min, incompleta: incompleta };
-            });
-
-            if (y > ph - 24) { doc.addPage(); y = m; }
-            doc.setFont(undefined, 'bold'); doc.setFontSize(12);
+        cal.righe.forEach(function(p) {
+            var r = p.riepilogo;
+            if (y > ph - 30) { doc.addPage(); y = m; }
+            doc.setFont(undefined, 'bold'); doc.setFontSize(12); doc.setTextColor(0);
             doc.text(p.nome, m, y);
-            doc.text('Totale: ' + _fmtOre(totMin), pw - m, y, { align: 'right' });
+            doc.text('Totale: ' + _fmtOre(r.minuti), pw - m, y, { align: 'right' });
             y += 3; doc.setDrawColor(210); doc.line(m, y, pw - m, y); y += 5;
 
             doc.setFont(undefined, 'normal'); doc.setFontSize(9);
-            giorni.forEach(function(g) {
+            p.giorni.forEach(function(g) {
                 if (y > ph - 14) { doc.addPage(); y = m; }
-                doc.text(g.label, m + 2, y);
-                doc.text(g.righe + (g.incompleta ? '  (incompleta)' : ''), m + 32, y);
-                doc.text(_fmtOre(g.min), pw - m, y, { align: 'right' });
+                // Il colore va rimesso prima di OGNI testo: vedi _salvaPdf in turni.js.
+                var col = g.timbratoInAssenza ? [185, 28, 28] : (_COLORE_STATO[g.stato] || [0, 0, 0]);
+                var giorno = _GIORNI_SETT[new Date(g.data + 'T12:00:00').getDay()] + ' ' + _fmtDataBreve(g.data);
+                doc.setTextColor(0); doc.text(giorno, m + 2, y);
+                doc.setTextColor(col[0], col[1], col[2]); doc.text(_descrGiorno(g), m + 32, y);
+                doc.setTextColor(0);
+                if (g.minuti) doc.text(_fmtOre(g.minuti), pw - m, y, { align: 'right' });
                 y += 5;
             });
-            y += 5;
+
+            // Riepilogo dei giorni, solo le voci presenti
+            var voci = [];
+            if (r.lavorato) voci.push('Lavorati ' + r.lavorato);
+            if (r.ferie) voci.push('Ferie ' + r.ferie);
+            if (r.malattia) voci.push('Malattia ' + r.malattia);
+            if (r.permesso) voci.push('Permesso ' + r.permesso + (r.permesso === 1 ? ' giorno' : ' giorni'));
+            if (r.minutiPermesso) voci.push('Permesso a ore ' + _fmtOre(r.minutiPermesso));
+            if (r.riposo) voci.push('Riposo ' + r.riposo);
+            if (r.senza_timbratura) voci.push('Turni senza timbratura ' + r.senza_timbratura);
+            if (y > ph - 14) { doc.addPage(); y = m; }
+            doc.setFont(undefined, 'bold'); doc.setTextColor(90);
+            doc.text(voci.join('  ·  ') || 'Nessun giorno registrato', m + 2, y);
+            doc.setFont(undefined, 'normal'); doc.setTextColor(0);
+            y += 9;
         });
 
         doc.save('timbrature_' + _da + '_' + _a + '.pdf');
