@@ -13,6 +13,7 @@ ENI.Modules.Timbrature = (function() {
     var _container = null;   // serve a ricaricare la lista dopo una correzione
     var _ore = null;         // confronto previste/fatte del periodo mostrato
     var _turniPeriodo = null, _ferieApprovate = null;   // per il calendario del PDF (null = lettura fallita)
+    var _cal = null;         // calendario del periodo mostrato: i giorni a casa sotto ogni nome
 
     // --- Date helper ---
     function _oggi() { return ENI.UI.oggiISO(); }
@@ -182,6 +183,12 @@ ENI.Modules.Timbrature = (function() {
                     : '<div class="text-sm text-muted">Nessuno in servizio in questo momento.</div>') +
             '</div>';
 
+        // Giorni a casa del periodo, per la riga sotto il nome: stesso calcolo del PDF.
+        _cal = ENI.OreLavorate.calendario({
+            turni: _turniPeriodo || [], timbrature: _timbrature, ferieApprovate: _ferieApprovate || [],
+            da: _da, a: _a, oggi: oggi
+        });
+
         // Tabella ore per persona (nel periodo)
         var righe = Object.keys(perPersona).map(function(pid) {
             var p = perPersona[pid];
@@ -208,7 +215,7 @@ ENI.Modules.Timbrature = (function() {
                     '</div>');
             });
             return '<tr class="timb-row" style="cursor:pointer;" data-pid="' + pid + '">' +
-                    '<td><strong>' + ENI.UI.escapeHtml(p.nome) + '</strong>' + (sospese ? ' <span class="badge badge-warning" title="Timbrate incomplete (entrata o uscita mancante)">⚠️ ' + sospese + '</span>' : '') + '</td>' +
+                    '<td><strong>' + ENI.UI.escapeHtml(p.nome) + '</strong>' + (sospese ? ' <span class="badge badge-warning" title="Timbrate incomplete (entrata o uscita mancante)">⚠️ ' + sospese + '</span>' : '') + _assenzeHtml(pid) + '</td>' +
                     '<td style="text-align:right; font-weight:700;">' + _fmtOre(totMin) + '</td>' +
                     _celleConfronto(pid) +
                 '</tr>' +
@@ -239,6 +246,50 @@ ENI.Modules.Timbrature = (function() {
         });
 
         _setupAzioniTimbrature(content);
+    }
+
+    // --- Giorni a casa sotto il nome: ferie, malattia, permesso, riposo ---
+    //
+    // I giorni consecutivi si scrivono come intervallo (01–04/10), cosi' una
+    // settimana di ferie non diventa una fila di sei date.
+    function _intervalli(date) {
+        var O = ENI.OreLavorate, out = [], ini = null, prec = null;
+        function chiudi() {
+            if (!ini) return;
+            var a = ini.slice(8, 10), b = prec.slice(8, 10) + '/' + prec.slice(5, 7);
+            out.push(ini === prec ? b : (ini.slice(5, 7) === prec.slice(5, 7) ? a : a + '/' + ini.slice(5, 7)) + '–' + b);
+        }
+        date.forEach(function(d) {
+            if (prec && O.addGiorni(prec, 1) === d) { prec = d; return; }
+            chiudi(); ini = d; prec = d;
+        });
+        chiudi();
+        return out.join(', ');
+    }
+
+    function _assenzeHtml(pid) {
+        var p = _cal && _cal.righe.filter(function(x) { return x.personale_id === pid; })[0];
+        if (!p) return '';
+        var VOCI = [
+            { stato: 'ferie',    ico: '🌴', nome: 'Ferie' },
+            { stato: 'malattia', ico: '🤒', nome: 'Malattia' },
+            { stato: 'permesso', ico: '🕐', nome: 'Permesso' },
+            { stato: 'riposo',   ico: '😴', nome: 'Riposo' }
+        ];
+        var pezzi = VOCI.map(function(v) {
+            var date = p.giorni.filter(function(g) { return g.stato === v.stato; }).map(function(g) { return g.data; });
+            if (!date.length) return '';
+            return v.ico + ' ' + v.nome + ' ' + date.length + ' gg: ' + _intervalli(date);
+        }).filter(Boolean);
+        // Permesso a ore dentro una giornata lavorata: le ore, non i giorni
+        var aOre = p.giorni.filter(function(g) { return g.permessoOre && g.stato !== 'permesso'; });
+        if (aOre.length) {
+            pezzi.push('🕐 Permesso a ore ' + _fmtOre(p.riepilogo.minutiPermesso) + ': ' +
+                _intervalli(aOre.map(function(g) { return g.data; })));
+        }
+        if (!pezzi.length) return '';
+        return '<div class="text-xs" style="color:#b45309;font-weight:400;margin-top:3px;line-height:1.5;">' +
+            ENI.UI.escapeHtml(pezzi.join('  ·  ')) + '</div>';
     }
 
     // --- Previste dai turni, accanto alle ore timbrate ---

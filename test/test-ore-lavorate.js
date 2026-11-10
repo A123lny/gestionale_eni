@@ -400,6 +400,8 @@ check('con la differenza', /<th[^>]*>Differenza/.test(timbJs));
 check('e il totale in fondo', /_rigaTotale\(\)/.test(timbJs));
 check('un errore sui turni non nasconde le timbrature',
   /catch \(e\) \{ _ore = null; \}/.test(timbJs));
+check('sotto ogni nome i giorni a casa, dallo stesso calendario del PDF',
+  /_assenzeHtml\(pid\)/.test(timbJs) && (timbJs.match(/ENI\.OreLavorate\.calendario\(/g) || []).length >= 2);
 
 console.log('\n--- niente formule doppie, e niente colspan dimenticati ---');
 // Prima ogni modulo si calcolava le sessioni per conto suo. Ora delegano:
