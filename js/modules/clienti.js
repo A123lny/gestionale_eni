@@ -271,6 +271,10 @@ ENI.Modules.Clienti = (function() {
             var pag = c.modalita_pagamento_fattura
                 ? '<span class="text-sm">' + ENI.UI.escapeHtml(c.modalita_pagamento_fattura) + '</span>'
                 : '<span title="Pagamento fattura non impostato" style="color:var(--color-warning);font-size:1.1rem;">⚠️</span>';
+            if (c.modalita_pagamento_fattura === 'RID_SDD' && ENI.IbanMandato.statoMandato(c) !== 'valido') {
+                pag += ' <span title="' + (c.mandate_id ? 'Firma mandato da registrare' : 'Mandato SDD mancante') + '" ' +
+                    'style="color:var(--color-danger);font-size:0.75rem;white-space:nowrap;">⚠ mandato</span>';
+            }
             var contatto = '';
             if (c.telefono) contatto += '<span style="white-space:nowrap;">\u{1F4DE} ' + ENI.UI.escapeHtml(c.telefono) + '</span>';
             if (c.email) contatto += (contatto ? '<br>' : '') + '<span style="white-space:nowrap;">✉️ ' + ENI.UI.escapeHtml(c.email) + '</span>';
@@ -362,6 +366,197 @@ ENI.Modules.Clienti = (function() {
         });
     }
 
+    // ============================================================
+    // SEZIONE PAGAMENTO (comune a Nuovo e Modifica)
+    // Due domande distinte:
+    //  - servizi al banco (modalita_pagamento): paga subito o a fine mese in
+    //    fattura. Lo leggono lavaggi e buoni per non mettere in cassa i
+    //    lavaggi da fatturare.
+    //  - fattura (modalita_pagamento_fattura): come paga la fattura.
+    // IBAN e banca compaiono solo se servono; ABI/CAB si ricavano dall'IBAN;
+    // il codice mandato SDD lo assegna il database e qui si legge soltanto.
+    // ============================================================
+    var _PAG_BANCO = [
+        { value: 'Cash', label: 'Paga subito' },
+        { value: 'Addebito_Mese', label: 'A fine mese, in fattura' }
+    ];
+    var _PAG_FATTURA = [
+        { value: 'RID_SDD', label: 'RID / SDD (addebito su conto)' },
+        { value: 'RIBA', label: 'RI.BA.' },
+        { value: 'BONIFICO', label: 'Bonifico' },
+        { value: 'CONTANTI', label: 'Contanti' }
+    ];
+
+    function _oggiIso() {
+        var d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function _fmtDataIt(iso) {
+        if (!iso) return '';
+        var p = String(iso).substring(0, 10).split('-');
+        return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+    }
+
+    // Le opzioni storiche (Addebito 30/60gg, Bonifico anticipato, FINE_MESE)
+    // non si propongono piu', ma se un cliente le ha restano selezionate.
+    function _opzioni(lista, valore, vuota) {
+        var html = vuota ? '<option value="">' + vuota + '</option>' : '';
+        var trovato = !valore;
+        lista.forEach(function(o) {
+            if (o.value === valore) trovato = true;
+            html += '<option value="' + o.value + '"' + (o.value === valore ? ' selected' : '') + '>' + o.label + '</option>';
+        });
+        if (!trovato) {
+            html += '<option value="' + ENI.UI.escapeHtml(valore) + '" selected>' + ENI.UI.escapeHtml(_pagLabel(valore)) + ' (vecchia)</option>';
+        }
+        return html;
+    }
+
+    // Mandato per scheda dettaglio e lista
+    function _mandatoInfoHtml(c) {
+        var stato = ENI.IbanMandato.statoMandato(c);
+        if (stato === 'valido') {
+            return ENI.UI.escapeHtml(c.mandate_id) + ' <span style="color:var(--color-success);">✓ firmato il ' + _fmtDataIt(c.mandato_data_firma) + '</span>';
+        }
+        if (stato === 'attesa_firma') {
+            return ENI.UI.escapeHtml(c.mandate_id) + ' <span style="color:var(--color-warning);">⚠ firma da registrare</span>';
+        }
+        return '<span style="color:var(--color-danger);">⚠ mancante: fuori dal file RID</span>';
+    }
+
+    function _labelPagFattura(v) {
+        var o = _PAG_FATTURA.find(function(x) { return x.value === v; });
+        return o ? o.label : v;
+    }
+
+    // Riquadro mandato: c = cliente salvato (null per un cliente nuovo)
+    function _mandatoBoxHtml(c, p) {
+        c = c || {};
+        var stato = ENI.IbanMandato.statoMandato(c);
+        var inputFirma = function(label) {
+            return '<div class="form-group" style="margin-top:0.5rem;"><label class="form-label">' + label + '</label>' +
+                '<input type="date" class="form-input" id="' + p + '-mandato-firma" max="' + _oggiIso() + '" style="max-width:180px;">' +
+                '<span class="text-xs text-muted" style="display:block;margin-top:0.25rem;">Finché manca la data il cliente non entra nel file RID.</span></div>';
+        };
+        var html = '<div class="text-xs text-muted" style="margin-bottom:0.25rem;">Mandato SDD (assegnato dal gestionale, non modificabile)</div>';
+        if (stato === 'valido') {
+            return html + '<div><strong>' + ENI.UI.escapeHtml(c.mandate_id) + '</strong> ' +
+                '<span style="color:var(--color-success);">✓ firmato il ' + _fmtDataIt(c.mandato_data_firma) + '</span></div>';
+        }
+        if (stato === 'attesa_firma') {
+            return html + '<div><strong>' + ENI.UI.escapeHtml(c.mandate_id) + '</strong> ' +
+                '<span style="color:var(--color-warning);">in attesa di firma</span></div>' +
+                inputFirma('Data firma del cliente');
+        }
+        if (c.id && c.modalita_pagamento_fattura === 'RID_SDD') {
+            return html + '<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">' +
+                '<span style="color:var(--color-danger);">Nessun mandato</span>' +
+                '<button type="button" class="btn btn-sm btn-primary" id="' + p + '-genera-mandato">Genera codice mandato</button></div>' +
+                inputFirma('Data firma (se ha già firmato)');
+        }
+        return html + '<div class="text-sm">Il codice verrà assegnato al salvataggio.</div>' +
+            inputFirma('Data firma (se ha già firmato)');
+    }
+
+    // p = prefisso id ('cl' nuovo, 'mod' modifica); c = cliente o {} per nuovo
+    function _pagamentoSectionHtml(c, p) {
+        c = c || {};
+        var ac = ENI.IbanMandato.abiCab(c.iban);
+        return '<div class="section-title mt-3">\u{1F4B6} Pagamento</div>' +
+            '<div class="form-row">' +
+                '<div class="form-group"><label class="form-label form-label-required">Servizi al banco (lavaggi, buoni)</label>' +
+                    '<select class="form-select" id="' + p + '-pagamento">' + _opzioni(_PAG_BANCO, c.modalita_pagamento || 'Cash') + '</select></div>' +
+                '<div class="form-group"><label class="form-label">Pagamento fattura</label>' +
+                    '<select class="form-select" id="' + p + '-modpag-fatt">' + _opzioni(_PAG_FATTURA, c.modalita_pagamento_fattura || '', 'Non impostato') + '</select>' +
+                    '<span class="text-xs text-muted" id="' + p + '-scadenza-info" style="display:block;margin-top:0.25rem;">Scadenza: ' + ENI.Fatturazione.Scadenza.descrivi(c.modalita_pagamento_fattura) + '</span></div>' +
+            '</div>' +
+            '<div id="' + p + '-banca-box">' +
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">IBAN cliente</label>' +
+                        '<input type="text" class="form-input" id="' + p + '-iban" value="' + ENI.UI.escapeHtml(c.iban || '') + '" maxlength="40">' +
+                        '<span class="text-xs text-muted" id="' + p + '-abicab-info" style="display:block;margin-top:0.25rem;">' + _abiCabInfo(ac, c) + '</span></div>' +
+                    '<div class="form-group" id="' + p + '-banca-app-group"><label class="form-label">Banca d\'appoggio</label>' +
+                        '<input type="text" class="form-input" id="' + p + '-banca-app" value="' + ENI.UI.escapeHtml(c.banca_appoggio || '') + '"></div>' +
+                '</div>' +
+                '<div id="' + p + '-mandato-box" style="padding:0.6rem 0.75rem;border-left:3px solid var(--color-primary);background:var(--color-gray-100);border-radius:4px;margin-bottom:0.75rem;">' +
+                    _mandatoBoxHtml(c.id ? c : null, p) +
+                '</div>' +
+            '</div>';
+    }
+
+    function _abiCabInfo(ac, c) {
+        if (ac) return 'ABI ' + ac.abi + ' · CAB ' + ac.cab + ' (ricavati dall\'IBAN)';
+        if (c && c.abi_banca && c.cab_banca) return 'ABI ' + ENI.UI.escapeHtml(c.abi_banca) + ' · CAB ' + ENI.UI.escapeHtml(c.cab_banca);
+        return '';
+    }
+
+    // Collega la sezione: mostra/nasconde i campi in base alla modalita',
+    // aggiorna ABI/CAB e scadenza, gestisce "Genera codice mandato".
+    function _pagamentoAttach(modal, c, p) {
+        var sel = modal.querySelector('#' + p + '-modpag-fatt');
+        var ibanInp = modal.querySelector('#' + p + '-iban');
+        var aggiorna = function() {
+            var v = sel.value;
+            modal.querySelector('#' + p + '-banca-box').style.display = (v === 'RID_SDD' || v === 'RIBA') ? '' : 'none';
+            modal.querySelector('#' + p + '-banca-app-group').style.display = v === 'RIBA' ? '' : 'none';
+            modal.querySelector('#' + p + '-mandato-box').style.display = v === 'RID_SDD' ? '' : 'none';
+            modal.querySelector('#' + p + '-scadenza-info').textContent = 'Scadenza: ' + ENI.Fatturazione.Scadenza.descrivi(v);
+        };
+        sel.addEventListener('change', aggiorna);
+        ibanInp.addEventListener('input', function() {
+            modal.querySelector('#' + p + '-abicab-info').innerHTML = _abiCabInfo(ENI.IbanMandato.abiCab(ibanInp.value), c);
+        });
+        aggiorna();
+
+        var btn = modal.querySelector('#' + p + '-genera-mandato');
+        if (btn && c && c.id) {
+            btn.addEventListener('click', async function() {
+                var firma = (modal.querySelector('#' + p + '-mandato-firma') || {}).value || null;
+                if (!await ENI.UI.confirm('Generare il codice mandato SDD per "' + c.nome_ragione_sociale + '"?\n\n' +
+                    'Il codice è definitivo: non si potrà più cambiare.' +
+                    (firma ? '' : '\nSenza data firma il cliente resta fuori dal file RID finché non la registri.'))) return;
+                btn.disabled = true;
+                try {
+                    var codice = await ENI.API.generaMandatoSdd(c.id, firma, c.nome_ragione_sociale);
+                    c.mandate_id = codice;
+                    c.mandato_data_firma = firma;
+                    modal.querySelector('#' + p + '-mandato-box').innerHTML = _mandatoBoxHtml(c, p);
+                    ENI.UI.toast('Mandato ' + codice + ' assegnato', 'success');
+                } catch(e) {
+                    btn.disabled = false;
+                    ENI.UI.toast('Errore: ' + e.message, 'danger');
+                }
+            });
+        }
+    }
+
+    // Campi pagamento da salvare. Il codice mandato NON si invia mai: lo
+    // gestisce il database e rifiuterebbe qualsiasi modifica.
+    function _pagamentoDati(modal, c, p) {
+        c = c || {};
+        var iban = ENI.IbanMandato.normalizza(modal.querySelector('#' + p + '-iban').value);
+        var dati = {
+            modalita_pagamento: modal.querySelector('#' + p + '-pagamento').value,
+            modalita_pagamento_fattura: modal.querySelector('#' + p + '-modpag-fatt').value || null,
+            iban: iban || null,
+            banca_appoggio: modal.querySelector('#' + p + '-banca-app').value.trim() || null
+        };
+        var ac = ENI.IbanMandato.abiCab(iban);
+        if (ac) { dati.abi_banca = ac.abi; dati.cab_banca = ac.cab; }
+        // Data firma: si scrive solo finche' il mandato non e' valido
+        var firma = modal.querySelector('#' + p + '-mandato-firma');
+        if (firma && firma.value && dati.modalita_pagamento_fattura === 'RID_SDD' &&
+            ENI.IbanMandato.statoMandato(c) !== 'valido') {
+            if (firma.value > _oggiIso()) {
+                ENI.UI.warning('La data firma del mandato non può essere nel futuro');
+                return null;
+            }
+            dati.mandato_data_firma = firma.value;
+        }
+        return dati;
+    }
+
     // --- Form Nuovo Cliente ---
 
     async function _showFormNuovoCliente() {
@@ -416,14 +611,7 @@ ENI.Modules.Clienti = (function() {
                     '<input type="text" class="form-input" id="cl-targa" placeholder="SM XX000">' +
                 '</div>' +
 
-                '<div class="form-group">' +
-                    '<label class="form-label form-label-required">Modalit\u00E0 Pagamento</label>' +
-                    '<select class="form-select" id="cl-pagamento">' +
-                        ENI.Config.MODALITA_PAGAMENTO.map(function(m) {
-                            return '<option value="' + m.value + '">' + m.label + '</option>';
-                        }).join('') +
-                    '</select>' +
-                '</div>' +
+                _pagamentoSectionHtml({}, 'cl') +
 
                 // --- Sezione fatturazione ---
                 '<div class="section-title">Dati fatturazione</div>' +
@@ -455,24 +643,6 @@ ENI.Modules.Clienti = (function() {
                     '<div class="form-group">' +
                         '<label class="form-label">PEC</label>' +
                         '<input type="email" class="form-input" id="cl-pec">' +
-                    '</div>' +
-                    '<div class="form-group">' +
-                        '<label class="form-label">IBAN cliente</label>' +
-                        '<input type="text" class="form-input" id="cl-iban" maxlength="40">' +
-                    '</div>' +
-                '</div>' +
-                '<div class="form-row">' +
-                    '<div class="form-group">' +
-                        '<label class="form-label">Pagamento fattura</label>' +
-                        '<select class="form-select" id="cl-mod-pag-fatt">' +
-                            '<option value="">Non impostato</option>' +
-                            '<option value="RIBA">RIBA</option>' +
-                            '<option value="RID_SDD">RID / SDD</option>' +
-                            '<option value="BONIFICO">Bonifico</option>' +
-                            '<option value="CONTANTI">Contanti</option>' +
-                            '<option value="FINE_MESE">Fine mese</option>' +
-                        '</select>' +
-                        '<span class="text-xs text-muted" id="cl-scadenza-info" style="display:block;margin-top:0.25rem;">Scadenza: ' + ENI.Fatturazione.Scadenza.descrivi('') + '</span>' +
                     '</div>' +
                     '<div class="form-group">' +
                         '<label class="form-label">Rif. amministrazione</label>' +
@@ -516,15 +686,7 @@ ENI.Modules.Clienti = (function() {
         });
 
         var vociHelper = _vociRicorrentiAttach(modal);
-
-        // Aggiorna info scadenza al cambio modalita pagamento fattura
-        var clModPagSel = modal.querySelector('#cl-mod-pag-fatt');
-        var clScadInfo = modal.querySelector('#cl-scadenza-info');
-        if (clModPagSel && clScadInfo) {
-            clModPagSel.addEventListener('change', function() {
-                clScadInfo.textContent = 'Scadenza: ' + ENI.Fatturazione.Scadenza.descrivi(clModPagSel.value);
-            });
-        }
+        _pagamentoAttach(modal, null, 'cl');
 
         // Toggle tipo
         modal.querySelectorAll('input[name="tipo"]').forEach(function(radio) {
@@ -592,14 +754,16 @@ ENI.Modules.Clienti = (function() {
                 if (hasListino) listinoPersonalizzato = lp;
             }
 
-            var dati = {
+            var pag = _pagamentoDati(modal, null, 'cl');
+            if (!pag) return;
+
+            var dati = Object.assign({
                 tipo: tipo,
                 nome_ragione_sociale: nome,
                 p_iva_coe: modal.querySelector('#cl-piva').value.trim() || null,
                 email: modal.querySelector('#cl-email').value.trim() || null,
                 telefono: modal.querySelector('#cl-telefono').value.trim() || null,
                 targa: modal.querySelector('#cl-targa').value.trim() || null,
-                modalita_pagamento: modal.querySelector('#cl-pagamento').value,
                 listino_personalizzato: listinoPersonalizzato,
                 note: modal.querySelector('#cl-note').value.trim() || null,
                 sede_legale_indirizzo: modal.querySelector('#cl-sede-indirizzo').value.trim() || null,
@@ -608,13 +772,11 @@ ENI.Modules.Clienti = (function() {
                 sede_legale_provincia: modal.querySelector('#cl-sede-prov').value.trim() || null,
                 sede_legale_nazione: modal.querySelector('#cl-sede-naz').value.trim() || 'SM',
                 pec: modal.querySelector('#cl-pec').value.trim() || null,
-                iban: modal.querySelector('#cl-iban').value.trim() || null,
-                modalita_pagamento_fattura: modal.querySelector('#cl-mod-pag-fatt').value || null,
                 rif_amministrazione: modal.querySelector('#cl-rif-amm').value.trim() || null,
                 applica_monofase: modal.querySelector('#cl-monofase').checked,
                 note_fatturazione: modal.querySelector('#cl-note-fatt').value.trim() || null,
                 voci_ricorrenti_fattura: vociHelper.readAll()
-            };
+            }, pag);
 
             try {
                 await ENI.API.salvaCliente(dati);
@@ -673,9 +835,11 @@ ENI.Modules.Clienti = (function() {
                     '</div>' +
                 '</div>' +
                 '<div class="credito-dettaglio-body">' +
+                    _infoRow('Servizi al banco', _pagLabel(cliente.modalita_pagamento) || '-') +
                     _infoRow('Pagamento fattura', cliente.modalita_pagamento_fattura
-                        ? '<span style="color:var(--color-primary);font-weight:600;">' + ENI.UI.escapeHtml(cliente.modalita_pagamento_fattura) + '</span>'
+                        ? '<span style="color:var(--color-primary);font-weight:600;">' + ENI.UI.escapeHtml(_labelPagFattura(cliente.modalita_pagamento_fattura)) + '</span>'
                         : '<span style="color:var(--color-danger);font-style:italic;">Non impostato</span>', true) +
+                    (cliente.modalita_pagamento_fattura === 'RID_SDD' ? _infoRow('Mandato SDD', _mandatoInfoHtml(cliente), true) : '') +
                     (cliente.p_iva_coe ? _infoRow('P.IVA / COE', cliente.p_iva_coe) : '') +
                     (cliente.targa ? _infoRow('Targa', cliente.targa) : '') +
                     (cliente.telefono ? _infoRow('Telefono', cliente.telefono) : '') +
@@ -687,6 +851,8 @@ ENI.Modules.Clienti = (function() {
                     (cliente.sede_legale_indirizzo ? _infoRow('Sede legale', [cliente.sede_legale_indirizzo, cliente.sede_legale_cap, cliente.sede_legale_comune, cliente.sede_legale_provincia, cliente.sede_legale_nazione].filter(Boolean).join(', ')) : '') +
                     (cliente.pec ? _infoRow('PEC', cliente.pec) : '') +
                     (cliente.iban ? _infoRow('IBAN', cliente.iban) : '') +
+                    (_abiCabInfo(ENI.IbanMandato.abiCab(cliente.iban), cliente) ? _infoRow('ABI / CAB', _abiCabInfo(ENI.IbanMandato.abiCab(cliente.iban), cliente), true) : '') +
+                    (cliente.banca_appoggio ? _infoRow('Banca d\'appoggio', cliente.banca_appoggio) : '') +
                     _infoRow('Scadenza', ENI.Fatturazione.Scadenza.descrivi(cliente.modalita_pagamento_fattura)) +
                     (cliente.rif_amministrazione ? _infoRow('Rif. amministrazione', cliente.rif_amministrazione) : '') +
                     (cliente.applica_monofase ? _infoRow('Monofase', 'Attivo') : '') +
@@ -764,14 +930,6 @@ ENI.Modules.Clienti = (function() {
             '</tr>';
         }).join('');
 
-        var modPagFatt = ['RIBA','RID_SDD','BONIFICO','CONTANTI','FINE_MESE'];
-        var modPagFattOpts = '<option value="">Non impostato</option>' +
-            modPagFatt.map(function(v) { return '<option value="' + v + '"' + (c.modalita_pagamento_fattura === v ? ' selected' : '') + '>' + v + '</option>'; }).join('');
-
-        var modPagOpts = ENI.Config.MODALITA_PAGAMENTO.map(function(m) {
-            return '<option value="' + m.value + '"' + (c.modalita_pagamento === m.value ? ' selected' : '') + '>' + m.label + '</option>';
-        }).join('');
-
         var body =
             '<form id="form-mod-cliente">' +
                 '<div class="form-group"><label class="form-label">Tipo Cliente</label>' +
@@ -794,8 +952,7 @@ ENI.Modules.Clienti = (function() {
                 '</div>' +
                 '<div class="form-group"><label class="form-label">Targa Veicolo</label>' +
                     '<input type="text" class="form-input" id="mod-targa" value="' + ENI.UI.escapeHtml(c.targa || '') + '"></div>' +
-                '<div class="form-group"><label class="form-label">Modalit\u00e0 Pagamento</label>' +
-                    '<select class="form-select" id="mod-pagamento">' + modPagOpts + '</select></div>' +
+                _pagamentoSectionHtml(c, 'mod') +
                 '<div class="form-group"><label class="form-label">Note</label>' +
                     '<textarea class="form-textarea" id="mod-note" rows="2">' + ENI.UI.escapeHtml(c.note || '') + '</textarea></div>' +
                 // Listino personalizzato (prezzi speciali per tipo di lavaggio)
@@ -824,23 +981,6 @@ ENI.Modules.Clienti = (function() {
                 '<div class="form-row">' +
                     '<div class="form-group"><label class="form-label">PEC</label>' +
                         '<input type="email" class="form-input" id="mod-pec" value="' + ENI.UI.escapeHtml(c.pec || '') + '"></div>' +
-                    '<div class="form-group"><label class="form-label">IBAN</label>' +
-                        '<input type="text" class="form-input" id="mod-iban" value="' + ENI.UI.escapeHtml(c.iban || '') + '" maxlength="40"></div>' +
-                '</div>' +
-                '<div class="form-row">' +
-                    '<div class="form-group"><label class="form-label">Banca appoggio</label>' +
-                        '<input type="text" class="form-input" id="mod-banca-app" value="' + ENI.UI.escapeHtml(c.banca_appoggio || '') + '"></div>' +
-                    '<div class="form-group"><label class="form-label">ABI</label>' +
-                        '<input type="text" class="form-input" id="mod-abi" value="' + ENI.UI.escapeHtml(c.abi_banca || '') + '" maxlength="10"></div>' +
-                    '<div class="form-group"><label class="form-label">CAB</label>' +
-                        '<input type="text" class="form-input" id="mod-cab" value="' + ENI.UI.escapeHtml(c.cab_banca || '') + '" maxlength="10"></div>' +
-                    '<div class="form-group"><label class="form-label">Mandato SDD</label>' +
-                        '<input type="text" class="form-input" id="mod-mandate" value="' + ENI.UI.escapeHtml(c.mandate_id || '') + '" maxlength="50"></div>' +
-                '</div>' +
-                '<div class="form-row">' +
-                    '<div class="form-group"><label class="form-label">Pagamento fattura</label>' +
-                        '<select class="form-select" id="mod-modpag-fatt">' + modPagFattOpts + '</select>' +
-                        '<span class="text-xs text-muted" id="mod-scadenza-info" style="display:block;margin-top:0.25rem;">Scadenza: ' + ENI.Fatturazione.Scadenza.descrivi(c.modalita_pagamento_fattura) + '</span></div>' +
                     '<div class="form-group"><label class="form-label">Rif. amministrazione</label>' +
                         '<input type="text" class="form-input" id="mod-rif-amm" value="' + ENI.UI.escapeHtml(c.rif_amministrazione || '') + '"></div>' +
                 '</div>' +
@@ -862,15 +1002,7 @@ ENI.Modules.Clienti = (function() {
         });
 
         var vociHelper = _vociRicorrentiAttach(modal);
-
-        // Aggiorna info scadenza al cambio modalita pagamento
-        var modPagSel = modal.querySelector('#mod-modpag-fatt');
-        var scadInfo = modal.querySelector('#mod-scadenza-info');
-        if (modPagSel && scadInfo) {
-            modPagSel.addEventListener('change', function() {
-                scadInfo.textContent = 'Scadenza: ' + ENI.Fatturazione.Scadenza.descrivi(modPagSel.value);
-            });
-        }
+        _pagamentoAttach(modal, c, 'mod');
 
         // Mostra/nascondi il listino personalizzato in base al tipo cliente
         modal.querySelectorAll('input[name="tipo"]').forEach(function(radio) {
@@ -913,7 +1045,10 @@ ENI.Modules.Clienti = (function() {
                 if (hasListino) listinoPersonalizzato = lp;
             }
 
-            var dati = {
+            var pag = _pagamentoDati(modal, c, 'mod');
+            if (!pag) return;
+
+            var dati = Object.assign({
                 tipo: tipoCliente,
                 nome_ragione_sociale: nome,
                 listino_personalizzato: listinoPersonalizzato,
@@ -921,7 +1056,6 @@ ENI.Modules.Clienti = (function() {
                 email: modal.querySelector('#mod-email').value.trim() || null,
                 telefono: modal.querySelector('#mod-telefono').value.trim() || null,
                 targa: modal.querySelector('#mod-targa').value.trim() || null,
-                modalita_pagamento: modal.querySelector('#mod-pagamento').value,
                 note: modal.querySelector('#mod-note').value.trim() || null,
                 sede_legale_indirizzo: modal.querySelector('#mod-sede-ind').value.trim() || null,
                 sede_legale_cap: modal.querySelector('#mod-sede-cap').value.trim() || null,
@@ -929,17 +1063,11 @@ ENI.Modules.Clienti = (function() {
                 sede_legale_provincia: modal.querySelector('#mod-sede-prov').value.trim() || null,
                 sede_legale_nazione: modal.querySelector('#mod-sede-naz').value.trim() || 'SM',
                 pec: modal.querySelector('#mod-pec').value.trim() || null,
-                iban: modal.querySelector('#mod-iban').value.trim() || null,
-                banca_appoggio: modal.querySelector('#mod-banca-app').value.trim() || null,
-                abi_banca: modal.querySelector('#mod-abi').value.trim() || null,
-                cab_banca: modal.querySelector('#mod-cab').value.trim() || null,
-                mandate_id: modal.querySelector('#mod-mandate').value.trim() || null,
-                modalita_pagamento_fattura: modal.querySelector('#mod-modpag-fatt').value || null,
                 rif_amministrazione: modal.querySelector('#mod-rif-amm').value.trim() || null,
                 applica_monofase: modal.querySelector('#mod-monofase').checked,
                 note_fatturazione: modal.querySelector('#mod-note-fatt').value.trim() || null,
                 voci_ricorrenti_fattura: vociHelper.readAll()
-            };
+            }, pag);
 
             try {
                 await ENI.API.aggiornaCliente(c.id, dati);
@@ -973,6 +1101,8 @@ ENI.Modules.Clienti = (function() {
                 'PEC': c.pec || '',
                 'Targa': c.targa || '',
                 'Pagamento fattura': c.modalita_pagamento_fattura || '',
+                'Mandato SDD': c.mandate_id || '',
+                'Firma mandato': _fmtDataIt(c.mandato_data_firma),
                 'Rif. amministrazione': c.rif_amministrazione || ''
             };
         });

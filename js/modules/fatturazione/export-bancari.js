@@ -81,10 +81,14 @@ ENI.Fatturazione.ExportBancari = (function() {
         var rows = _clientiRischio.map(function(c, i) {
             var isRid = c.modalita_pagamento_fattura === 'RID_SDD';
             var problemi = _problemiCliente(c, isRid ? 'rid' : 'riba');
-            // Campi per completare i dati mancanti senza uscire da qui
+            // Campi per completare i dati mancanti senza uscire da qui.
+            // RID: il codice mandato non si scrive (lo genera il gestionale):
+            // si indica solo la data in cui il cliente ha firmato.
             var campi = isRid ?
-                '<input type="text" class="form-input cr-mandato" data-idx="' + i + '" maxlength="50" ' +
-                    'placeholder="codice mandato" style="min-width:180px;">' :
+                '<label class="text-xs" style="white-space:nowrap;">' +
+                    (c.mandate_id ? ENI.UI.escapeHtml(c.mandate_id) + ' firmato il ' : 'Genera mandato, firmato il ') +
+                '<input type="date" class="form-input cr-firma" data-idx="' + i + '" ' +
+                    'max="' + _oggiIso() + '" style="max-width:160px;display:inline-block;"></label>' :
                 '<input type="text" class="form-input cr-abi" data-idx="' + i + '" maxlength="5" ' +
                     'placeholder="ABI" style="max-width:80px;"> ' +
                 '<input type="text" class="form-input cr-cab" data-idx="' + i + '" maxlength="5" ' +
@@ -103,7 +107,8 @@ ENI.Fatturazione.ExportBancari = (function() {
             '<summary style="cursor:pointer;font-weight:600;">⚠ ' + _clientiRischio.length +
                 ' clienti a rischio: anagrafica RID/RIBA ma dati per incassare incompleti</summary>' +
             '<div class="text-xs mt-2">Non stanno causando danni adesso, ma ognuno verrà scartato alla sua prima fattura. ' +
-                'Se il mandato esiste in banca, scrivilo qui e resta in RID; altrimenti spostalo a un\'altra modalità.</div>' +
+                'RID: quando il cliente ha firmato il modulo SEPA, indica la data: il codice mandato lo assegna il gestionale. ' +
+                'Se non firmerà, spostalo a un\'altra modalità.</div>' +
             '<div class="table-wrapper mt-2"><table class="table table-sm">' +
             '<thead><tr><th style="width:30px;"><input type="checkbox" id="cr-check-all"></th>' +
             '<th>Cliente</th><th>Modalità</th><th>Manca</th><th>Completa qui</th></tr></thead>' +
@@ -135,9 +140,14 @@ ENI.Fatturazione.ExportBancari = (function() {
 
     async function _salvaDatiClientiRischio() {
         var daSalvare = [];
-        document.querySelectorAll('.cr-mandato').forEach(function(inp) {
-            var v = inp.value.trim();
-            if (v) daSalvare.push({ cliente: _clientiRischio[parseInt(inp.dataset.idx, 10)], dati: { mandate_id: v } });
+        document.querySelectorAll('.cr-firma').forEach(function(inp) {
+            var v = inp.value;
+            if (!v) return;
+            var cli = _clientiRischio[parseInt(inp.dataset.idx, 10)];
+            // Senza codice: lo genera il database insieme alla data firma.
+            // Con codice gia' generato: si registra solo la firma.
+            if (cli.mandate_id) daSalvare.push({ cliente: cli, dati: { mandato_data_firma: v } });
+            else daSalvare.push({ cliente: cli, generaMandato: v });
         });
         document.querySelectorAll('.cr-abi').forEach(function(inp) {
             var idx = parseInt(inp.dataset.idx, 10);
@@ -151,7 +161,12 @@ ENI.Fatturazione.ExportBancari = (function() {
         var falliti = [];
         for (var i = 0; i < daSalvare.length; i++) {
             try {
-                await ENI.API.aggiornaCliente(daSalvare[i].cliente.id, daSalvare[i].dati);
+                if (daSalvare[i].generaMandato) {
+                    await ENI.API.generaMandatoSdd(daSalvare[i].cliente.id, daSalvare[i].generaMandato,
+                        daSalvare[i].cliente.nome_ragione_sociale);
+                } else {
+                    await ENI.API.aggiornaCliente(daSalvare[i].cliente.id, daSalvare[i].dati);
+                }
             } catch(e) {
                 falliti.push(daSalvare[i].cliente.nome_ragione_sociale + ': ' + e.message);
             }
@@ -496,8 +511,9 @@ ENI.Fatturazione.ExportBancari = (function() {
         if (incluse.length) {
             var rows = incluse.map(function(f) {
                 var cli = f.cliente || {};
+                var ac = _abiCabCliente(cli);
                 var coordinate = prefix === 'rid' ? (cli.iban || '-') :
-                    (cli.abi_banca && cli.cab_banca ? cli.abi_banca + ' / ' + cli.cab_banca : '-');
+                    (ac ? ac.abi + ' / ' + ac.cab : '-');
                 return '<tr>' +
                     '<td>' + ENI.UI.escapeHtml(f.numero_formattato) + '</td>' +
                     '<td>' + ENI.UI.escapeHtml(cli.nome_ragione_sociale || '') + '</td>' +
@@ -548,10 +564,10 @@ ENI.Fatturazione.ExportBancari = (function() {
             var cls = problemi.length ? 'style="background:var(--color-danger-bg);"' : '';
 
             // Colonna "Coordinate": IBAN per RID, ABI/CAB per RIBA
+            var ac = _abiCabCliente(cli);
             var coordinate = prefix === 'rid' ?
                 ENI.UI.escapeHtml(cli.iban || '-') :
-                (cli.abi_banca && cli.cab_banca ?
-                    ENI.UI.escapeHtml(cli.abi_banca + ' / ' + cli.cab_banca) : '-');
+                (ac ? ENI.UI.escapeHtml(ac.abi + ' / ' + ac.cab) : '-');
 
             return '<tr ' + cls + '>' +
                 '<td><input type="checkbox" class="exp-check" data-prefix="' + prefix + '" data-idx="' + i + '" ' + (problemi.length ? 'disabled' : 'checked') + '></td>' +
@@ -732,7 +748,9 @@ ENI.Fatturazione.ExportBancari = (function() {
             xml += '      <InstdAmt Ccy="EUR">' + (parseFloat(f.totale) || 0) + '</InstdAmt>\n';
             xml += '      <DrctDbtTx><MndtRltdInf>\n';
             xml += '        <MndtId>' + _escXml(cli.mandate_id || '') + '</MndtId>\n';
-            xml += '        <DtOfSgntr>2012-01-02</DtOfSgntr>\n';
+            // I mandati storici hanno 2012-01-02, la data inviata da sempre:
+            // per loro il file resta identico. _problemiCliente esclude chi non ce l'ha.
+            xml += '        <DtOfSgntr>' + _escXml(cli.mandato_data_firma || '') + '</DtOfSgntr>\n';
             xml += '      </MndtRltdInf></DrctDbtTx>\n';
             xml += '      <Dbtr>\n';
             xml += '        <Nm>' + _escXml(_max35Upper(cli.nome_ragione_sociale, 'CLIENTE')) + '</Nm>\n';
@@ -832,8 +850,9 @@ ENI.Fatturazione.ExportBancari = (function() {
             var importoStr = _pad(importoCent, 14);
             totaleImporti += importoCent;
             var scadGG = f.data_scadenza ? _fmtDataCBI(f.data_scadenza) : '000000';
-            var abiCli = ((cli.abi_banca || '') + '00000').substring(0, 5);
-            var cabCli = ((cli.cab_banca || '') + '00000').substring(0, 5);
+            var acCli = _abiCabCliente(cli) || {};
+            var abiCli = ((acCli.abi || '') + '00000').substring(0, 5);
+            var cabCli = ((acCli.cab || '') + '00000').substring(0, 5);
             var nContratto = '40000000050200' + _pad(i + 1, 3);  // 17 char (es. C43SF + sequenza)
 
             // Record 14 (disposizione) - 120 byte esatti
@@ -960,10 +979,22 @@ ENI.Fatturazione.ExportBancari = (function() {
             if (!cli.iban) problemi.push('IBAN mancante');
             else if (!_validaIban(cli.iban)) problemi.push('IBAN malformato (' + cli.iban.length + ' char)');
             if (!cli.mandate_id) problemi.push('Mandato SDD mancante');
+            else if (!cli.mandato_data_firma) problemi.push('Firma mandato non registrata');
         } else {
-            if (!cli.abi_banca || !cli.cab_banca) problemi.push('ABI/CAB mancante');
+            if (!_abiCabCliente(cli)) problemi.push('ABI/CAB mancante');
         }
         return problemi;
+    }
+
+    // ABI/CAB del cliente: quelli in anagrafica, altrimenti ricavati dall'IBAN.
+    function _abiCabCliente(cli) {
+        if (cli.abi_banca && cli.cab_banca) return { abi: cli.abi_banca, cab: cli.cab_banca };
+        return ENI.IbanMandato.abiCab(cli.iban);
+    }
+
+    function _oggiIso() {
+        var d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
 
     // Divide le fatture in esportabili / scartate secondo _problemiCliente.

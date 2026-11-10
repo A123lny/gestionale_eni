@@ -213,6 +213,20 @@ ENI.API = (function() {
         return record;
     }
 
+    // Il codice mandato SDD lo assegna solo il database (serie RSM-SDD-...):
+    // a mano non si scrive e, una volta dato, non cambia piu'.
+    async function generaMandatoSdd(clienteId, dataFirma, nomeCliente) {
+        var result = await getClient().rpc('genera_mandato_sdd', {
+            p_cliente_id: clienteId,
+            p_data_firma: dataFirma || null
+        });
+        if (result.error) throw new Error(result.error.message);
+        ENI.State.cacheClear();
+        await scriviLog('Generato_Mandato_SDD', 'Clienti', (nomeCliente || clienteId) + ' - ' + result.data +
+            (dataFirma ? ' firmato il ' + dataFirma : ' (firma da registrare)'));
+        return result.data;
+    }
+
     async function cercaClienti(searchTerm) {
         var result = await getClient()
             .from('clienti')
@@ -2715,7 +2729,7 @@ ENI.API = (function() {
         filtri = filtri || {};
         var query = getClient()
             .from('fatture')
-            .select('*, cliente:clienti(id, nome_ragione_sociale, p_iva_coe, email, telefono, iban, mandate_id, banca_appoggio, abi_banca, cab_banca, sede_legale_indirizzo, sede_legale_cap, sede_legale_comune, sede_legale_provincia, sede_legale_nazione, modalita_pagamento_fattura, scadenza_giorni, rif_amministrazione, applica_monofase)')
+            .select('*, cliente:clienti(id, nome_ragione_sociale, p_iva_coe, email, telefono, iban, mandate_id, mandato_data_firma, banca_appoggio, abi_banca, cab_banca, sede_legale_indirizzo, sede_legale_cap, sede_legale_comune, sede_legale_provincia, sede_legale_nazione, modalita_pagamento_fattura, scadenza_giorni, rif_amministrazione, applica_monofase)')
             .order('numero', { ascending: true });
 
         if (filtri.anno) query = query.eq('anno', filtri.anno);
@@ -3256,6 +3270,7 @@ ENI.API = (function() {
         getClienti: getClienti,
         salvaCliente: salvaCliente,
         aggiornaCliente: aggiornaCliente,
+        generaMandatoSdd: generaMandatoSdd,
         cercaClienti: cercaClienti,
         getClientiConPrezzi: getClientiConPrezzi,
         getListino: getListino,

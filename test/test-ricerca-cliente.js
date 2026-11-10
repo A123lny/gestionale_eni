@@ -56,7 +56,7 @@ console.log('\n--- ogni campo che il modulo fattura legge deve arrivare ---');
 // senza l'elenco si finisce a scambiare una parola per un nome di campo.
 var COLONNE_CLIENTI = ['abi_banca','alias_import_eni','applica_monofase','attivo',
   'banca_appoggio','cab_banca','codice_destinatario_sdi','created_at','email','iban',
-  'id','id_cliente_eni','listino_personalizzato','mandate_id','modalita_pagamento',
+  'id','id_cliente_eni','listino_personalizzato','mandate_id','mandato_data_firma','modalita_pagamento',
   'modalita_pagamento_fattura','nome_ragione_sociale','note','note_fatturazione',
   'p_iva_coe','pec','rif_amministrazione','scadenza_giorni','sede_legale_cap',
   'sede_legale_comune','sede_legale_indirizzo','sede_legale_nazione',
