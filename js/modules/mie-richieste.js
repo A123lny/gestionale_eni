@@ -25,6 +25,11 @@ ENI.Modules.MieRichieste = (function() {
         { id: 'pomeriggio', label: '🌇 Pomeriggio' },
         { id: 'spezzato', label: '🔀 Spezzato' }
     ];
+    var STATI_DISP = [
+        { id: '', label: '— Nessuna preferenza —' },
+        { id: 'si', label: '✅ Disponibile' },
+        { id: 'no', label: '⛔ Non disponibile' }
+    ];
 
     function _parse(iso) { var p = String(iso).split('-'); return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])); }
     function _toISO(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -192,14 +197,17 @@ ENI.Modules.MieRichieste = (function() {
         for (var i = 0; i < N_GIORNI; i++) {
             var dt = _addG(_lunedi, i);
             var d = _disp[dt] || {};
-            // Se non ancora impostato per quel giorno, parte da "non disponibile" finché il dipendente non salva
-            var isDisp = d.data ? (d.disponibile !== false) : false;
+            // Tre stati: senza riga = nessuna preferenza (NON vuol dire
+            // "non disponibile"), poi disponibile o non disponibile.
+            var stato = !d.data ? '' : (d.disponibile === false ? 'no' : 'si');
+            var isDisp = stato === 'si';
             rows +=
                 '<div style="padding:8px 0;border-bottom:1px solid var(--color-gray-100);">' +
                     '<div style="display:grid;grid-template-columns:110px 1fr 1fr;gap:10px;align-items:center;">' +
                         '<div style="font-weight:600;">' + GIORNI[i] + ' <span class="text-xs text-muted">' + _fmtBreve(dt) + '</span></div>' +
-                        '<label style="display:flex;align-items:center;gap:6px;font-size:0.9rem;">' +
-                            '<input type="checkbox" class="mr-disp" data-data="' + dt + '"' + (isDisp ? ' checked' : '') + '> Disponibile</label>' +
+                        '<select class="form-select mr-disp" data-data="' + dt + '">' +
+                            STATI_DISP.map(function(s) { return '<option value="' + s.id + '"' + (stato === s.id ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+                        '</select>' +
                         '<select class="form-select mr-fascia" data-data="' + dt + '"' + (isDisp ? '' : ' disabled') + '>' +
                             FASCE.map(function(f) { return '<option value="' + f.id + '"' + ((d.fascia || 'indifferente') === f.id ? ' selected' : '') + '>' + f.label + '</option>'; }).join('') +
                         '</select>' +
@@ -214,19 +222,20 @@ ENI.Modules.MieRichieste = (function() {
                 '<button class="btn btn-outline btn-sm" id="mr-next">Successiva ›</button>' +
                 '<div style="font-weight:600;margin-left:6px;">Settimana ' + _fmtBreve(da) + ' – ' + _fmtBreve(a) + '</div>' +
             '</div>' +
-            '<div class="text-sm text-muted" style="margin-bottom:var(--space-2);">Indica in quali giorni sei disponibile e la fascia preferita. Poi premi Salva.</div>' +
+            '<div class="text-sm text-muted" style="margin-bottom:var(--space-2);">Indica solo i giorni che ti interessano: disponibile (con la fascia preferita) o non disponibile. I giorni lasciati su "Nessuna preferenza" restano liberi. Poi premi Salva.</div>' +
             '<div style="background:var(--bg-card);border:1px solid var(--color-gray-200);border-radius:var(--radius-md);padding:6px 14px;">' + rows + '</div>' +
             '<button class="btn btn-primary btn-block mt-4" id="mr-salva-disp">💾 Salva disponibilità</button>';
 
         content.querySelector('#mr-prev').addEventListener('click', function() { _lunedi = _addG(_lunedi, -7); _renderDisponibilita(); });
         content.querySelector('#mr-next').addEventListener('click', function() { _lunedi = _addG(_lunedi, 7); _renderDisponibilita(); });
-        content.querySelectorAll('.mr-disp').forEach(function(chk) {
-            chk.addEventListener('change', function() {
-                var dt = chk.getAttribute('data-data');
+        content.querySelectorAll('.mr-disp').forEach(function(selStato) {
+            selStato.addEventListener('change', function() {
+                var dt = selStato.getAttribute('data-data');
+                var si = selStato.value === 'si';
                 var sel = content.querySelector('.mr-fascia[data-data="' + dt + '"]');
-                if (sel) sel.disabled = !chk.checked;
+                if (sel) sel.disabled = !si;
                 var note = content.querySelector('.mr-note[data-data="' + dt + '"]');
-                if (note) note.style.display = chk.checked ? '' : 'none';
+                if (note) note.style.display = si ? '' : 'none';
             });
         });
         content.querySelector('#mr-salva-disp').addEventListener('click', _salvaDisponibilita);
@@ -234,14 +243,20 @@ ENI.Modules.MieRichieste = (function() {
 
     async function _salvaDisponibilita() {
         var content = document.getElementById('mr-content');
-        var chks = content.querySelectorAll('.mr-disp');
+        var stati = content.querySelectorAll('.mr-disp');
         try {
             ENI.UI.showLoading();
-            for (var i = 0; i < chks.length; i++) {
-                var dt = chks[i].getAttribute('data-data');
-                var disp = chks[i].checked;
-                var fascia = (content.querySelector('.mr-fascia[data-data="' + dt + '"]') || {}).value || 'indifferente';
-                var nota = ((content.querySelector('.mr-note[data-data="' + dt + '"]') || {}).value || '').trim() || null;
+            for (var i = 0; i < stati.length; i++) {
+                var dt = stati[i].getAttribute('data-data');
+                var stato = stati[i].value;
+                if (stato === '') {
+                    // Nessuna preferenza: si toglie l'eventuale riga di prima
+                    if (_disp[dt]) await ENI.API.eliminaDisponibilita(_pid(), dt);
+                    continue;
+                }
+                var disp = stato === 'si';
+                var fascia = disp ? ((content.querySelector('.mr-fascia[data-data="' + dt + '"]') || {}).value || 'indifferente') : 'indifferente';
+                var nota = disp ? (((content.querySelector('.mr-note[data-data="' + dt + '"]') || {}).value || '').trim() || null) : null;
                 await ENI.API.salvaDisponibilita({ personale_id: _pid(), data: dt, disponibile: disp, fascia: fascia, note: nota });
             }
             ENI.UI.hideLoading();
