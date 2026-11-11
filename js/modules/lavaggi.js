@@ -268,8 +268,9 @@ ENI.Modules.Lavaggi = (function() {
 
     function _lavaggiVista() {
         var q = _ricerca.trim().toLowerCase();
-        function statoRank(l) { return l.stato === 'Prenotato' ? 0 : (l.stato === 'Completato' ? 1 : 2); }
-        function prioRank(l) { return l.priorita === 'ASPETTA' ? 0 : 1; }
+        // Ordine della giornata = orario di ritiro (orario_fine), da fatti e
+        // da fare insieme; a parita' di ritiro, chi e' arrivato prima.
+        function ritiro(l) { return l.orario_fine || l.orario_inizio || '99:99'; }
         var arr = _lavaggi.filter(function(l) {
             if (_filtroStato === 'dafare' && l.stato !== 'Prenotato') return false;
             if (_filtroStato === 'completati' && l.stato !== 'Completato') return false;
@@ -280,12 +281,8 @@ ENI.Modules.Lavaggi = (function() {
             return true;
         });
         arr.sort(function(a, b) {
-            var s = statoRank(a) - statoRank(b);
-            if (s) return s;
-            if (a.stato === 'Prenotato' && b.stato === 'Prenotato') {
-                var p = prioRank(a) - prioRank(b);
-                if (p) return p;
-            }
+            var r = ritiro(a).localeCompare(ritiro(b));
+            if (r) return r;
             return (a.orario_inizio || '').localeCompare(b.orario_inizio || '');
         });
         return arr;
